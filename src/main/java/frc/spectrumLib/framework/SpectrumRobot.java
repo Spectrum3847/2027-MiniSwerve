@@ -1,17 +1,15 @@
 package frc.spectrumLib.framework;
 
-import java.lang.reflect.Field;
-import org.littletonrobotics.junction.LoggedRobot;
+import org.littletonrobotics.junction.LoggedOpModeRobot;
 import org.wpilib.command2.CommandScheduler;
-import org.wpilib.driverstation.DriverStationErrors;
-import org.wpilib.framework.IterativeRobotBase;
-import org.wpilib.system.Watchdog;
 
 /**
- * Base robot class for Spectrum robots on SystemCore: AdvantageKit's {@link LoggedRobot}, which
- * runs the loop, records every input, and drives replay.
+ * Base robot class for Spectrum robots on SystemCore: AdvantageKit's {@link LoggedOpModeRobot},
+ * which runs the loop, records every input (including the Driver Station's selected OpMode), drives
+ * replay, and runs the OpMode the Driver Station picked. Robots register their OpModes with {@code
+ * addOpMode} in the constructor, passing dependencies through the supplier.
  */
-public class SpectrumRobot extends LoggedRobot {
+public class SpectrumRobot extends LoggedOpModeRobot {
 
     /**
      * Loop length above which WPILib prints "Loop time of Xs overrun" plus a per-section epoch
@@ -19,13 +17,13 @@ public class SpectrumRobot extends LoggedRobot {
      *
      * <p>0.20 s keeps the console quiet in matches. It also hides everything below it: in the
      * 2026-09-05 roboRIO logs 60 to 90 percent of enabled loops ran over 25 ms and none of that
-     * reached the console. AdvantageKit's {@code /RealOutputs/LoggedRobot/*} timings and the {@code
-     * Scheduler/*} timers are the record of loop time.
+     * reached the console. AdvantageKit's {@code /RealOutputs/LoggedOpModeRobot/*} timings and the
+     * {@code Scheduler/*} timers are the record of loop time.
      */
     public static final double LOOP_OVERRUN_WARNING_SECONDS = 0.20;
 
     /**
-     * Starts the robot loop at {@code periodSeconds} and sets the loop overrun watchdogs to {@link
+     * Starts the robot loop at {@code periodSeconds} and sets the loop overrun warnings to {@link
      * #LOOP_OVERRUN_WARNING_SECONDS}.
      *
      * @param periodSeconds the robot loop period; SystemCore runs 0.01 (100 Hz) comfortably
@@ -33,14 +31,7 @@ public class SpectrumRobot extends LoggedRobot {
     public SpectrumRobot(double periodSeconds) {
         super(periodSeconds);
         RobotLoop.setPeriodSeconds(periodSeconds);
-        try {
-            Field watchdogField = IterativeRobotBase.class.getDeclaredField("m_watchdog");
-            watchdogField.setAccessible(true);
-            Watchdog watchdog = (Watchdog) watchdogField.get(this);
-            watchdog.setTimeout(LOOP_OVERRUN_WARNING_SECONDS);
-        } catch (Exception e) {
-            DriverStationErrors.reportWarning("Failed to adjust loop overrun warnings.", false);
-        }
+        setLoopOverrunWarningTimeout(LOOP_OVERRUN_WARNING_SECONDS);
         CommandScheduler.getInstance().setPeriod(LOOP_OVERRUN_WARNING_SECONDS);
     }
 }

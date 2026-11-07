@@ -63,8 +63,25 @@ bearing, range, corners, margin) instead of PhotonLib's results. The struct defi
 
 ## Autos and modes
 
-Auto selection and test mode use WPILib 2027 OpModes. Autos ask subsystems for wanted states; the
-auto builder (Choreo-based paths, straight-line paths) comes later.
+Everything the Driver Station can pick is a WPILib 2027 OpMode, registered in `Robot` with its
+dependencies passed through a supplier (`frc.robot.opmodes`). `SpectrumRobot` extends our
+AdvantageKit fork's `LoggedOpModeRobot`, so the selected mode and OpMode are Driver Station inputs
+(`/DriverStation/RobotMode`, `/DriverStation/OpMode`, `/DriverStation/OpModeId`) and replay runs
+the same one.
+
+- Teleop: `Drive` (match, full speed), `Demo` (pilot driving capped by settings `demo/*`: 1.5 m/s,
+  3 m/s^2, 3 rad/s, 6 rad/s^2).
+- Auto: `Do nothing`, `Drive forward` (1.5 m, robot-relative; a placeholder until the Choreo auto
+  builder generates match autos as OpModes).
+- Utility: `Wheel radius` (spins in place while enabled, prints the estimate when disabled).
+
+OpModes ask subsystems for wanted states (`Swerve.driveRobotRelative`, `limitDrive`); they never
+command devices. Settings an OpMode uses are made at boot (`DemoTeleop.Limits.fromSettings`), not
+when it is picked. Tuning stays a build-time switch (`RunMode.TUNING_MODE`, false on main), not an
+OpMode, so a match robot can never be put into tuning from the Driver Station.
+
+`MINISWERVE_SIM_SCRIPT=auto` runs the drive-forward auto, then Demo at full stick: it ends 1.56 m
+forward in auto, and Demo's wheel targets stay at 1.5 m/s (measured 1.56).
 
 ## Swerve
 
@@ -188,7 +205,7 @@ wheel points).
   raised), lowers top speed, wheel acceleration, turn rate and turn acceleration for that cycle
   only; it can never raise them. Logged:
   `Swerve/Request/Limits`.
-- **Wheel radius**: in utility mode hold Start; the robot spins in place (`wheelRadiusSpin`) and
+- **Wheel radius**: pick the `Wheel radius` utility OpMode and enable; the robot spins in place (`wheelRadiusSpin`) and
   logs `Swerve/WheelRadius/Estimate` once spinning steadily (after 1 s), printing it when
   released. Copy it into `swerve/wheelRadius`. Run it two or three times on carpet and average.
   The desktop sim reproduces a wrong setting's true radius to within about 1% (its timing is not

@@ -17,8 +17,9 @@ import org.wpilib.system.Timer;
  * so it tests what the robot will do.
  *
  * <p>Run with {@code MINISWERVE_SIM_SCRIPT=drive ./gradlew run -PnoSimGui} ({@code radius} for the
- * wheel-radius routine, {@code faults} to unplug and reboot devices mid-drive); it exits when done.
- * Then compare {@code Swerve/Odometry/Pose} with {@code Sim/TruthPose} in the log.
+ * wheel-radius utility, {@code auto} for the drive-forward auto then demo driving, {@code faults}
+ * to unplug and reboot devices mid-drive); it exits when done. Then compare {@code
+ * Swerve/Odometry/Pose} with {@code Sim/TruthPose} in the log.
  */
 final class SimScript {
     private record Step(
@@ -27,11 +28,16 @@ final class SimScript {
             double leftX,
             double leftY,
             double rightX,
-            boolean utility,
-            boolean start,
+            RobotMode mode,
+            String opMode,
             Consumer<SimFaults> faults) {
         Step(double seconds, String what, double leftX, double leftY, double rightX) {
-            this(seconds, what, leftX, leftY, rightX, false, false, null);
+            this(seconds, what, leftX, leftY, rightX, RobotMode.TELEOPERATED, "Drive", null);
+        }
+
+        /** A step with no sticks in this mode and OpMode (the Driver Station's selection). */
+        Step(double seconds, String what, RobotMode mode, String opMode) {
+            this(seconds, what, 0, 0, 0, mode, opMode, null);
         }
 
         /** A teleop step that changes simulated faults when it starts. */
@@ -42,7 +48,7 @@ final class SimScript {
                 double leftY,
                 double rightX,
                 Consumer<SimFaults> faults) {
-            this(seconds, what, leftX, leftY, rightX, false, false, faults);
+            this(seconds, what, leftX, leftY, rightX, RobotMode.TELEOPERATED, "Drive", faults);
         }
     }
 
@@ -56,11 +62,20 @@ final class SimScript {
         new Step(1.0, "stop", 0, 0, 0),
     };
 
-    /** Utility mode, hold Start: the wheel-radius routine spins in place. */
+    /** Utility OpMode "Wheel radius": spins in place while enabled. */
     private static final Step[] RADIUS = {
-        new Step(1.0, "disabled", 0, 0, 0, true, false, null),
-        new Step(8.0, "characterize wheel radius", 0, 0, 0, true, true, null),
-        new Step(1.5, "released", 0, 0, 0, true, false, null),
+        new Step(1.0, "disabled", RobotMode.UTILITY, "Wheel radius"),
+        new Step(8.0, "characterize wheel radius", RobotMode.UTILITY, "Wheel radius"),
+        new Step(1.0, "disabled", RobotMode.UTILITY, "Wheel radius"),
+    };
+
+    /** Auto OpMode "Drive forward", then teleop "Demo" driving at full stick (capped). */
+    private static final Step[] AUTO = {
+        new Step(1.0, "disabled", RobotMode.AUTONOMOUS, "Drive forward"),
+        new Step(3.0, "auto drive forward", RobotMode.AUTONOMOUS, "Drive forward"),
+        new Step(0.5, "disabled", RobotMode.TELEOPERATED, "Demo"),
+        new Step(2.0, "demo forward", 0, -1.0, 0, RobotMode.TELEOPERATED, "Demo", null),
+        new Step(1.5, "demo spin", 0, 0, -1.0, RobotMode.TELEOPERATED, "Demo", null),
     };
 
     /**
@@ -114,6 +129,7 @@ final class SimScript {
             case "drive" -> new SimScript(DRIVE, faults);
             case "radius" -> new SimScript(RADIUS, faults);
             case "faults" -> new SimScript(FAULTS, faults);
+            case "auto" -> new SimScript(AUTO, faults);
             default -> throw new IllegalArgumentException("Unknown MINISWERVE_SIM_SCRIPT: " + name);
         };
     }
@@ -123,6 +139,16 @@ final class SimScript {
     private SimScript(Step[] steps, SimFaults faults) {
         this.steps = steps;
         this.faults = faults;
+    }
+
+    /** The Driver Station id of the OpMode the robot published with this name, or 0 for none. */
+    private static long opModeId(RobotMode mode, String name) {
+        for (var option : DriverStationSim.getOpModeOptions()) {
+            if (option.getMode() == mode && option.name.equals(name)) {
+                return option.id;
+            }
+        }
+        return 0;
     }
 
     /** Called first thing each main loop. */
@@ -152,14 +178,15 @@ final class SimScript {
                 step.faults().accept(faults);
             }
         }
-        boolean enabled = i > 0;
+        // A disabled step between enabled ones, so the Driver Station starts the next OpMode.
+        boolean enabled = !step.what().equals("disabled");
         DriverStationSim.setDsAttached(true);
-        DriverStationSim.setRobotMode(step.utility() ? RobotMode.UTILITY : RobotMode.TELEOPERATED);
+        DriverStationSim.setRobotMode(step.mode());
+        DriverStationSim.setOpMode(opModeId(step.mode(), step.opMode()));
         DriverStationSim.setEnabled(enabled);
         pad.setLeftX(step.leftX());
         pad.setLeftY(step.leftY());
         pad.setRightX(step.rightX());
-        pad.setButton(org.wpilib.driverstation.Gamepad.Button.START, step.start());
         DriverStationSim.notifyNewData();
         if (faults != null) {
             // Simulated device faults active now ("device: fault").

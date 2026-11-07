@@ -5,7 +5,6 @@ import frc.spectrumLib.robotsettings.DoubleSetting;
 import frc.spectrumLib.robotsettings.RobotSettings;
 import frc.spectrumLib.robotsettings.SettingGroup;
 import org.wpilib.command2.button.CommandGamepad;
-import org.wpilib.command2.button.RobotModeTriggers;
 import org.wpilib.driverstation.Gamepad;
 
 /**
@@ -19,7 +18,6 @@ import org.wpilib.driverstation.Gamepad;
  *   <li>Right bumper (hold): slow mode.
  *   <li>X (faceLeft, hold): wheels in an X.
  *   <li>Back: the way the robot faces now becomes "away from the driver" (seedFieldCentric).
- *   <li>Utility mode only, Start (hold): spin in place to measure the wheel radius.
  * </ul>
  *
  * <p>The left stick uses a radial deadband: the deadband and squaring apply to how far the stick is
@@ -49,7 +47,6 @@ public final class Pilot {
         swerve.setTeleopInputs(this::driverForward, this::driverLeft, this::turn);
         pad.faceLeft().whileTrue(swerve.hold(Swerve.State.X_LOCK, "pilotXLock"));
         pad.back().onTrue(swerve.runOnce(swerve::seedFieldCentric).withName("SeedFieldCentric"));
-        RobotModeTriggers.utility().and(pad.start()).whileTrue(swerve.characterizeWheelRadius());
     }
 
     /** Away from the driver, from stick up, -1..1 (Swerve turns it into the field frame). */

@@ -6,7 +6,7 @@ Checked against the alpha-8 jars and the 2027 docs changelog on 2026-11-06. Re-c
 
 | Topic | Decision | Why |
 |---|---|---|
-| Robot base | Today `SpectrumRobot extends LoggedRobot`. Move to an OpModeRobot base when our AdvantageKit fork has a `LoggedOpModeRobot`. | `OpModeRobot` extends `RobotBase`, not TimedRobot, so AdvantageKit's `LoggedRobot` cannot host OpModes yet. |
+| Robot base | `SpectrumRobot extends LoggedOpModeRobot` (our AdvantageKit fork). | `OpModeRobot` extends `RobotBase`, not TimedRobot, so AdvantageKit's `LoggedRobot` cannot host OpModes; the fork's `LoggedOpModeRobot` can. |
 | Auto / utility selection | OpModes (`@Autonomous`, `@Teleop`, `@Utility`, `addAnnotatedOpModeClasses`). No SendableChooser. | Chooser shim is removed before kickoff. OpMode API still changes each alpha: keep OpModes thin wrappers that request wanted states. |
 | Commands | v2 (`org.wpilib.command2`) for bindings. Never `Command.schedule()`. | v3 is still being designed. Prototype it on a branch only. |
 | Controller | `org.wpilib.driverstation.Gamepad` / `XboxController`, face-button names (A = faceDown, B = faceRight, X = faceLeft, Y = faceUp). Triggers via `getLeftTrigger()`. | New DS mapping. `NiDs*` classes are for the old NI DS only. |
