@@ -18,6 +18,8 @@ package frc.spectrumLib.swerve;
  * @param maxWheelVelocity this cycle's top wheel speed (m/s), NaN for the configured one; e.g. a
  *     raised elevator lowering it to keep the robot from tipping
  * @param maxDriveAcceleration this cycle's wheel acceleration limit (m/s^2), NaN for configured
+ * @param maxAngularVelocity this cycle's turn-rate limit (rad/s), NaN for none
+ * @param maxAngularAcceleration this cycle's turn-acceleration limit (rad/s^2), NaN for none
  */
 public record DriveRequest(
         Mode mode,
@@ -30,7 +32,9 @@ public record DriveRequest(
         double[] wheelForceFeedforwardX,
         double[] wheelForceFeedforwardY,
         double maxWheelVelocity,
-        double maxDriveAcceleration) {
+        double maxDriveAcceleration,
+        double maxAngularVelocity,
+        double maxAngularAcceleration) {
 
     public enum Mode {
         /** Motors neutral (brake or coast per config). */
@@ -43,7 +47,19 @@ public record DriveRequest(
 
     public static final DriveRequest NEUTRAL =
             new DriveRequest(
-                    Mode.NEUTRAL, 0, 0, 0, false, 0, true, null, null, Double.NaN, Double.NaN);
+                    Mode.NEUTRAL,
+                    0,
+                    0,
+                    0,
+                    false,
+                    0,
+                    true,
+                    null,
+                    null,
+                    Double.NaN,
+                    Double.NaN,
+                    Double.NaN,
+                    Double.NaN);
 
     /** A velocity request with no wheel force feedforward. */
     public static DriveRequest velocity(
@@ -64,11 +80,24 @@ public record DriveRequest(
                 null,
                 null,
                 Double.NaN,
+                Double.NaN,
+                Double.NaN,
                 Double.NaN);
     }
 
-    /** This request with this cycle's speed and acceleration limits (NaN keeps the configured). */
-    public DriveRequest withLimits(double maxWheelVelocity, double maxDriveAcceleration) {
+    /**
+     * This request with this cycle's limits (NaN keeps the configured one).
+     *
+     * @param maxWheelVelocity m/s
+     * @param maxDriveAcceleration m/s^2
+     * @param maxAngularVelocity rad/s
+     * @param maxAngularAcceleration rad/s^2
+     */
+    public DriveRequest withLimits(
+            double maxWheelVelocity,
+            double maxDriveAcceleration,
+            double maxAngularVelocity,
+            double maxAngularAcceleration) {
         return new DriveRequest(
                 mode,
                 vx,
@@ -80,10 +109,24 @@ public record DriveRequest(
                 wheelForceFeedforwardX,
                 wheelForceFeedforwardY,
                 maxWheelVelocity,
-                maxDriveAcceleration);
+                maxDriveAcceleration,
+                maxAngularVelocity,
+                maxAngularAcceleration);
     }
 
     public static final DriveRequest X_LOCK =
             new DriveRequest(
-                    Mode.X_LOCK, 0, 0, 0, false, 0, true, null, null, Double.NaN, Double.NaN);
+                    Mode.X_LOCK,
+                    0,
+                    0,
+                    0,
+                    false,
+                    0,
+                    true,
+                    null,
+                    null,
+                    Double.NaN,
+                    Double.NaN,
+                    Double.NaN,
+                    Double.NaN);
 }

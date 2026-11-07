@@ -72,6 +72,9 @@ public final class SwerveIOPhoenix implements SwerveIO {
     private final SwervePhysicsSim sim;
     private long lastSimNanos;
 
+    /** Each drive motor's boot MotorOutput group, re-applied with only NeutralMode changed. */
+    private final MotorOutputConfigs[] driveMotorOutput;
+
     /** Whether each module's three devices took their config at boot. */
     private final boolean[] configured;
 
@@ -107,6 +110,9 @@ public final class SwerveIOPhoenix implements SwerveIO {
         metersPerWheelRotation = 2 * Math.PI * cfg.wheelRadius();
         pigeon = new Pigeon2(cfg.pigeonId(), bus);
         configured = new boolean[n];
+        driveMotorOutput = new MotorOutputConfigs[n];
+        driveBrakeApplied = new boolean[n];
+        java.util.Arrays.fill(driveBrakeApplied, true);
         var pigeonConfig = new Pigeon2Configuration();
         pigeonConfig.MountPose.MountPoseYaw = cfg.pigeonMountPose()[0];
         pigeonConfig.MountPose.MountPosePitch = cfg.pigeonMountPose()[1];
@@ -229,6 +235,7 @@ public final class SwerveIOPhoenix implements SwerveIO {
 
     private TalonFXConfiguration driveConfig(int i) {
         var c = new TalonFXConfiguration();
+        driveMotorOutput[i] = c.MotorOutput;
         c.MotorOutput.Inverted =
                 cfg.driveInverted()[i]
                         ? InvertedValue.Clockwise_Positive
@@ -355,27 +362,38 @@ public final class SwerveIOPhoenix implements SwerveIO {
         }
     }
 
-    private volatile boolean driveBrakeApplied = true;
+    /** Each drive motor's neutral mode as last applied (true brake). */
+    private final boolean[] driveBrakeApplied;
+
+    /** Bumped on every request; a queued apply from an older request does nothing. */
+    private final java.util.concurrent.atomic.AtomicInteger brakeGeneration =
+            new java.util.concurrent.atomic.AtomicInteger();
 
     @Override
     public void setDriveBrake(boolean brake) {
+        int generation = brakeGeneration.incrementAndGet();
         // A config apply per motor: off the robot loop, on the shared Phoenix background thread.
         for (int i = 0; i < n; i++) {
             final int m = i;
-            var out = new MotorOutputConfigs();
-            out.Inverted =
-                    cfg.driveInverted()[i]
-                            ? InvertedValue.Clockwise_Positive
-                            : InvertedValue.CounterClockwise_Positive;
-            out.NeutralMode = brake ? NeutralModeValue.Brake : NeutralModeValue.Coast;
             PhoenixBackground.run(
                     "Swerve/DriveBrake/" + i,
-                    () -> drive[m].getConfigurator().apply(out),
-                    ok -> {
-                        if (ok && m == n - 1) {
-                            driveBrakeApplied = brake;
+                    () -> {
+                        // A newer request (e.g. brake at enable) supersedes this one: skip it
+                        // rather than make the newer one wait behind a retrying apply.
+                        if (brakeGeneration.get() != generation) {
+                            return com.ctre.phoenix6.StatusCode.OK;
                         }
-                    });
+                        // The boot MotorOutput group with only NeutralMode changed, so the
+                        // inversion (a hard stop) is never rebuilt here.
+                        var out = driveMotorOutput[m].clone();
+                        out.NeutralMode = brake ? NeutralModeValue.Brake : NeutralModeValue.Coast;
+                        var code = drive[m].getConfigurator().apply(out);
+                        if (code.isOK()) {
+                            driveBrakeApplied[m] = brake;
+                        }
+                        return code;
+                    },
+                    null);
         }
     }
 
@@ -410,6 +428,11 @@ public final class SwerveIOPhoenix implements SwerveIO {
         h.pigeonConnected = pigeon.isConnected() && pigeonConfigured;
         System.arraycopy(configured, 0, h.configured, 0, n);
         h.timesync = timesync;
-        h.driveBrake = driveBrakeApplied;
+        // Brake only if every drive motor is in brake.
+        boolean allBrake = true;
+        for (boolean b : driveBrakeApplied) {
+            allBrake &= b;
+        }
+        h.driveBrake = allBrake;
     }
 }

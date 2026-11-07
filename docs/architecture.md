@@ -149,9 +149,11 @@ testing on the robot:
   robot is still moving after a disable; coast after 0.5 s disabled and still, so it can be pushed.
   The config apply runs on `PhoenixBackground`. Logged: `Swerve/DriveBrakeWanted` and
   `Swerve/Health/DriveBrake` (applied).
-- **Per-cycle limits**: `Swerve.limitDrive(maxWheelVelocity, maxDriveAcceleration)`, called every
-  loop while needed (e.g. an elevator raised), lowers the setpoint generator's limits for that
-  cycle only. Logged: `Swerve/Request/Limits`.
+- **Per-cycle limits**: `Swerve.limitDrive(maxWheelVelocity, maxDriveAcceleration,
+  maxAngularVelocity, maxAngularAcceleration)`, called every loop while needed (e.g. an elevator
+  raised), lowers top speed, wheel acceleration, turn rate and turn acceleration for that cycle
+  only; it can never raise them. Logged:
+  `Swerve/Request/Limits`.
 - **Wheel radius**: in utility mode hold Start; the robot spins in place (`wheelRadiusSpin`) and
   logs `Swerve/WheelRadius/Estimate` once spinning steadily (after 1 s), printing it when
   released. Copy it into `swerve/wheelRadius`. Run it two or three times on carpet and average.

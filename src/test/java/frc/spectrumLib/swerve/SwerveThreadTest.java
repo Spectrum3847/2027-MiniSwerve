@@ -1,6 +1,7 @@
 package frc.spectrumLib.swerve;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
 
@@ -58,6 +59,8 @@ class SwerveThreadTest {
                         fx,
                         fy,
                         Double.NaN,
+                        Double.NaN,
+                        Double.NaN,
                         Double.NaN));
         for (int i = 0; i < 4; i++) {
             assertEquals(0.0, io.angle[i], 1e-9);
@@ -83,6 +86,8 @@ class SwerveThreadTest {
                         true,
                         fx,
                         fy,
+                        Double.NaN,
+                        Double.NaN,
                         Double.NaN,
                         Double.NaN));
         for (int i = 0; i < 4; i++) {
@@ -118,10 +123,48 @@ class SwerveThreadTest {
         RecordingIO io = new RecordingIO();
         SwerveThread t = thread(io); // configured top wheel speed 4.5 m/s
         t.computeTargets(
-                DriveRequest.velocity(4.0, 0, 0, false, 0, true).withLimits(2.0, Double.NaN));
+                DriveRequest.velocity(4.0, 0, 0, false, 0, true)
+                        .withLimits(2.0, Double.NaN, Double.NaN, Double.NaN));
         assertEquals(2.0, io.velocity[0], 1e-9);
         t.computeTargets(
-                DriveRequest.velocity(6.0, 0, 0, false, 0, true).withLimits(9.0, Double.NaN));
+                DriveRequest.velocity(6.0, 0, 0, false, 0, true)
+                        .withLimits(9.0, Double.NaN, Double.NaN, Double.NaN));
         assertEquals(4.5, io.velocity[0], 1e-9);
+    }
+
+    @Test
+    void zeroOrNegativeLimitsAreClamped() {
+        RecordingIO io = new RecordingIO();
+        SwerveThread t = thread(io);
+        t.computeTargets(
+                DriveRequest.velocity(3.0, 0, 0, false, 0, true)
+                        .withLimits(-1, -1, Double.NaN, Double.NaN));
+        assertEquals(0.0, io.velocity[0], 1e-9);
+    }
+
+    @Test
+    void turnRateLimit() {
+        RecordingIO io = new RecordingIO();
+        SwerveThread t = thread(io);
+        // Spin in place at 5 rad/s requested, limited to 1 rad/s: wheel speed = 1 * module radius.
+        for (int i = 0; i < 4; i++) {
+            t.sampleForTest().angle[i] = Math.atan2(MX[i], -MY[i]); // already on the spin angles
+        }
+        t.computeTargets(
+                DriveRequest.velocity(0, 0, 5.0, false, 0, true)
+                        .withLimits(Double.NaN, Double.NaN, 1.0, Double.NaN));
+        assertEquals(Math.hypot(H, H), Math.abs(io.velocity[0]), 1e-3);
+    }
+
+    @Test
+    void turnAccelerationLimit() {
+        RecordingIO io = new RecordingIO();
+        SwerveThread t = thread(io);
+        // From still, ask for 5 rad/s with turn acceleration limited to 10 rad/s^2: after one
+        // 4 ms cycle the turn rate is at most 0.04 rad/s.
+        t.computeTargets(
+                DriveRequest.velocity(0, 0, 5.0, false, 0, true)
+                        .withLimits(Double.NaN, Double.NaN, Double.NaN, 10.0));
+        assertTrue(Math.abs(io.velocity[0]) <= 0.04 * Math.hypot(H, H) + 1e-6);
     }
 }

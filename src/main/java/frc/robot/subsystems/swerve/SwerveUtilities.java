@@ -18,8 +18,12 @@ final class SwerveUtilities {
     private final CoastOnDisable coast =
             new CoastOnDisable(0.05, SwerveSettings.COAST_DELAY_SECONDS.get());
     private final WheelRadiusCharacterizer radius;
-    private Boolean brakeRequested;
+
+    /** Boot configures brake, so nothing is sent until the first change. */
+    private boolean brakeRequested = true;
+
     private double characterizingFor;
+    private boolean radiusStarted;
 
     /** Seconds of spinning before the wheel-radius measurement starts. */
     private static final double SETTLE_SECONDS = 1.0;
@@ -43,7 +47,7 @@ final class SwerveUtilities {
             }
         }
         boolean brake = !coastOnDisable || coast.brake(enabled, fastest, dt);
-        if (brakeRequested == null || brake != brakeRequested) {
+        if (brake != brakeRequested) {
             // A config apply: SwerveIO does it on its own thread.
             io.setDriveBrake(brake);
             brakeRequested = brake;
@@ -55,7 +59,12 @@ final class SwerveUtilities {
             characterizingFor += dt;
             // Measure only once the spin is steady: the wheels turning to their spin angles and
             // the ramp-up would bias the ratio (team 6328 does the same).
-            if (characterizingFor >= SETTLE_SECONDS) {
+            double yawRate =
+                    inputs.count > 0 ? inputs.samples[inputs.count - 1].angularVelocityZWorld : 0;
+            boolean steady =
+                    Math.abs(yawRate) >= 0.9 * Math.abs(SwerveSettings.WHEEL_RADIUS_SPIN.get());
+            if (characterizingFor >= SETTLE_SECONDS && (steady || radiusStarted)) {
+                radiusStarted = true;
                 double r = SwerveSettings.WHEEL_RADIUS.get();
                 for (int s = 0; s < inputs.count; s++) {
                     radius.update(inputs.samples[s], r);
@@ -67,6 +76,7 @@ final class SwerveUtilities {
             Logger.recordOutput("Swerve/WheelRadius/Turned", radius.turned());
         } else {
             characterizingFor = 0;
+            radiusStarted = false;
             radius.stop();
         }
     }

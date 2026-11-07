@@ -66,6 +66,8 @@ public final class Swerve implements Subsystem {
     private final SwerveUtilities utilities;
     private double limitVelocity = Double.NaN;
     private double limitAcceleration = Double.NaN;
+    private double limitOmega = Double.NaN;
+    private double limitAlpha = Double.NaN;
     private final WantedState<State> state = new WantedState<>("Swerve", State.TELEOP_DRIVE);
     private final SwerveIO io;
     private final SwerveThread thread;
@@ -207,14 +209,21 @@ public final class Swerve implements Subsystem {
             // Never drive on a module we cannot read.
             request = DriveRequest.NEUTRAL;
         }
-        if (Double.isFinite(limitVelocity) || Double.isFinite(limitAcceleration)) {
-            request = request.withLimits(limitVelocity, limitAcceleration);
+        if (Double.isFinite(limitVelocity)
+                || Double.isFinite(limitAcceleration)
+                || Double.isFinite(limitOmega)
+                || Double.isFinite(limitAlpha)) {
+            request = request.withLimits(limitVelocity, limitAcceleration, limitOmega, limitAlpha);
         }
-        // This cycle's lowered limits (NaN: configured), e.g. from a raised mechanism.
+        // This cycle's lowered limits: wheel speed (m/s), wheel acceleration (m/s^2), turn rate
+        // (rad/s), turn acceleration (rad/s^2); NaN means configured. E.g. from a raised mechanism.
         Logger.recordOutput(
-                "Swerve/Request/Limits", new double[] {limitVelocity, limitAcceleration});
+                "Swerve/Request/Limits",
+                new double[] {limitVelocity, limitAcceleration, limitOmega, limitAlpha});
         limitVelocity = Double.NaN;
         limitAcceleration = Double.NaN;
+        limitOmega = Double.NaN;
+        limitAlpha = Double.NaN;
         thread.setRequest(request);
         state.setCurrent(devicesOk ? wanted : State.IDLE);
         // The request sent to the swerve thread: vx, vy (m/s), omega (rad/s).
@@ -300,16 +309,26 @@ public final class Swerve implements Subsystem {
     }
 
     /**
-     * Lowers the top speed and acceleration for this cycle only (NaN keeps the configured value);
-     * call every loop while needed, e.g. while an elevator is raised. The lowest of several calls
-     * in one loop wins.
+     * Lowers the top speed, acceleration, turn rate and turn acceleration for this cycle only (NaN
+     * keeps the configured value); call every loop while needed, e.g. while an elevator is raised.
+     * The lowest of several calls in one loop wins. Calls made in a command's execute (after this
+     * subsystem's update) apply from the next loop. Speed is clamped at 0; acceleration at 0.5
+     * m/s^2 so the robot can still slow down.
      *
      * @param maxWheelVelocity m/s
      * @param maxDriveAcceleration m/s^2
+     * @param maxAngularVelocity turn rate, rad/s (clamped at 0)
+     * @param maxAngularAcceleration turn acceleration, rad/s^2 (clamped at 0.5 so it can stop)
      */
-    public void limitDrive(double maxWheelVelocity, double maxDriveAcceleration) {
+    public void limitDrive(
+            double maxWheelVelocity,
+            double maxDriveAcceleration,
+            double maxAngularVelocity,
+            double maxAngularAcceleration) {
         limitVelocity = lower(limitVelocity, maxWheelVelocity);
         limitAcceleration = lower(limitAcceleration, maxDriveAcceleration);
+        limitOmega = lower(limitOmega, maxAngularVelocity);
+        limitAlpha = lower(limitAlpha, maxAngularAcceleration);
     }
 
     private static double lower(double a, double b) {

@@ -27,13 +27,21 @@ public final class PhoenixBackground {
     private static final ExecutorService THREAD =
             Executors.newSingleThreadExecutor(
                     r -> {
-                        Thread t = new Thread(r, "PhoenixBackground");
+                        Thread t =
+                                new Thread(
+                                        () -> {
+                                            // Never real-time: these calls wait on the bus and
+                                            // must not compete with the robot loop or Phoenix.
+                                            normalPriority();
+                                            r.run();
+                                        },
+                                        "PhoenixBackground");
                         t.setDaemon(true);
                         return t;
                     });
 
     private static final Map<String, StatusCode> RESULTS = new ConcurrentHashMap<>();
-    private static final Map<String, Boolean> PENDING = new ConcurrentHashMap<>();
+    private static final Map<String, Integer> PENDING = new ConcurrentHashMap<>();
 
     /**
      * Queues a blocking Phoenix call. It is tried up to five times until it returns OK.
@@ -44,7 +52,7 @@ public final class PhoenixBackground {
      */
     public static void run(
             String name, Supplier<StatusCode> call, java.util.function.Consumer<Boolean> onDone) {
-        PENDING.put(name, true);
+        PENDING.merge(name, 1, Integer::sum);
         THREAD.execute(
                 () -> {
                     StatusCode code = StatusCode.StatusCodeNotInitialized;
@@ -55,11 +63,28 @@ public final class PhoenixBackground {
                         }
                     }
                     RESULTS.put(name, code);
-                    PENDING.remove(name);
+                    PENDING.computeIfPresent(name, (k, v) -> v > 1 ? v - 1 : null);
                     if (onDone != null) {
                         onDone.accept(code.isOK());
                     }
                 });
+    }
+
+    @SuppressWarnings("deprecation") // WPILib marks it "know what you are doing"
+    private static void normalPriority() {
+        try {
+            org.wpilib.system.Threads.setCurrentThreadPriority(0);
+        } catch (RuntimeException e) {
+            // Desktop or a platform without priorities: nothing to undo.
+        }
+    }
+
+    /**
+     * Starts the background thread now. Call at boot, before the main thread is made real-time, so
+     * the thread is not created from a real-time thread.
+     */
+    public static void start() {
+        THREAD.execute(() -> {});
     }
 
     /** The last result of the named call, or null if it has not finished yet. */

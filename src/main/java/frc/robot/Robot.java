@@ -53,6 +53,8 @@ public class Robot extends SpectrumRobot {
         swerve = new Swerve();
         // The pilot only binds controls; the bindings keep it alive.
         new Pilot(swerve);
+        // Before the main thread goes real-time, so its thread does not inherit that.
+        frc.spectrumLib.hardware.PhoenixBackground.start();
         if (RunMode.CURRENT == RunMode.Mode.REAL) {
             setMainThreadPriority(RunMode.MAIN_THREAD_RT_PRIORITY);
         }
