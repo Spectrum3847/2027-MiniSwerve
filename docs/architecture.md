@@ -159,3 +159,27 @@ testing on the robot:
   real-time); the math is exact on synthetic data.
 - **Stick shaping**: radial deadband (`pilot/stickDeadband`) and squaring on the left stick's
   magnitude, so diagonals keep their direction.
+
+## Planned: calibration drive with a tag rig
+
+A known test rig: two AprilTags a known distance apart at a known height. One recorded session
+of driving at, away from and across the tags, plus spins with the tags in view, should calibrate
+nearly everything at once, offline from the log (replay makes it repeatable). Built with the
+TagEKF and vision work; the rig geometry is a Robot Setting so the solver uses it as truth.
+
+| From the drive | Calibrates | Current home |
+|---|---|---|
+| Spin in place, tags in view | Wheel radius (vision turn and gyro turn vs wheel travel) | `swerve/wheelRadius` |
+| Spin in place | Gyro yaw scale and drift, vs vision heading | `imu` settings (new) |
+| Spin and drive, each camera on the tags | Camera mount poses (position, yaw/pitch/roll) | camera settings (new); TagEKF `MountEstimator` |
+| Accelerate and brake toward the tags | Camera time offset (latency), vs odometry motion | camera settings (new) |
+| Straight drives and strafes | Effective track and wheelbase; CANcoder offset trim (does "straight" go straight) | `swerve/track`, magnet offsets |
+| Speed ramps | Drive kS / kV / kA (commanded vs measured wheel speed and current) | swerve gains |
+| Whole session | Odometry slip noise and EKF noise values | TagEKF settings |
+| Fast spins, drive while spinning | `rotationLookahead`, steer gains, setpoint generator limits | swerve settings |
+
+The tag rig distance and height check the cameras' range scale independently of the field, so a
+scaled or miscalibrated camera shows up before it reaches the EKF.
+
+Output: a tool reads the log and writes proposed values into `deploy/settings/*.json` for review
+(the same pull-back-to-git path as Robot Settings), never applied silently.
