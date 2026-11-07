@@ -1,4 +1,4 @@
-package frc.spectrumLib.swerve;
+package frc.spectrumSim.swerve;
 
 import com.ctre.phoenix6.hardware.CANcoder;
 import com.ctre.phoenix6.hardware.Pigeon2;
@@ -6,7 +6,8 @@ import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.sim.CANcoderSimState;
 import com.ctre.phoenix6.sim.Pigeon2SimState;
 import com.ctre.phoenix6.sim.TalonFXSimState;
-import frc.spectrumLib.sim.MotorModel;
+import frc.spectrumLib.swerve.PhoenixSwerveConfig;
+import frc.spectrumSim.MotorModel;
 
 /**
  * {@link SwerveSimDevices} on Phoenix's own simulator: the motors' closed loops run in CTRE's

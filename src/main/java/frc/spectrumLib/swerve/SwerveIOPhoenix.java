@@ -20,9 +20,10 @@ import java.util.List;
  * VelocityTorqueCurrentFOC. The 250 Hz thread only sends setpoints and reads latency-compensated
  * signals.
  *
- * <p>The desktop sim normally uses {@link SwerveIOSim} (our TalonFX models, repeatable). This IO
- * also runs in sim on Phoenix's own simulator, with {@link SwervePhysicsSim} moving the devices, to
- * check that path and our models against CTRE's.
+ * <p>The desktop sim normally uses SpectrumSim's {@code SwerveIOSim} (TalonFX models, repeatable).
+ * This IO also runs in sim on Phoenix's own simulator, to check that path and SpectrumSim's models
+ * against CTRE's: SpectrumSim reaches the devices through {@link #simDevices} and paces the reads
+ * with {@link #setSimPacer}.
  *
  * <p>Device configs are in {@link SwervePhoenixConfigs}; reboot detection and endless config
  * retries in {@code PhoenixDeviceSet}.
@@ -48,7 +49,10 @@ public final class SwerveIOPhoenix implements SwerveIO {
     private final BaseStatusSignal[] slow;
 
     private final double metersPerWheelRotation;
-    private final SwervePhysicsSim sim;
+
+    /** Desktop sim only: waits out the rest of a period after a read, from its start (ns). */
+    private volatile java.util.function.LongConsumer simPacer;
+
     private final SwerveRequests requests;
     private final double[] measuredSteerRps;
     private final SwerveRequests.Motors motors =
@@ -70,9 +74,6 @@ public final class SwerveIOPhoenix implements SwerveIO {
     private final boolean timesync;
     private final DriveNeutralMode neutralMode;
 
-    /** Physics rate in sim (Hz): as fast as a motor's own control loop. */
-    private static final double PHYSICS_HZ = 1000;
-
     private final SimFaults faults;
 
     /** Device names (as in PhoenixDeviceSet), built once: no strings per cycle. */
@@ -90,12 +91,10 @@ public final class SwerveIOPhoenix implements SwerveIO {
     /**
      * Builds and configures every device. Blocking (config applies): call during robot init only.
      *
-     * @param sim physics to step each cycle, or null on the real robot
      * @param faults simulated device faults (sim only; null on the robot)
      */
-    public SwerveIOPhoenix(PhoenixSwerveConfig cfg, SwervePhysicsSim sim, SimFaults faults) {
+    public SwerveIOPhoenix(PhoenixSwerveConfig cfg, SimFaults faults) {
         this.cfg = cfg;
-        this.sim = sim;
         this.faults = faults;
         devices.setSimFaults(faults);
         n = cfg.modules();
@@ -191,14 +190,22 @@ public final class SwerveIOPhoenix implements SwerveIO {
                         SwervePhoenixConfigs.signals(
                                 cfg.signalHz(), fast, slow, drive, steer, encoder, pigeon));
         devices.configureAtBoot();
-        if (sim != null) {
-            sim.attach(
-                    cfg,
-                    new PhoenixSimDevices(cfg, sim.steerMotor(), drive, steer, encoder, pigeon));
-            // Physics on its own 1 kHz thread, so the simulated motors' 1 kHz loops see fresh
-            // positions as real ones do (stepping at 250 Hz with this thread made them lag).
-            sim.start(PHYSICS_HZ);
-        }
+    }
+
+    /** The Phoenix devices, for a desktop sim to move (never used on the robot). */
+    public record SimDevices(
+            TalonFX[] drive, TalonFX[] steer, CANcoder[] encoder, Pigeon2 pigeon) {}
+
+    public SimDevices simDevices() {
+        return new SimDevices(drive, steer, encoder, pigeon);
+    }
+
+    /**
+     * Desktop sim on Phoenix's simulator: read signals without waiting for new frames, then let
+     * {@code pacer} wait out the period (given the read's start, ns). Null on the robot.
+     */
+    public void setSimPacer(java.util.function.LongConsumer pacer) {
+        simPacer = pacer;
     }
 
     /** Slow signals per module: 3 currents x2 motors, 2 temps, voltage, 3 faults. */
@@ -213,12 +220,13 @@ public final class SwerveIOPhoenix implements SwerveIO {
     @Override
     public void waitForSample(SwerveSample out) {
         boolean good;
-        if (sim != null) {
+        java.util.function.LongConsumer pacer = simPacer;
+        if (pacer != null) {
             // Desktop: the physics runs on its own thread; read what Phoenix's simulator reports,
             // then wait out the rest of the period.
             long start = System.nanoTime();
             good = BaseStatusSignal.refreshAll(fast).isOK();
-            sim.waitForNextPeriod(start, cfg.signalHz());
+            pacer.accept(start);
         } else {
             good = BaseStatusSignal.waitForAll(2.0 / cfg.signalHz(), fast).isOK();
         }

@@ -1,11 +1,14 @@
-package frc.spectrumLib.swerve;
+package frc.spectrumSim.swerve;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
 import frc.spectrumLib.hardware.SimFaults;
-import frc.spectrumLib.sim.MotorModel;
+import frc.spectrumLib.swerve.ModuleCommands;
+import frc.spectrumLib.swerve.PhoenixSwerveConfig;
+import frc.spectrumLib.swerve.SwerveSample;
+import frc.spectrumSim.MotorModel;
 import org.junit.jupiter.api.Test;
 import org.wpilib.hardware.hal.HAL;
 import org.wpilib.simulation.DriverStationSim;

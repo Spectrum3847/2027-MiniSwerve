@@ -313,7 +313,7 @@ Phoenix's simulator runs each motor's control loop on the wall clock, so two run
 script never matched (three drive-script runs ended at headings 122, 131 and 40 deg). The desktop
 sim now runs on one clock instead:
 
-- `SimClock` (spectrumLib `sim/`) pauses WPILib's sim time at a fixed start and steps it 1 ms at a
+- `SimClock` (SpectrumSim, `SpectrumSim/`) pauses WPILib's sim time at a fixed start and steps it 1 ms at a
   time: physics and motor models, then WPILib's clock (which runs the main loop when it is due and
   waits for it), then the 250 Hz swerve thread. Nothing moves while any of them is working.
 - `TalonFXModel` runs a TalonFX's control loop from the same `TalonFXConfiguration` and control
@@ -321,8 +321,12 @@ sim now runs on one clock instead:
   Other mechanisms will use it too; new control requests are added as they need them.
 - `SwerveIOSim` is the drivetrain on those models; faults (`SimFaults`) act on it as before.
 
-Pace: `MINISWERVE_SIM_SPEED` (multiple of real time, or `max`); default `max` when a script runs,
-real time otherwise. `MINISWERVE_SIM_DEVICES=phoenix` runs the old way, on Phoenix's simulator.
+Pace: `SPECTRUM_SIM_SPEED` (multiple of real time, or `max`); default `max` when a script runs,
+real time otherwise. `SPECTRUM_SIM_DEVICES=phoenix` runs the old way, on Phoenix's simulator.
+
+All of this is SpectrumSim, its own library in `SpectrumSim/` (Gradle source set `sim`). Robot code
+reaches it only through `frc.spectrumLib.framework.DesktopSim`, loaded at runtime, so the deploy
+jar carries no simulation code.
 
 Result (2026-11-07): three drive-script runs give identical logs (only boot ID and build time
 differ), a 9.5 s script takes about 4 s including Gradle startup, and replay of a sim log matches

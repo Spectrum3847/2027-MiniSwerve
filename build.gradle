@@ -53,6 +53,26 @@ repositories {
     mavenCentral()
 }
 
+// SpectrumSim: the desktop simulation library (physics, TalonFX models, sim clock, later the field
+// and game pieces). It builds against the robot code's classes; robot code and spectrumLib never
+// compile against it, and it stays out of the deploy jar. The robot finds it at runtime through
+// frc.spectrumLib.framework.DesktopSim (ServiceLoader). Its own folder, so it can become its own repo.
+sourceSets {
+    sim {
+        java.srcDirs = ['SpectrumSim/src/main/java']
+        resources.srcDirs = [
+            'SpectrumSim/src/main/resources'
+        ]
+        compileClasspath += sourceSets.main.output + sourceSets.main.compileClasspath
+        runtimeClasspath += sourceSets.main.output + sourceSets.main.runtimeClasspath
+    }
+    test {
+        java.srcDir 'SpectrumSim/src/test/java'
+        compileClasspath += sim.output
+        runtimeClasspath += sim.output
+    }
+}
+
 // AdvantageKit log replay: `./gradlew replayWatch` re-runs replay whenever the code changes.
 task(replayWatch, type: JavaExec) {
     mainClass = "org.littletonrobotics.junction.ReplayWatch"
@@ -129,6 +149,16 @@ wpi.sim.addGui().defaultEnabled = !project.hasProperty('noSimGui')
 wpi.sim.addDriverstation()
 
 application.mainClass = ROBOT_MAIN_CLASS
+
+// Desktop runs (sim and replay) get SpectrumSim; the deploy jar does not.
+tasks.named('run') {
+    classpath += sourceSets.sim.output
+}
+tasks.matching { it.name == 'simulateJava' }.configureEach {
+    if (it.hasProperty('classpath')) {
+        classpath += sourceSets.sim.output
+    }
+}
 
 // The robot jar plus each library's jar (WPILib 2027 alpha-8 dropped the fat jar).
 deployArtifact.configureApplication(application)
@@ -269,7 +299,7 @@ tasks.register('simReplay', JavaExec) {
     group = 'Spectrum'
     description = 'Replay real module commands through the physics sim'
     dependsOn 'testClasses', 'extractReleaseNative'
-    mainClass = 'frc.tools.SimReplay'
+    mainClass = 'frc.spectrumSim.tools.SimReplay'
     classpath = sourceSets.test.runtimeClasspath
     def nativeDir = file("$buildDir/jni/release")
     jvmArgs = [
@@ -290,7 +320,7 @@ tasks.register('talonCrosscheck', JavaExec) {
     group = 'Spectrum'
     description = 'Compare our TalonFX model with Phoenix simulator step responses'
     dependsOn 'testClasses', 'extractReleaseNative'
-    mainClass = 'frc.tools.TalonCrosscheck'
+    mainClass = 'frc.spectrumSim.tools.TalonCrosscheck'
     classpath = sourceSets.test.runtimeClasspath
     def nativeDir = file("$buildDir/jni/release")
     jvmArgs = [

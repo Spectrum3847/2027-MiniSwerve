@@ -1,13 +1,13 @@
-package frc.tools;
+package frc.spectrumSim.tools;
 
-import frc.spectrumLib.sim.MotorModel;
 import frc.spectrumLib.swerve.ModuleCommands;
 import frc.spectrumLib.swerve.PhoenixSwerveConfig;
 import frc.spectrumLib.swerve.SwerveIO;
-import frc.spectrumLib.swerve.SwerveIOPhoenix;
-import frc.spectrumLib.swerve.SwerveIOSim;
-import frc.spectrumLib.swerve.SwervePhysicsSim;
 import frc.spectrumLib.swerve.SwerveSample;
+import frc.spectrumSim.MotorModel;
+import frc.spectrumSim.swerve.PhoenixSwerveSim;
+import frc.spectrumSim.swerve.SwerveIOSim;
+import frc.spectrumSim.swerve.SwervePhysicsSim;
 import java.util.Locale;
 import org.wpilib.hardware.hal.HAL;
 import org.wpilib.simulation.DriverStationSim;
@@ -99,7 +99,7 @@ public final class TalonCrosscheck {
         SwerveIO io =
                 model
                         ? new SwerveIOSim(cfg, physics, null, null)
-                        : new SwerveIOPhoenix(cfg, physics, null);
+                        : PhoenixSwerveSim.create(cfg, physics, null);
         var sample = new SwerveSample(4);
         int total = 0;
         for (double[] p : PHASES) {

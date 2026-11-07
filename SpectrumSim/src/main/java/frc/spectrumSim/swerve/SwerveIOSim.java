@@ -1,10 +1,18 @@
-package frc.spectrumLib.swerve;
+package frc.spectrumSim.swerve;
 
 import com.ctre.phoenix6.controls.ControlRequest;
 import com.ctre.phoenix6.signals.NeutralModeValue;
 import frc.spectrumLib.hardware.SimFaults;
-import frc.spectrumLib.sim.SimClock;
-import frc.spectrumLib.sim.TalonFXModel;
+import frc.spectrumLib.swerve.ModuleCommands;
+import frc.spectrumLib.swerve.PhoenixSwerveConfig;
+import frc.spectrumLib.swerve.SwerveHealth;
+import frc.spectrumLib.swerve.SwerveIO;
+import frc.spectrumLib.swerve.SwerveMath;
+import frc.spectrumLib.swerve.SwervePhoenixConfigs;
+import frc.spectrumLib.swerve.SwerveRequests;
+import frc.spectrumLib.swerve.SwerveSample;
+import frc.spectrumSim.SimClock;
+import frc.spectrumSim.TalonFXModel;
 import org.wpilib.driverstation.RobotState;
 import org.wpilib.system.Timer;
 

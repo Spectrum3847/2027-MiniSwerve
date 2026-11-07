@@ -1,14 +1,14 @@
-package frc.tools;
+package frc.spectrumSim.tools;
 
 import com.ctre.phoenix6.unmanaged.Unmanaged;
-import frc.spectrumLib.sim.MotorModel;
 import frc.spectrumLib.swerve.ModuleCommands;
 import frc.spectrumLib.swerve.PhoenixSwerveConfig;
 import frc.spectrumLib.swerve.SwerveIO;
-import frc.spectrumLib.swerve.SwerveIOPhoenix;
-import frc.spectrumLib.swerve.SwerveIOSim;
-import frc.spectrumLib.swerve.SwervePhysicsSim;
 import frc.spectrumLib.swerve.SwerveSample;
+import frc.spectrumSim.MotorModel;
+import frc.spectrumSim.swerve.PhoenixSwerveSim;
+import frc.spectrumSim.swerve.SwerveIOSim;
+import frc.spectrumSim.swerve.SwervePhysicsSim;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -167,7 +167,7 @@ public final class SimReplay {
         double latency = p.get("latency");
         SwerveIO io =
                 phoenix
-                        ? new SwerveIOPhoenix(fmConfig(), sim, null)
+                        ? PhoenixSwerveSim.create(fmConfig(), sim, null)
                         : new SwerveIOSim(fmConfig(), sim, null, null);
         var sample = new SwerveSample(4);
         double[] angle = new double[4];

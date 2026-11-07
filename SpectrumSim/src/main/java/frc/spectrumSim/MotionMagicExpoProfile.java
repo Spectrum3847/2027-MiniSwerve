@@ -1,4 +1,4 @@
-package frc.spectrumLib.sim;
+package frc.spectrumSim;
 
 /**
  * The profile a TalonFX's Motion Magic Expo request follows, for {@link TalonFXModel}: the target

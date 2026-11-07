@@ -51,6 +51,10 @@ stops are the ones the Driver Station or the rules make (disabled, e-stop).
   interface), `ThingIOReal`/`ThingIOSim`, `ThingInputs` (logged inputs), `ThingSettings`.
 - Reusable code goes in `frc.spectrumLib` (it will move to its own repo). Robot-specific code goes in
   `frc.robot`. spectrumLib never imports `frc.robot`.
+- Desktop simulation goes in SpectrumSim (`SpectrumSim/`, package `frc.spectrumSim`): physics,
+  TalonFX models, the sim clock, later the field and game pieces. It may use spectrumLib; robot code
+  and spectrumLib never import it and reach it only through `frc.spectrumLib.framework.DesktopSim`.
+  The build enforces this, and the deploy jar has none of it. See `SpectrumSim/README.md`.
 
 ## AdvantageKit and replay
 

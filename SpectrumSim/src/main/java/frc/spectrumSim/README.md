@@ -1,10 +1,10 @@
-# sim
+# spectrumSim
 
-Desktop simulation pieces any Spectrum robot can use. Nothing here knows about swerve or
-`frc.robot`.
+Desktop simulation pieces any Spectrum robot can use. Nothing here knows about `frc.robot`.
 
 | File | What |
 |---|---|
+| `SpectrumDesktopSim` | The `DesktopSim` robot code loads: builds the sim clock and each simulated subsystem |
 | `SimClock` | One clock for the whole sim: pauses WPILib timing and steps physics, the robot loop and helper threads in a fixed order, 1 ms at a time; real time or as fast as possible |
 | `TalonFXModel` | A TalonFX's own control loop, from the same `TalonFXConfiguration` and control requests the robot sends; returns stator current |
 | `MotionMagicExpoProfile` | The Motion Magic Expo profile `TalonFXModel` follows |

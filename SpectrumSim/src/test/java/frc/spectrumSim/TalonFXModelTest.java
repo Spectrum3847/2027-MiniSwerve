@@ -1,4 +1,4 @@
-package frc.spectrumLib.sim;
+package frc.spectrumSim;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;

@@ -1,6 +1,5 @@
 package frc.robot;
 
-import frc.spectrumLib.sim.SimClock;
 import org.wpilib.framework.RobotBase;
 
 /**
@@ -43,23 +42,6 @@ public final class RunMode {
      * tuning session only; CI fails a merge to main that leaves it on.
      */
     public static final boolean TUNING_MODE = false;
-
-    /**
-     * The sim clock for this run, or null (robot, replay, or {@code MINISWERVE_SIM_DEVICES=phoenix}
-     * for Phoenix's own simulator on the wall clock). Pace from {@code MINISWERVE_SIM_SPEED}: a
-     * multiple of real time, or {@code max}; default max when a sim script runs, else real time (a
-     * person driving).
-     */
-    public static SimClock simClock() {
-        if (CURRENT != Mode.SIM || "phoenix".equals(System.getenv("MINISWERVE_SIM_DEVICES"))) {
-            return null;
-        }
-        String speed = System.getenv("MINISWERVE_SIM_SPEED");
-        if (speed == null || speed.isBlank()) {
-            speed = System.getenv("MINISWERVE_SIM_SCRIPT") != null ? "max" : "1";
-        }
-        return new SimClock("max".equals(speed) ? 0 : Double.parseDouble(speed));
-    }
 
     /** Whether hardware, real or simulated, exists: false in replay. */
     public static boolean hasHardware() {

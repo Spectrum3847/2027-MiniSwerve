@@ -2,21 +2,20 @@ package frc.robot.subsystems.swerve;
 
 import frc.robot.RunMode;
 import frc.robot.config.Hardware;
+import frc.spectrumLib.framework.DesktopSim;
 import frc.spectrumLib.framework.RobotLoop;
 import frc.spectrumLib.hardware.SimFaults;
-import frc.spectrumLib.sim.MotorModel;
-import frc.spectrumLib.sim.SimClock;
 import frc.spectrumLib.statemachine.WantedState;
 import frc.spectrumLib.swerve.DriveRequest;
 import frc.spectrumLib.swerve.HeadingHold;
 import frc.spectrumLib.swerve.ModuleTrust;
 import frc.spectrumLib.swerve.SampleQueue;
+import frc.spectrumLib.swerve.SimulatedSwerve;
 import frc.spectrumLib.swerve.SwerveIO;
 import frc.spectrumLib.swerve.SwerveIOPhoenix;
-import frc.spectrumLib.swerve.SwerveIOSim;
 import frc.spectrumLib.swerve.SwerveInputs;
 import frc.spectrumLib.swerve.SwerveOdometry;
-import frc.spectrumLib.swerve.SwervePhysicsSim;
+import frc.spectrumLib.swerve.SwerveSimSpec;
 import frc.spectrumLib.swerve.SwerveThread;
 import frc.spectrumLib.telemetry.Alert;
 import java.util.function.DoubleSupplier;
@@ -84,7 +83,7 @@ public final class Swerve implements Subsystem {
     private final SampleQueue queue;
     private final SwerveInputs inputs = new SwerveInputs(MODULES, MAX_SAMPLES_PER_LOOP);
     private final SwerveOdometry odometry;
-    private final SwervePhysicsSim sim;
+    private final SimulatedSwerve sim;
     private final double maxDriveVelocity;
     private final double maxAngularVelocity;
     private final Alert disconnectedAlert = new Alert("", Level.HIGH);
@@ -105,10 +104,9 @@ public final class Swerve implements Subsystem {
 
     /**
      * @param simFaults simulated device faults (sim only; null otherwise)
-     * @param simClock the sim clock (sim on our TalonFX models); null on the robot, in replay, or
-     *     for a sim on Phoenix's own simulator
+     * @param desktopSim the desktop sim (SpectrumSim); null on the robot and in replay
      */
-    public Swerve(SimFaults simFaults, SimClock simClock) {
+    public Swerve(SimFaults simFaults, DesktopSim desktopSim) {
         double half = SwerveSettings.TRACK.get() / 2;
         double[] mx = {half, half, -half, -half};
         double[] my = {half, -half, half, -half};
@@ -118,27 +116,24 @@ public final class Swerve implements Subsystem {
         queue = new SampleQueue(64, MODULES);
         if (RunMode.hasHardware()) {
             sim =
-                    RunMode.CURRENT == RunMode.Mode.SIM
-                            ? new SwervePhysicsSim(
-                                    MotorModel.FALCON_500_FOC,
-                                    MotorModel.FALCON_500_FOC,
-                                    SwerveSettings.robotMassKg(),
-                                    SwerveSettings.TIRE_FRICTION.get(),
-                                    0.004,
-                                    SIM_STEER_FRICTION,
-                                    mx,
-                                    my)
+                    desktopSim != null
+                            ? desktopSim.swerve(
+                                    SwerveConfigs.phoenix(MODULES),
+                                    new SwerveSimSpec(
+                                            "Falcon500FOC",
+                                            "Falcon500FOC",
+                                            SwerveSettings.robotMassKg(),
+                                            SwerveSettings.TIRE_FRICTION.get(),
+                                            0.004,
+                                            SIM_STEER_FRICTION,
+                                            mx,
+                                            my,
+                                            // Nominal-size sim wheels: a wrong wheelRadius setting
+                                            // shows up as odometry error.
+                                            Hardware.MK4iL2.NOMINAL_WHEEL_RADIUS_METERS),
+                                    simFaults)
                             : null;
-            io =
-                    simClock != null
-                            ? new SwerveIOSim(
-                                    SwerveConfigs.phoenix(MODULES), sim, simFaults, simClock)
-                            : new SwerveIOPhoenix(SwerveConfigs.phoenix(MODULES), sim, simFaults);
-            if (sim != null) {
-                sim.setSimFaults(simFaults);
-                // Nominal-size sim wheels: a wrong wheelRadius setting shows up as odometry error.
-                sim.setTrueWheelRadius(Hardware.MK4iL2.NOMINAL_WHEEL_RADIUS_METERS);
-            }
+            io = sim != null ? sim.io() : new SwerveIOPhoenix(SwerveConfigs.phoenix(MODULES), null);
         } else {
             sim = null;
             io = SwerveIO.NONE;
