@@ -54,6 +54,9 @@ public final class Hardware {
          */
         public static final double COUPLE_RATIO = 50.0 / 14.0;
 
+        /** Falcon 500 with FOC torque constant (N m per A): 5.84 N m / 304 A stall. */
+        public static final double DRIVE_KT = 5.84 / 304.0;
+
         /** Nominal 4 in wheel (m). The calibrated radius is a Robot Setting. */
         public static final double NOMINAL_WHEEL_RADIUS_METERS = Inches.of(2).in(Meters);
     }
@@ -61,8 +64,11 @@ public final class Hardware {
     /** Nominal 14 in square module spacing, center to center (m). Calibrated value is a setting. */
     public static final double NOMINAL_TRACK_METERS = Inches.of(14).in(Meters);
 
-    /** Drive motor stator current limit (A). HARD STOP. */
-    public static final double DRIVE_STATOR_LIMIT_AMPS = 80.0;
+    /**
+     * Drive slip current (A): CTRE's SlipCurrent, used as both the stator current limit and the
+     * peak torque current, so the wheels stop short of slipping. HARD STOP.
+     */
+    public static final double DRIVE_SLIP_CURRENT_AMPS = 80.0;
 
     /** Steer motor stator current limit (A). HARD STOP. */
     public static final double STEER_STATOR_LIMIT_AMPS = 40.0;

@@ -8,6 +8,7 @@ import com.ctre.phoenix6.configs.CANcoderConfiguration;
 import com.ctre.phoenix6.configs.Pigeon2Configuration;
 import com.ctre.phoenix6.configs.Slot0Configs;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
+import com.ctre.phoenix6.controls.MotionMagicExpoTorqueCurrentFOC;
 import com.ctre.phoenix6.controls.NeutralOut;
 import com.ctre.phoenix6.controls.PositionTorqueCurrentFOC;
 import com.ctre.phoenix6.controls.VelocityTorqueCurrentFOC;
@@ -56,6 +57,8 @@ public final class SwerveIOPhoenix implements SwerveIO {
             new VelocityTorqueCurrentFOC(0).withUpdateFreqHz(0);
     private final PositionTorqueCurrentFOC steerRequest =
             new PositionTorqueCurrentFOC(0).withUpdateFreqHz(0);
+    private final MotionMagicExpoTorqueCurrentFOC steerExpoRequest =
+            new MotionMagicExpoTorqueCurrentFOC(0).withUpdateFreqHz(0);
     private final NeutralOut neutral = new NeutralOut();
     private final double metersPerWheelRotation;
     private final SwervePhysicsSim sim;
@@ -188,6 +191,11 @@ public final class SwerveIOPhoenix implements SwerveIO {
         c.Feedback.RotorToSensorRatio = cfg.steerRatio();
         c.Feedback.SensorToMechanismRatio = 1.0;
         c.ClosedLoopGeneral.ContinuousWrap = true;
+        // Used only when steering with MotionMagicExpo; cruise velocity 0 means "as fast as kV
+        // allows".
+        c.MotionMagic.MotionMagicCruiseVelocity = 0;
+        c.MotionMagic.MotionMagicExpo_kV = cfg.steerExpoKv();
+        c.MotionMagic.MotionMagicExpo_kA = cfg.steerExpoKa();
         c.CurrentLimits.StatorCurrentLimit = cfg.steerStatorCurrentLimit();
         c.CurrentLimits.StatorCurrentLimitEnable = true;
         c.TorqueCurrent.PeakForwardTorqueCurrent = cfg.steerStatorCurrentLimit();
@@ -274,15 +282,25 @@ public final class SwerveIOPhoenix implements SwerveIO {
     }
 
     @Override
-    public void setModules(double[] angle, double[] velocity) {
+    public void setModules(double[] angle, double[] velocity, double[] wheelForce) {
         double couple = cfg.coupleRatio() / cfg.driveRatio();
+        // Wheel force (N) to drive torque current (A): F * r / (ratio * Kt).
+        double ampsPerNewton = cfg.wheelRadius() / (cfg.driveRatio() * cfg.driveKt());
         for (int i = 0; i < n; i++) {
-            steer[i].setControl(steerRequest.withPosition(angle[i] / (2 * Math.PI)));
+            double target = angle[i] / (2 * Math.PI);
+            if (cfg.steerMotionMagicExpo()) {
+                steer[i].setControl(steerExpoRequest.withPosition(target));
+            } else {
+                steer[i].setControl(steerRequest.withPosition(target));
+            }
             double wheelRps = velocity[i] / metersPerWheelRotation;
             // Coupling feedforward from the module's measured turn rate: a commanded rate would
             // spike whenever the target angle jumps.
             double steerRps = steerVelocity[i].getValueAsDouble();
-            drive[i].setControl(driveRequest.withVelocity(wheelRps + steerRps * couple));
+            drive[i].setControl(
+                    driveRequest
+                            .withVelocity(wheelRps + steerRps * couple)
+                            .withFeedForward(wheelForce[i] * ampsPerNewton));
         }
     }
 

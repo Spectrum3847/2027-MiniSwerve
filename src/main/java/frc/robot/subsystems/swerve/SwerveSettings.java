@@ -1,6 +1,7 @@
 package frc.robot.subsystems.swerve;
 
 import frc.robot.config.Hardware;
+import frc.spectrumLib.robotsettings.BooleanSetting;
 import frc.spectrumLib.robotsettings.DoubleSetting;
 import frc.spectrumLib.robotsettings.RobotSettings;
 import frc.spectrumLib.robotsettings.SettingGroup;
@@ -53,6 +54,20 @@ final class SwerveSettings {
     static final DoubleSetting STEER_KP = G.number("steerKP", 1000.0, "A/rot", 0, 5000);
     static final DoubleSetting STEER_KD = G.number("steerKD", 30.0, "A/rps", 0, 500);
     static final DoubleSetting STEER_KS = G.number("steerKS", 2.0, "A", 0, 20);
+
+    /**
+     * Steer with MotionMagicExpoTorqueCurrentFOC (a smooth profile: less current and scrub) instead
+     * of PositionTorqueCurrentFOC. Off until tested on the robot.
+     */
+    static final BooleanSetting STEER_MOTION_MAGIC_EXPO = G.bool("steerMotionMagicExpo", false);
+
+    /** Steer MotionMagicExpo_kV (V per module rps); CTRE's default is 0.12 * steer ratio. */
+    static final DoubleSetting STEER_EXPO_KV =
+            G.number("steerExpoKv", 0.12 * Hardware.MK4iL2.STEER_RATIO, "V/rps", 0.1, 20);
+
+    /** Steer MotionMagicExpo_kA (V per module rps/s); CTRE's default is 1.2 / steer ratio. */
+    static final DoubleSetting STEER_EXPO_KA =
+            G.number("steerExpoKa", 1.2 / Hardware.MK4iL2.STEER_RATIO, "V/(rps/s)", 0.001, 5);
 
     /** Robot mass for the physics sim (kg). */
     static final DoubleSetting SIM_MASS = G.number("simMass", 18.0, "kg", 5, 80);

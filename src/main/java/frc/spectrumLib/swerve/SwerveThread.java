@@ -32,6 +32,7 @@ public final class SwerveThread {
     private final SwerveSample sample;
     private final double[] chassis = new double[3];
     private final double[] lastTargetAngle;
+    private final double[] wheelForce;
     private boolean haveTargets;
     private double lastTimestamp;
 
@@ -60,6 +61,7 @@ public final class SwerveThread {
         int n = mx.length;
         sample = new SwerveSample(n);
         lastTargetAngle = new double[n];
+        wheelForce = new double[n];
     }
 
     /** Starts the loop on its own daemon thread. Call once, during robot init. */
@@ -145,6 +147,10 @@ public final class SwerveThread {
         double[] angle = sample.targetAngle;
         double[] velocity = sample.targetVelocity;
         System.arraycopy(lastTargetAngle, 0, angle, 0, n);
+        java.util.Arrays.fill(wheelForce, 0.0);
+        // Robot-frame rotation of the request: cos/sin of -heading (identity if robot-relative).
+        double c = 1.0;
+        double s = 0.0;
 
         switch (r.mode()) {
             case NEUTRAL -> {
@@ -166,8 +172,8 @@ public final class SwerveThread {
                     // With the gyro down, the main loop sends the odometry heading itself.
                     double heading =
                             r.useGyro() ? sample.yaw + r.headingOffset() : r.headingOffset();
-                    double c = Math.cos(heading);
-                    double s = Math.sin(heading);
+                    c = Math.cos(heading);
+                    s = Math.sin(heading);
                     // Field to robot frame: rotate by -heading.
                     double rx = vx * c + vy * s;
                     double ry = -vx * s + vy * c;
@@ -182,7 +188,17 @@ public final class SwerveThread {
         }
         SwerveMath.optimize(velocity, angle, sample.angle);
         SwerveMath.cosineScale(velocity, angle, sample.angle);
-        io.setModules(angle, velocity);
+        double[] fx = r.wheelForceFeedforwardX();
+        double[] fy = r.wheelForceFeedforwardY();
+        if (r.mode() == DriveRequest.Mode.VELOCITY && fx != null && fy != null) {
+            for (int i = 0; i < n; i++) {
+                // Into the robot frame, then onto the wheel's (optimized) direction.
+                double rfx = fx[i] * c + fy[i] * s;
+                double rfy = -fx[i] * s + fy[i] * c;
+                wheelForce[i] = rfx * Math.cos(angle[i]) + rfy * Math.sin(angle[i]);
+            }
+        }
+        io.setModules(angle, velocity, wheelForce);
     }
 
     /** The sample being filled; for tests. */

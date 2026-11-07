@@ -17,12 +17,17 @@ package frc.spectrumLib.swerve;
  * @param steerRatio steer motor rotations per module rotation
  * @param coupleRatio drive motor rotations per module rotation, from the steer gearing
  * @param wheelRadius wheel radius (m)
- * @param driveStatorCurrentLimit amps
+ * @param driveStatorCurrentLimit amps; CTRE's SlipCurrent (also the peak torque current)
  * @param steerStatorCurrentLimit amps
  * @param drive drive Slot0 gains, TorqueCurrentFOC units (A per wheel rps, A)
  * @param steer steer Slot0 gains, TorqueCurrentFOC units (A per rotation of error, A)
  * @param signalHz update rate of the signals the swerve thread reads
  * @param pigeonMountPose Pigeon 2 MountPoseYaw, MountPosePitch, MountPoseRoll (deg)
+ * @param steerMotionMagicExpo steer with MotionMagicExpoTorqueCurrentFOC (smooth profile) instead
+ *     of PositionTorqueCurrentFOC
+ * @param steerExpoKv MotionMagicExpo_kV for steer (V per module rps); CTRE uses 0.12 * steerRatio
+ * @param steerExpoKa MotionMagicExpo_kA for steer (V per module rps/s); CTRE uses 1.2 / steerRatio
+ * @param driveKt drive motor torque constant (N m per A), for wheel force feedforward
  */
 public record PhoenixSwerveConfig(
         String canBus,
@@ -42,7 +47,11 @@ public record PhoenixSwerveConfig(
         Gains drive,
         Gains steer,
         double signalHz,
-        double[] pigeonMountPose) {
+        double[] pigeonMountPose,
+        boolean steerMotionMagicExpo,
+        double steerExpoKv,
+        double steerExpoKa,
+        double driveKt) {
 
     /** Phoenix Slot0 gains: kP, kI, kD, kS, kV, kA. */
     public record Gains(double kP, double kI, double kD, double kS, double kV, double kA) {}

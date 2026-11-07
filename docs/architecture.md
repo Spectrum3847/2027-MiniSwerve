@@ -69,10 +69,14 @@ auto builder (Choreo-based paths, straight-line paths) comes later.
 ## Swerve
 
 Each module's loops run on the motors at 1 kHz: steer is PositionTorqueCurrentFOC on the fused
-CANcoder, drive is VelocityTorqueCurrentFOC. The 250 Hz thread reads latency-compensated signals,
+CANcoder (or MotionMagicExpoTorqueCurrentFOC with setting `swerve/steerMotionMagicExpo`), drive is
+VelocityTorqueCurrentFOC with a torque feedforward from per-wheel forces (CTRE's
+WheelForceFeedforwardX/Y). Setpoints go out once per cycle (UpdateFreqHz 0). The drive slip current
+is both the stator limit and peak torque current, as CTRE's SlipCurrent. Field-relative driving
+follows the alliance (operator forward: 0 blue, pi red); Back seeds field-centric. The 250 Hz thread reads latency-compensated signals,
 turns the latest `DriveRequest` into module targets with that fresh reading (field-relative
 rotation by the live gyro, discretize, desaturate, optimize, cosine scale, MK4i coupling
-compensation) and queues the sample. In sim, `SwervePhysicsSim` moves the same Phoenix devices.
+compensation, wheel force feedforward) and queues the sample. In sim, `SwervePhysicsSim` moves the same Phoenix devices.
 
 Sim check: `MINISWERVE_SIM_SCRIPT=drive ./gradlew run -PnoSimGui`, then
 `python tools/swerve_summary.py logs/<log>.wpilog`. On 2026-11-07: 249 Hz, no dropped samples,

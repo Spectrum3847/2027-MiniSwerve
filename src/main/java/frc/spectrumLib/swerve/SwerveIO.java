@@ -17,8 +17,9 @@ public interface SwerveIO {
      *
      * @param angle module directions (rad)
      * @param velocity wheel speeds (m/s)
+     * @param wheelForce force each wheel should push along its direction (N), for feedforward
      */
-    void setModules(double[] angle, double[] velocity);
+    void setModules(double[] angle, double[] velocity, double[] wheelForce);
 
     /** Swerve thread: all motors neutral. */
     void setNeutral();
@@ -37,7 +38,7 @@ public interface SwerveIO {
                 public void waitForSample(SwerveSample out) {}
 
                 @Override
-                public void setModules(double[] angle, double[] velocity) {}
+                public void setModules(double[] angle, double[] velocity, double[] wheelForce) {}
 
                 @Override
                 public void setNeutral() {}

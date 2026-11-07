@@ -14,7 +14,7 @@ import org.wpilib.driverstation.Gamepad;
  *   <li>Left stick: drive, field-relative. Right stick X: turn.
  *   <li>Right bumper (hold): slow mode.
  *   <li>X (faceLeft, hold): wheels in an X.
- *   <li>Back: the way the robot faces now becomes downfield (heading 0).
+ *   <li>Back: the way the robot faces now becomes "away from the driver" (seedFieldCentric).
  * </ul>
  *
  * Stick values are Driver Station inputs, which AdvantageKit logs, so replay sees the same sticks.
@@ -27,18 +27,18 @@ public final class Pilot {
     private final Gamepad gamepad = pad.getGamepad();
 
     public Pilot(Swerve swerve) {
-        swerve.setTeleopInputs(this::fieldX, this::fieldY, this::turn);
+        swerve.setTeleopInputs(this::driverForward, this::driverLeft, this::turn);
         pad.faceLeft().whileTrue(swerve.hold(Swerve.State.X_LOCK, "pilotXLock"));
-        pad.back().onTrue(swerve.runOnce(() -> swerve.resetHeading(0)).withName("ResetHeading"));
+        pad.back().onTrue(swerve.runOnce(swerve::seedFieldCentric).withName("SeedFieldCentric"));
     }
 
-    /** Field +x (downfield) from stick up, -1..1. */
-    private double fieldX() {
+    /** Away from the driver, from stick up, -1..1 (Swerve turns it into the field frame). */
+    private double driverForward() {
         return shape(-gamepad.getLeftY()) * scale();
     }
 
-    /** Field +y (left) from stick left, -1..1. */
-    private double fieldY() {
+    /** Driver's left, from stick left, -1..1. */
+    private double driverLeft() {
         return shape(-gamepad.getLeftX()) * scale();
     }
 

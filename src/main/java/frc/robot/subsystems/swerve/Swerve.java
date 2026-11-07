@@ -19,6 +19,8 @@ import java.util.function.DoubleSupplier;
 import org.littletonrobotics.junction.Logger;
 import org.wpilib.command2.Command;
 import org.wpilib.command2.Subsystem;
+import org.wpilib.driverstation.Alliance;
+import org.wpilib.driverstation.MatchState;
 import org.wpilib.math.geometry.Pose2d;
 import org.wpilib.util.Alert.Level;
 
@@ -122,7 +124,7 @@ public final class Swerve implements Subsystem {
                 Hardware.MK4iL2.STEER_RATIO,
                 Hardware.MK4iL2.COUPLE_RATIO,
                 SwerveSettings.WHEEL_RADIUS.get(),
-                Hardware.DRIVE_STATOR_LIMIT_AMPS,
+                Hardware.DRIVE_SLIP_CURRENT_AMPS,
                 Hardware.STEER_STATOR_LIMIT_AMPS,
                 new PhoenixSwerveConfig.Gains(
                         SwerveSettings.DRIVE_KP.get(), 0, 0, SwerveSettings.DRIVE_KS.get(), 0, 0),
@@ -138,7 +140,11 @@ public final class Swerve implements Subsystem {
                     ImuSettings.PIGEON_MOUNT_YAW.get(),
                     ImuSettings.PIGEON_MOUNT_PITCH.get(),
                     ImuSettings.PIGEON_MOUNT_ROLL.get()
-                });
+                },
+                SwerveSettings.STEER_MOTION_MAGIC_EXPO.get(),
+                SwerveSettings.STEER_EXPO_KV.get(),
+                SwerveSettings.STEER_EXPO_KA.get(),
+                Hardware.MK4iL2.DRIVE_KT);
     }
 
     /** Where the pilot's sticks come from: -1..1 field x, field y, rotation. */
@@ -174,15 +180,19 @@ public final class Swerve implements Subsystem {
                 switch (wanted) {
                     case IDLE -> DriveRequest.NEUTRAL;
                     case X_LOCK -> DriveRequest.X_LOCK;
-                    case TELEOP_DRIVE ->
-                            new DriveRequest(
-                                    DriveRequest.Mode.VELOCITY,
-                                    teleopX.getAsDouble() * maxDriveVelocity,
-                                    teleopY.getAsDouble() * maxDriveVelocity,
-                                    teleopOmega.getAsDouble() * maxAngularVelocity,
-                                    true,
-                                    gyroOk() ? odometry.yawOffset() : odometry.heading(),
-                                    gyroOk());
+                    case TELEOP_DRIVE -> {
+                        // Sticks are in the driver's frame; turn them into the field frame.
+                        double fwd = operatorForwardDirection();
+                        double x = teleopX.getAsDouble() * maxDriveVelocity;
+                        double y = teleopY.getAsDouble() * maxDriveVelocity;
+                        yield DriveRequest.velocity(
+                                x * Math.cos(fwd) - y * Math.sin(fwd),
+                                x * Math.sin(fwd) + y * Math.cos(fwd),
+                                teleopOmega.getAsDouble() * maxAngularVelocity,
+                                true,
+                                gyroOk() ? odometry.yawOffset() : odometry.heading(),
+                                gyroOk());
+                    }
                 };
         boolean devicesOk = allConnected();
         if (!devicesOk) {
@@ -268,9 +278,21 @@ public final class Swerve implements Subsystem {
                 .withName("Swerve." + name);
     }
 
-    /** Sets the field heading (rad) without moving the pose, e.g. "this way is downfield". */
-    public void resetHeading(double heading) {
-        odometry.resetPose(odometry.x(), odometry.y(), heading);
+    /**
+     * CTRE's {@code setOperatorForwardDirection}, set from the alliance: the field heading (rad)
+     * that is "away from the driver". 0 on blue, pi on red; blue when the alliance is unknown.
+     * Alliance is a Driver Station input, so replay sees the same value.
+     */
+    public double operatorForwardDirection() {
+        return MatchState.getAlliance().orElse(Alliance.BLUE) == Alliance.RED ? Math.PI : 0.0;
+    }
+
+    /**
+     * CTRE's {@code seedFieldCentric}: the way the robot faces now becomes "away from the driver",
+     * without moving the pose.
+     */
+    public void seedFieldCentric() {
+        odometry.resetPose(odometry.x(), odometry.y(), operatorForwardDirection());
     }
 
     public Pose2d odometryPose() {
