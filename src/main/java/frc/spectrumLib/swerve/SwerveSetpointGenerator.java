@@ -62,6 +62,9 @@ public final class SwerveSetpointGenerator {
         velocity = new double[n];
         angle = new double[n];
         steerVelocity = new double[n];
+        turnAtZero = new double[n];
+        requestDir = new double[n];
+        reachable = new double[n];
     }
 
     /**
@@ -170,6 +173,12 @@ public final class SwerveSetpointGenerator {
         // then only not worse. So the robot's direction never outruns its wheels.
         for (int i = 0; i < n; i++) {
             turnAtZero[i] = turnNeeded(pvx, pvy, pw, i);
+            // How far this wheel can really turn this cycle from its current turn rate.
+            double rate =
+                    Math.min(
+                            maxSteerVelocity,
+                            Math.abs(steerVelocity[i]) + maxSteerAcceleration * dt);
+            reachable[i] = Math.min(maxTurnStep, rate * dt);
         }
         double s = 1.0;
         if (!fits(vx, vy, omega, 1.0, maxDelta)) {
@@ -244,7 +253,7 @@ public final class SwerveSetpointGenerator {
             if (Math.abs(along(cx, cy, cw, i, lastAngle[i]) - lastVelocity[i]) > maxDelta + 1e-9) {
                 return false;
             }
-            if (turnNeeded(cx, cy, cw, i) > Math.max(maxTurnStep, turnAtZero[i]) + 1e-9) {
+            if (turnNeeded(cx, cy, cw, i) > Math.max(reachable[i], turnAtZero[i]) + 1e-9) {
                 return false;
             }
         }
@@ -253,8 +262,9 @@ public final class SwerveSetpointGenerator {
 
     private boolean[] pushing;
     private double maxTurnStep;
-    private final double[] turnAtZero = new double[8];
-    private final double[] requestDir = new double[8];
+    private final double[] turnAtZero;
+    private final double[] requestDir;
+    private final double[] reachable;
 
     /**
      * How far (rad, the short way) wheel {@code i} must turn from where it points to follow chassis

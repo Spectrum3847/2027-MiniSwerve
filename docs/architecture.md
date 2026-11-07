@@ -250,7 +250,8 @@ its motor's torque and grips sideways with tire friction (both limited by fricti
 along, a misaligned wheel scrubs and fights the others, and pushing harder than the tires hold makes
 the robot slide, which wheel odometry cannot see. (The first sim moved each wheel on its own and fit
 the robot to them, which hid all of that.) Hard maneuvers now show real odometry drift: the drive
-script's full-speed forward-to-strafe change slides about 0.2 m with `maxDriveAcceleration` 8.
+script averages about 0.14 m. Wheel spin (slip along a wheel) is not modeled, so sim odometry
+accuracy is not evidence about the real robot.
 
 Phoenix's simulator cannot disconnect one device, so `SimFaults` (sim only) does it in our code:
 `PhoenixDeviceSet` (connected, rebooted, config applies), the IO (frozen readings, ignored commands)

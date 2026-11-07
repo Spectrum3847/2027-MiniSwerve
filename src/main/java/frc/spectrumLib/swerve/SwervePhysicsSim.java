@@ -19,6 +19,11 @@ import frc.spectrumLib.hardware.SimFaults;
  * robot, and each wheel rolls with the robot's motion at that wheel. So a dead or coasting wheel
  * rolls along, and a wheel pointed the wrong way scrubs and fights the others, as on a real robot.
  *
+ * <p>Not modeled: wheel spin (slip along the wheel). A wheel always reports the robot's speed at
+ * it, so sim odometry never sees spin; sim odometry accuracy is not evidence about the real robot.
+ * A rebooted device also keeps its sim rotor position (a real TalonFX restarts its rotor count;
+ * steering is safe because it fuses the CANcoder).
+ *
  * <p>Runs on the swerve thread. The true pose is published for the main loop to log as sim truth;
  * robot logic must never read it.
  *
@@ -71,6 +76,9 @@ public final class SwervePhysicsSim {
 
     private volatile double trueWheelRadius = Double.NaN;
     private volatile SimFaults faults;
+    private String[] driveName;
+    private String[] steerName;
+    private String[] encoderName;
     private volatile double truthX;
     private volatile double truthY;
     private volatile double truthHeading;
@@ -114,6 +122,14 @@ public final class SwervePhysicsSim {
             encoderSim[i] = encoder[i].getSimState();
         }
         pigeonSim = pigeon.getSimState();
+        driveName = new String[n];
+        steerName = new String[n];
+        encoderName = new String[n];
+        for (int i = 0; i < n; i++) {
+            driveName[i] = "Drive" + i;
+            steerName[i] = "Steer" + i;
+            encoderName[i] = "Encoder" + i;
+        }
     }
 
     private long lastStepNanos;
@@ -176,12 +192,17 @@ public final class SwervePhysicsSim {
                     wheelOmega[i] * cfg.driveRatio() + steerOmega[i] * cfg.coupleRatio();
             driveSim[i].setSupplyVoltage(BATTERY_VOLTS);
             double amps =
-                    dead("Drive" + i) ? 0 : limit(driveSim[i].getTorqueCurrent(), driveMotorOmega);
+                    dead(driveName[i]) ? 0 : limit(driveSim[i].getTorqueCurrent(), driveMotorOmega);
             double push = KT * amps * cfg.driveRatio() / r - ROLLING_DRAG * along;
-            push = Math.max(-grip, Math.min(grip, push));
-            // Sideways the tire grips: it stops the slide within a step, up to its friction.
-            double side = -across * (massEff / n) / dt;
-            side = Math.max(-grip, Math.min(grip, side));
+            // Sideways the tire grips: it stops the slide within a step (the rotors do not resist
+            // sideways motion, so the robot's own mass), up to its friction.
+            double side = -across * (robotMassKg / n) / dt;
+            // One friction circle per tire: push and grip share it.
+            double total = Math.hypot(push, side);
+            if (total > grip) {
+                push *= grip / total;
+                side *= grip / total;
+            }
             double wfx = push * c - side * sn;
             double wfy = push * sn + side * c;
             fx += wfx;
@@ -238,7 +259,7 @@ public final class SwervePhysicsSim {
                 cfg.steerVoltage()
                         ? (steerSign * steerSim[i].getMotorVoltage() - KE * steerMotorOmega) / R
                         : steerSim[i].getTorqueCurrent();
-        double steerAmps = dead("Steer" + i) ? 0 : limit(steerAsked, steerMotorOmega);
+        double steerAmps = dead(steerName[i]) ? 0 : limit(steerAsked, steerMotorOmega);
         double steerTorque = KT * steerAmps * steerRatio - steerFriction * steerOmega[i];
         double steerJ = steerInertia + ROTOR_INERTIA * steerRatio * steerRatio;
         steerOmega[i] += steerTorque / steerJ * dt;
@@ -257,7 +278,7 @@ public final class SwervePhysicsSim {
         driveSim[i].setRawRotorPosition(
                 driveSign * (wheelRot * cfg.driveRatio() + steerRot * cfg.coupleRatio()));
         driveSim[i].setRotorVelocity(driveSign * driveMotorOmega / (2 * Math.PI));
-        if (!dead("Encoder" + i)) {
+        if (!dead(encoderName[i])) {
             encoderSim[i].setSupplyVoltage(BATTERY_VOLTS);
             encoderSim[i].setRawPosition(steerRot - cfg.magnetOffsets()[i]);
             encoderSim[i].setVelocity(steerOmega[i] / (2 * Math.PI));
@@ -290,7 +311,8 @@ public final class SwervePhysicsSim {
     }
 
     private boolean dead(String device) {
-        return faults != null && faults.unpowered(device);
+        SimFaults f = faults;
+        return f != null && f.unpowered(device);
     }
 
     /**

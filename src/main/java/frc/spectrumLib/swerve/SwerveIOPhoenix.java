@@ -32,7 +32,7 @@ import java.util.List;
  * <p>Device configs are in {@link SwervePhoenixConfigs}; reboot detection and endless config
  * retries in {@code PhoenixDeviceSet}.
  *
- * <p>Index: constructor | configureSignals | {@link #waitForSample} | {@link #setModules} | {@link
+ * <p>Index: constructor | {@link #waitForSample} | {@link #setModules} | {@link
  * #retryFailedConfigs} | {@link #setDriveBrake} | {@link #updateHealth}
  */
 public final class SwerveIOPhoenix implements SwerveIO {
@@ -77,6 +77,11 @@ public final class SwerveIOPhoenix implements SwerveIO {
     private final DriveNeutralMode neutralMode;
     private final SimFaults faults;
 
+    /** Device names (as in PhoenixDeviceSet), built once: no strings per cycle. */
+    private final String[] driveName;
+
+    private final String[] steerName;
+
     private final PhoenixDeviceSet devices = new PhoenixDeviceSet("Swerve");
 
     private final int[] driveIndex;
@@ -117,6 +122,12 @@ public final class SwerveIOPhoenix implements SwerveIO {
         slowDivisor = Math.max(1, (int) Math.round(cfg.signalHz() / 10.0));
         pigeon = new Pigeon2(cfg.pigeonId(), bus);
         driveIndex = new int[n];
+        driveName = new String[n];
+        steerName = new String[n];
+        for (int i = 0; i < n; i++) {
+            driveName[i] = "Drive" + i;
+            steerName[i] = "Steer" + i;
+        }
         steerIndex = new int[n];
         encoderIndex = new int[n];
         pigeonConfig = new Pigeon2Configuration();
@@ -144,12 +155,12 @@ public final class SwerveIOPhoenix implements SwerveIO {
                                             .apply(SwervePhoenixConfigs.encoder(cfg, m)));
             steerIndex[i] =
                     devices.add(
-                            "Steer" + i,
+                            steerName[i],
                             steer[i],
                             () ->
                                     steer[m].getConfigurator()
                                             .apply(SwervePhoenixConfigs.steer(cfg, m)));
-            driveIndex[i] = devices.add("Drive" + i, drive[i], () -> applyDriveConfig(m));
+            driveIndex[i] = devices.add(driveName[i], drive[i], () -> applyDriveConfig(m));
 
             drivePosition[i] = drive[i].getPosition();
             driveVelocity[i] = drive[i].getVelocity();
@@ -180,38 +191,14 @@ public final class SwerveIOPhoenix implements SwerveIO {
         fastList.add(yawRate);
         fast = fastList.toArray(new BaseStatusSignal[0]);
         slow = slowList.toArray(new BaseStatusSignal[0]);
-        devices.setSignals(this::configureSignals);
+        devices.setSignals(
+                () ->
+                        SwervePhoenixConfigs.signals(
+                                cfg.signalHz(), fast, slow, drive, steer, encoder, pigeon));
         devices.configureAtBoot();
         if (sim != null) {
             sim.attach(cfg, drive, steer, encoder, pigeon);
         }
-    }
-
-    /**
-     * Sets every signal's update rate and turns the rest off. Not saved on the devices: a device
-     * that reboots (a connector wiggle, a brown-out) comes back with default rates, so this runs
-     * again whenever one resets. Blocking: boot, or the Phoenix background thread.
-     */
-    private com.ctre.phoenix6.StatusCode configureSignals() {
-        var code = BaseStatusSignal.setUpdateFrequencyForAll(cfg.signalHz(), fast);
-        // The steer motors' FusedCANcoder feedback reads these frames: keep them on, or
-        // optimizeBusUtilization below turns them off and the steer loop runs blind.
-        for (int i = 0; i < n; i++) {
-            var c =
-                    BaseStatusSignal.setUpdateFrequencyForAll(
-                            cfg.signalHz(), encoder[i].getPosition(), encoder[i].getVelocity());
-            code = code.isOK() ? c : code;
-        }
-        var c = BaseStatusSignal.setUpdateFrequencyForAll(10, slow);
-        code = code.isOK() ? c : code;
-        // Everything else off the bus: only what we read is sent.
-        for (int i = 0; i < n; i++) {
-            drive[i].optimizeBusUtilization();
-            steer[i].optimizeBusUtilization();
-            encoder[i].optimizeBusUtilization();
-        }
-        pigeon.optimizeBusUtilization();
-        return code;
     }
 
     /** Slow signals per module: 3 currents x2 motors, 2 temps, voltage, 3 faults. */
@@ -253,7 +240,7 @@ public final class SwerveIOPhoenix implements SwerveIO {
         out.gyroOk = yaw.getStatus().isOK() && yawRate.getStatus().isOK();
         double couple = cfg.coupleRatio() / cfg.driveRatio();
         for (int i = 0; i < n; i++) {
-            if (faults != null && (unheard("Drive" + i) || unheard("Steer" + i))) {
+            if (faults != null && (unheard(driveName[i]) || unheard(steerName[i]))) {
                 // Sim: no frames from this module, so its readings freeze, as on the robot.
                 out.moduleOk[i] = false;
                 continue;
@@ -309,7 +296,7 @@ public final class SwerveIOPhoenix implements SwerveIO {
         // be alive and listening, and the rest of the bus should not pay for it every cycle.
         boolean slowTurn = cycle++ % slowDivisor == 0;
         for (int i = 0; i < n; i++) {
-            if ((!commands.steerSlow()[i] || slowTurn) && !unpowered("Steer" + i)) {
+            if ((!commands.steerSlow()[i] || slowTurn) && !unpowered(steerName[i])) {
                 if (commands.steer()[i]) {
                     double target = angle[i] / (2 * Math.PI);
                     double steerRps = steerVelocityPlan[i] / (2 * Math.PI);
@@ -331,7 +318,7 @@ public final class SwerveIOPhoenix implements SwerveIO {
                     steer[i].setControl(coast);
                 }
             }
-            if ((!commands.driveSlow()[i] || slowTurn) && !unpowered("Drive" + i)) {
+            if ((!commands.driveSlow()[i] || slowTurn) && !unpowered(driveName[i])) {
                 if (commands.drive()[i]) {
                     double wheelRps = velocity[i] / metersPerWheelRotation;
                     // Coupling feedforward from the module's measured turn rate: a commanded rate
