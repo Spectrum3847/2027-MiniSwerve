@@ -172,6 +172,16 @@ final class SwerveSettings {
     static final DoubleSetting STEER_EXPO_KA =
             G.number("steerExpoKa", 1.2 / Hardware.MK4iL2.STEER_RATIO, "V/(rps/s)", 0.001, 5);
 
-    /** Robot mass for the physics sim (kg). */
-    static final DoubleSetting SIM_MASS = G.number("simMass", 18.0, "kg", 5, 80);
+    /**
+     * The robot's weight ready to play: battery and bumpers on (kg). Weigh it. Sets the traction
+     * limit on the robot (with tireFriction) and the sim's physics.
+     */
+    static final DoubleSetting ROBOT_MASS = G.number("robotMass", 18.0, "kg", 5, 80);
+
+    /**
+     * Tire-to-carpet friction coefficient for this tread (about 1.1 for typical FRC tread on
+     * carpet; lower for worn or hard tread). With robotMass it sets how hard the robot can
+     * accelerate before the wheels slide.
+     */
+    static final DoubleSetting TIRE_FRICTION = G.number("tireFriction", 1.1, "", 0.3, 2.0);
 }

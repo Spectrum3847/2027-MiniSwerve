@@ -48,12 +48,10 @@ public final class SwervePhysicsSim {
     /** Wheel rolling drag. */
     private static final double ROLLING_DRAG = 0.5; // N per m/s along the wheel
 
-    /** Tire-to-carpet friction coefficient (typical FRC tread on carpet). */
-    private static final double TIRE_FRICTION = 1.1;
-
     private static final double GRAVITY = 9.81;
 
     private final double robotMassKg;
+    private final double tireFriction;
     private final double steerInertia; // kg m^2, module about its steer axis
     private final double steerFriction; // N m per rad/s
     private final double[] mx;
@@ -84,16 +82,20 @@ public final class SwervePhysicsSim {
     private volatile double truthHeading;
 
     /**
+     * @param robotMassKg robot weight ready to play (kg)
+     * @param tireFriction tire-to-carpet friction coefficient
      * @param mx module x positions (m)
      * @param my module y positions (m)
      */
     public SwervePhysicsSim(
             double robotMassKg,
+            double tireFriction,
             double steerInertia,
             double steerFriction,
             double[] mx,
             double[] my) {
         this.robotMassKg = robotMassKg;
+        this.tireFriction = tireFriction;
         this.steerInertia = steerInertia;
         this.steerFriction = steerFriction;
         this.mx = mx.clone();
@@ -174,7 +176,7 @@ public final class SwervePhysicsSim {
         double rotorMass = ROTOR_INERTIA * g2 / (r * r);
         double massEff = robotMassKg + n * rotorMass;
         double inertiaEff = robotInertia();
-        double grip = TIRE_FRICTION * robotMassKg * GRAVITY / n; // most force a tire can give
+        double grip = tireFriction * robotMassKg * GRAVITY / n; // most force a tire can give
         double fx = 0, fy = 0, torque = 0;
         for (int i = 0; i < n; i++) {
             stepSteer(i, dt);

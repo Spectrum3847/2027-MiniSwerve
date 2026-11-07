@@ -244,6 +244,12 @@ How it fits here:
 
 ## Simulation: rigid body and device faults
 
+The robot's physical description is configuration (Robot Settings), shared by the sim and the real
+robot: `swerve/robotMass` (weigh it ready to play) and `swerve/tireFriction` (tread on carpet).
+They set the traction limit (`Swerve/TractionLimit`: friction x g, less what spins up the drive
+rotors); the setpoint generator never asks for more than 90% of it, whatever `maxDriveAcceleration`
+says. Center-of-gravity height (weight transfer, tipping) can join them later.
+
 `SwervePhysicsSim` treats the robot as one rigid body. Each wheel pushes along its direction with
 its motor's torque and grips sideways with tire friction (both limited by friction on carpet, about
 1.1 g), and each wheel rolls with the robot's motion at that wheel. So a dead or coasting wheel rolls

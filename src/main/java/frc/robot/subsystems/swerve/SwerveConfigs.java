@@ -65,4 +65,20 @@ final class SwerveConfigs {
                 SwerveSettings.TIMESYNC.get(),
                 SwerveSettings.steerVoltage());
     }
+
+    /**
+     * Most acceleration the tires can give before sliding (m/s^2): friction times g, less the share
+     * spent spinning up the drive rotors (their inertia, seen at the wheel). From robotMass and
+     * tireFriction; the setpoint generator stays under 90% of it.
+     */
+    static double tractionLimit() {
+        double m = SwerveSettings.ROBOT_MASS.get();
+        double r = SwerveSettings.WHEEL_RADIUS.get();
+        double g = Hardware.MK4iL2.DRIVE_RATIO;
+        double rotorMass = 4 * FALCON_ROTOR_INERTIA * g * g / (r * r);
+        return SwerveSettings.TIRE_FRICTION.get() * 9.81 * m / (m + rotorMass);
+    }
+
+    /** Falcon 500 rotor inertia (kg m^2). */
+    private static final double FALCON_ROTOR_INERTIA = 0.0000565;
 }

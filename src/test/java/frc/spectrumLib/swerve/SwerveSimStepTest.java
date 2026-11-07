@@ -55,7 +55,7 @@ class SwerveSimStepTest {
                         5.84 / 304,
                         true,
                         steerVoltage);
-        var io = new SwerveIOPhoenix(cfg, new SwervePhysicsSim(18, 0.004, 0.01, mx, my), null);
+        var io = new SwerveIOPhoenix(cfg, new SwervePhysicsSim(18, 1.1, 0.004, 0.01, mx, my), null);
         var sample = new SwerveSample(4);
         // 1. Robot still: every module steers to its own angle.
         double[] angle = {1.0, -1.0, 2.0, -2.5};
@@ -122,6 +122,7 @@ class SwerveSimStepTest {
                         cfg,
                         new SwervePhysicsSim(
                                 18,
+                                1.1,
                                 0.004,
                                 0.01,
                                 new double[] {h, h, -h, -h},

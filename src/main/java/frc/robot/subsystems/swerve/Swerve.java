@@ -105,7 +105,12 @@ public final class Swerve implements Subsystem {
             sim =
                     RunMode.CURRENT == RunMode.Mode.SIM
                             ? new SwervePhysicsSim(
-                                    SwerveSettings.SIM_MASS.get(), 0.004, 0.01, mx, my)
+                                    SwerveSettings.ROBOT_MASS.get(),
+                                    SwerveSettings.TIRE_FRICTION.get(),
+                                    0.004,
+                                    0.01,
+                                    mx,
+                                    my)
                             : null;
             io = new SwerveIOPhoenix(SwerveConfigs.phoenix(MODULES), sim, simFaults);
             if (sim != null) {
@@ -130,9 +135,13 @@ public final class Swerve implements Subsystem {
         thread.setRotationLookahead(SwerveSettings.ROTATION_LOOKAHEAD.get());
         thread.setSetpointGenerator(
                 SwerveSettings.SETPOINT_GENERATOR.get(),
-                SwerveSettings.MAX_DRIVE_ACCELERATION.get(),
+                Math.min(
+                        SwerveSettings.MAX_DRIVE_ACCELERATION.get(),
+                        0.9 * SwerveConfigs.tractionLimit()),
                 SwerveSettings.MAX_STEER_VELOCITY.get(),
                 SwerveSettings.MAX_STEER_ACCELERATION.get());
+        // Traction limit from robotMass and tireFriction (m/s^2); the generator stays under 90%.
+        Logger.recordOutput("Swerve/TractionLimit", SwerveConfigs.tractionLimit());
         if (io.hasHardware()) {
             thread.start();
         }
