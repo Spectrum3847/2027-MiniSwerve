@@ -1,7 +1,13 @@
 package frc.robot;
 
+import frc.robot.opmodes.DemoTeleop;
+import frc.robot.opmodes.DoNothingAuto;
+import frc.robot.opmodes.DriveForwardAuto;
+import frc.robot.opmodes.DriveTeleop;
+import frc.robot.opmodes.WheelRadiusUtility;
 import frc.robot.pilot.Pilot;
 import frc.robot.subsystems.swerve.Swerve;
+import frc.spectrumLib.framework.OpModeLoop;
 import frc.spectrumLib.framework.RobotLoop;
 import frc.spectrumLib.framework.SpectrumRobot;
 import frc.spectrumLib.hardware.SimFaults;
@@ -12,6 +18,7 @@ import frc.spectrumLib.telemetry.Alert;
 import frc.spectrumLib.telemetry.Telemetry;
 import java.nio.file.Path;
 import org.wpilib.command2.CommandScheduler;
+import org.wpilib.hardware.hal.RobotMode;
 import org.wpilib.system.Filesystem;
 import org.wpilib.util.Alert.Level;
 
@@ -27,6 +34,7 @@ import org.wpilib.util.Alert.Level;
  *   <li>{@link RobotLoop#next()} - loop counter
  *   <li>{@link RobotSettings#periodic()} - apply live tuning, log values (inputs)
  *   <li>{@link Swerve#updateInputs()} - drain 250 Hz samples, log, odometry
+ *   <li>{@link OpModeLoop#run()} - the running OpMode's requests
  *   <li>{@link CommandScheduler#run()} - wanted-state requests and commands
  *   <li>{@link Swerve#applyWantedState()} - wanted state to the swerve thread
  *   <li>alerts and telemetry
@@ -39,6 +47,7 @@ public class Robot extends SpectrumRobot {
     private final Alert mainThreadPriorityAlert = new Alert("", Level.MEDIUM);
     private final Swerve swerve;
     private final SimScript simScript;
+    private final OpModeLoop opModeLoop = new OpModeLoop();
 
     public Robot() {
         super(RunMode.MAIN_LOOP_PERIOD_SECONDS);
@@ -57,6 +66,7 @@ public class Robot extends SpectrumRobot {
         simScript = SimScript.fromEnvironment(simFaults);
         // The pilot only binds controls; the bindings keep it alive.
         new Pilot(swerve);
+        registerOpModes();
         // Before the main thread goes real-time, so its thread does not inherit that.
         frc.spectrumLib.hardware.PhoenixBackground.start();
         if (RunMode.CURRENT == RunMode.Mode.REAL) {
@@ -72,10 +82,40 @@ public class Robot extends SpectrumRobot {
         }
         RobotSettings.periodic();
         swerve.updateInputs();
+        opModeLoop.run();
         CommandScheduler.getInstance().run();
         swerve.applyWantedState();
         Alert.periodic();
         Telemetry.periodic();
+    }
+
+    /**
+     * Everything the Driver Station can pick. Each supplier makes a fresh OpMode when it is chosen,
+     * so an OpMode keeps no state between runs.
+     */
+    private void registerOpModes() {
+        DemoTeleop.Limits demo = DemoTeleop.Limits.fromSettings();
+        addOpMode(RobotMode.TELEOPERATED, "Drive", "Match", "Full-speed driving", DriveTeleop::new);
+        addOpMode(
+                RobotMode.TELEOPERATED,
+                "Demo",
+                "Demo",
+                "Driving with speed and turn capped, for visitors",
+                () -> new DemoTeleop(swerve, demo, opModeLoop));
+        addOpMode(RobotMode.AUTONOMOUS, "Do nothing", "Match", "Sits still", DoNothingAuto::new);
+        addOpMode(
+                RobotMode.AUTONOMOUS,
+                "Drive forward",
+                "Test",
+                "Drives ahead at 1 m/s for 1.5 s, then holds still",
+                () -> new DriveForwardAuto(swerve, opModeLoop));
+        addOpMode(
+                RobotMode.UTILITY,
+                "Wheel radius",
+                "Calibration",
+                "Spins in place to measure the wheel radius",
+                () -> new WheelRadiusUtility(swerve));
+        publishOpModes();
     }
 
     @SuppressWarnings("deprecation") // WPILib deprecates it as "know what you are doing"

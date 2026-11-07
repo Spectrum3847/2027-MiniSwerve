@@ -5,7 +5,7 @@ import frc.spectrumLib.telemetry.Telemetry;
 import java.io.File;
 import java.util.UUID;
 import org.littletonrobotics.junction.LogFileUtil;
-import org.littletonrobotics.junction.LoggedRobot;
+import org.littletonrobotics.junction.LoggedOpModeRobot;
 import org.littletonrobotics.junction.Logger;
 import org.littletonrobotics.junction.networktables.NT4Publisher;
 import org.littletonrobotics.junction.wpilog.WPILOGReader;
@@ -26,7 +26,7 @@ final class LoggingSetup {
 
     private static final String LOCAL_LOGS = "/home/systemcore/logs";
 
-    static void start(LoggedRobot robot) {
+    static void start(LoggedOpModeRobot robot) {
         Logger.recordMetadata("Robot", "MiniSwerve");
         Logger.recordMetadata("ProjectName", BuildConstants.MAVEN_NAME);
         // SystemCore has no battery-backed clock; a random id per boot tells logs apart.

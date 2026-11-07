@@ -46,7 +46,9 @@ public final class Swerve implements Subsystem {
         /** Wheels in an X. */
         X_LOCK,
         /** Spin in place to measure the wheel radius (utility mode). */
-        WHEEL_RADIUS_CHARACTERIZATION
+        WHEEL_RADIUS_CHARACTERIZATION,
+        /** Robot-relative velocity from an auto or utility ({@link #driveRobotRelative}). */
+        ROBOT_VELOCITY
     }
 
     private static final int MODULES = 4;
@@ -90,6 +92,10 @@ public final class Swerve implements Subsystem {
     private final Alert threadFaultAlert = new Alert("", Level.HIGH);
     private final Alert gyroAlert =
             new Alert("Swerve: Pigeon down, heading from wheels only", Level.HIGH);
+
+    private double robotVx;
+    private double robotVy;
+    private double robotOmega;
 
     private DoubleSupplier teleopX = () -> 0;
     private DoubleSupplier teleopY = () -> 0;
@@ -203,7 +209,14 @@ public final class Swerve implements Subsystem {
                     case WHEEL_RADIUS_CHARACTERIZATION ->
                             DriveRequest.velocity(
                                     0, 0, SwerveSettings.WHEEL_RADIUS_SPIN.get(), false, 0, true);
+                    case ROBOT_VELOCITY ->
+                            DriveRequest.velocity(robotVx, robotVy, robotOmega, false, 0, true);
+                    // Sticks drive only in teleop: in auto and utility they hold still unless an
+                    // OpMode asks for something.
                     case TELEOP_DRIVE -> {
+                        if (!RobotState.isTeleop()) {
+                            yield DriveRequest.NEUTRAL;
+                        }
                         // Sticks are in the driver's frame; turn them into the field frame.
                         double fwd = operatorForwardDirection();
                         double x = teleopX.getAsDouble() * maxDriveVelocity;
@@ -239,6 +252,9 @@ public final class Swerve implements Subsystem {
                 || Double.isFinite(limitAlpha)) {
             request = request.withLimits(limitVelocity, limitAcceleration, limitOmega, limitAlpha);
         }
+        // Robot-relative velocity an OpMode asked for: forward, left (m/s), CCW (rad/s).
+        Logger.recordOutput(
+                "Swerve/Request/RobotVelocity", new double[] {robotVx, robotVy, robotOmega});
         // This cycle's lowered limits: wheel speed (m/s), wheel acceleration (m/s^2), turn rate
         // (rad/s), turn acceleration (rad/s^2); NaN means configured. E.g. from a raised mechanism.
         Logger.recordOutput(
@@ -365,6 +381,30 @@ public final class Swerve implements Subsystem {
                                             + ")");
                         })
                 .withName("Swerve.CharacterizeWheelRadius");
+    }
+
+    /**
+     * Drives robot-relative at this velocity until {@link #stopRobotRelative}. Call every loop: the
+     * newest call's velocity is used.
+     *
+     * @param vx forward, m/s
+     * @param vy left, m/s
+     * @param omega counterclockwise, rad/s
+     * @param requester who asks, for the wanted-state log
+     */
+    public void driveRobotRelative(double vx, double vy, double omega, String requester) {
+        robotVx = vx;
+        robotVy = vy;
+        robotOmega = omega;
+        state.request(State.ROBOT_VELOCITY, requester);
+    }
+
+    /** Releases {@link #driveRobotRelative}; the swerve goes back to its default state. */
+    public void stopRobotRelative(String requester) {
+        robotVx = 0;
+        robotVy = 0;
+        robotOmega = 0;
+        state.release(requester);
     }
 
     /** Ask for a state; see {@link WantedState#request}. */
