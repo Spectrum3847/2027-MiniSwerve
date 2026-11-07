@@ -282,6 +282,8 @@ tasks.register('simReplay', JavaExec) {
         project.findProperty('mass') ?: '60',
         project.findProperty('friction') ?: '1.1',
         project.findProperty('steerInertia') ?: '0.01',
-        project.findProperty('steerFriction') ?: '0.3'
+        project.findProperty('steerFriction') ?: '0.3',
+        project.findProperty('gearEff') ?: '0.9',
+        project.findProperty('gearDrag') ?: '0.1'
     ]
 }

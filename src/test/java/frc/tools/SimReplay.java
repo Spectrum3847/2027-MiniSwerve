@@ -84,6 +84,8 @@ public final class SimReplay {
         double friction = args.length > 3 ? Double.parseDouble(args[3]) : 1.1;
         double steerInertia = args.length > 4 ? Double.parseDouble(args[4]) : 0.01;
         double steerFriction = args.length > 5 ? Double.parseDouble(args[5]) : 0.3;
+        double gearEfficiency = args.length > 6 ? Double.parseDouble(args[6]) : 0.9;
+        double gearDrag = args.length > 7 ? Double.parseDouble(args[7]) : 0.1;
         HAL.initialize();
         DriverStationSim.setDsAttached(true);
         DriverStationSim.setEnabled(true);
@@ -99,6 +101,7 @@ public final class SimReplay {
                         steerFriction,
                         new double[] {h, h, -h, -h},
                         new double[] {h, -h, h, -h});
+        sim.setGearLosses(gearEfficiency, gearDrag);
         var io = new SwerveIOPhoenix(fmConfig(), sim, null);
         var sample = new SwerveSample(4);
         double[] angle = new double[4];

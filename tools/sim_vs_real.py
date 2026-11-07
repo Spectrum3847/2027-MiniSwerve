@@ -9,7 +9,9 @@ gaps shrink:
   - wheel speed: how far measured speed is from the command (RMS), and sim vs real (RMS)
   - steer: settle time to within 2 degrees and overshoot after each 30+ degree command step
   - speed rise: time from a sprint command (0 to 3+ m/s) to 90% of it
-  - acceleration: 50/90/99th percentile of horizontal acceleration (g)
+  - acceleration: 50/90/99th percentile of horizontal acceleration (g), from the Pigeon (real)
+    against velocity differences (sim), and from wheel velocities on both, which compares like
+    with like
   - current: share of time a drive motor is near its 80 A limit
 """
 
@@ -173,6 +175,21 @@ def main(real_path, sim_path):
     asim = [math.hypot(x, y) for x, y in zip(smooth(sim["sax"]), smooth(sim["say"]))]
     for p in (50, 90, 99):
         line("accel p%d (g)" % p, pct(ar, p), pct(asim, p))
+
+    # Like with like: chassis velocity as the mean of the four wheel vectors (exact for a square
+    # layout, rotation cancels), differenced and smoothed the same way on both.
+    def wheel_accel(src, vkey, akey):
+        ts = src["t"]
+        vx = [sum(src[vkey % m][k] * math.cos(src[akey % m][k]) for m in range(4)) / 4 for k in range(len(ts))]
+        vy = [sum(src[vkey % m][k] * math.sin(src[akey % m][k]) for m in range(4)) / 4 for k in range(len(ts))]
+        ax = [0.0] + [(vx[k] - vx[k - 1]) / max(1e-3, ts[k] - ts[k - 1]) / 9.81 for k in range(1, len(ts))]
+        ay = [0.0] + [(vy[k] - vy[k - 1]) / max(1e-3, ts[k] - ts[k - 1]) / 9.81 for k in range(1, len(ts))]
+        return [math.hypot(x, y) for x, y in zip(smooth(ax), smooth(ay))]
+
+    wr = wheel_accel(real, "mv%d", "ma%d")
+    ws = wheel_accel(sim, "sv%d", "sa%d")
+    for p in (50, 90, 99):
+        line("wheel accel p%d (g)" % p, pct(wr, p), pct(ws, p))
 
     near_r = statistics.mean(1.0 if real["i%d" % m][k] >= 75 else 0.0 for k in range(len(t)) for m in range(4))
     near_s = statistics.mean(1.0 if sim["si%d" % m][k] >= 75 else 0.0 for k in range(len(sim["t"])) for m in range(4))
