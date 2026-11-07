@@ -10,9 +10,9 @@ package frc.spectrumLib.swerve;
  */
 public final class SwerveSample {
     /**
-     * When the thread read the sample, seconds, on Phoenix's clock ({@code
-     * Utils.getCurrentTimeSeconds}). Matches WPILib's clock in sim; check it on SystemCore before
-     * pairing samples with camera timestamps.
+     * When the readings were captured, seconds, on Phoenix's clock (the mean of the signals' own
+     * timestamps: CANivore-synchronized with timesync, otherwise time of receipt). Matches WPILib's
+     * clock in sim; check it on SystemCore before pairing samples with camera timestamps.
      */
     public double timestamp;
 
@@ -34,6 +34,18 @@ public final class SwerveSample {
     /** Every device's signals in this sample were fresh and OK. */
     public boolean allGood;
 
+    /** Each module's drive and steer signals were fresh and OK in this sample. */
+    public final boolean[] moduleOk;
+
+    /** The gyro's yaw and yaw rate were fresh and OK in this sample. */
+    public boolean gyroOk;
+
+    /**
+     * Fraction of the request the setpoint generator allowed this cycle (1 = not limited). Shows
+     * how often maxDriveAcceleration is holding the robot back.
+     */
+    public double setpointFraction = 1.0;
+
     /** Commanded module direction this cycle (rad). */
     public final double[] targetAngle;
 
@@ -46,6 +58,7 @@ public final class SwerveSample {
         angle = new double[modules];
         targetAngle = new double[modules];
         targetVelocity = new double[modules];
+        moduleOk = new boolean[modules];
     }
 
     public int modules() {
@@ -58,6 +71,9 @@ public final class SwerveSample {
         yaw = from.yaw;
         angularVelocityZWorld = from.angularVelocityZWorld;
         allGood = from.allGood;
+        gyroOk = from.gyroOk;
+        setpointFraction = from.setpointFraction;
+        System.arraycopy(from.moduleOk, 0, moduleOk, 0, moduleOk.length);
         System.arraycopy(from.distance, 0, distance, 0, distance.length);
         System.arraycopy(from.velocity, 0, velocity, 0, velocity.length);
         System.arraycopy(from.angle, 0, angle, 0, angle.length);

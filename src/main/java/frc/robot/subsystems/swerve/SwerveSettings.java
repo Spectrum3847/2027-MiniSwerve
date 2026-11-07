@@ -5,6 +5,7 @@ import frc.spectrumLib.robotsettings.BooleanSetting;
 import frc.spectrumLib.robotsettings.DoubleSetting;
 import frc.spectrumLib.robotsettings.RobotSettings;
 import frc.spectrumLib.robotsettings.SettingGroup;
+import frc.spectrumLib.robotsettings.StringSetting;
 
 /**
  * The drivetrain's Robot Settings: calibration and gains, in {@code deploy/settings/swerve.json}.
@@ -42,6 +43,60 @@ final class SwerveSettings {
     static final DoubleSetting MAX_WHEEL_VELOCITY =
             G.number("maxWheelVelocity", 4.5, "m/s", 0.5, 5.0);
 
+    /** Limit acceleration and steer rate with the setpoint generator (smoother, truer odometry). */
+    static final BooleanSetting SETPOINT_GENERATOR = G.bool("setpointGenerator", true);
+
+    /** Largest wheel speed change the setpoint generator allows (m/s^2). */
+    static final DoubleSetting MAX_DRIVE_ACCELERATION =
+            G.number("maxDriveAcceleration", 10.0, "m/s^2", 1, 30);
+
+    /** Fastest module turn the setpoint generator plans (rad/s); MK4i free speed is about 29. */
+    static final DoubleSetting MAX_STEER_VELOCITY =
+            G.number("maxSteerVelocity", 20.0, "rad/s", 2, 30);
+
+    /**
+     * Field-relative lookahead (s): aim with heading + yaw rate * this, so driving while spinning
+     * goes straight despite module lag. Tune on the robot by driving straight while spinning.
+     */
+    static final DoubleSetting ROTATION_LOOKAHEAD =
+            G.number("rotationLookahead", 0.04, "s", 0.0, 0.15);
+
+    /**
+     * Hold heading while the driver is not turning (see HeadingHold: captures after the robot
+     * settles, only corrects while driving, lets go after a hit). Off: drivers have disliked
+     * heading hold that steers back after contact; try this one on the robot.
+     */
+    static final BooleanSetting HEADING_HOLD = G.bool("headingHold", false);
+
+    /** Heading hold gain (rad/s per rad of error). */
+    static final DoubleSetting HEADING_HOLD_KP = G.number("headingHoldKP", 3.0, "1/s", 0, 20);
+
+    /** Heading hold's largest correction (rad/s): enough to trim drift, not to steer. */
+    static final DoubleSetting HEADING_HOLD_MAX_CORRECTION =
+            G.number("headingHoldMaxCorrection", 1.0, "rad/s", 0, 5);
+
+    /** Error past which heading hold accepts the new heading instead of correcting (deg). */
+    static final DoubleSetting HEADING_HOLD_RELEASE_DEG =
+            G.number("headingHoldReleaseDeg", 10.0, "deg", 1, 90);
+
+    /** Heading hold captures after the yaw rate stays below headingHoldSettleRate this long (s). */
+    static final DoubleSetting HEADING_HOLD_SETTLE_SECONDS =
+            G.number("headingHoldSettleSeconds", 0.25, "s", 0, 2);
+
+    /** Yaw rate below which the robot counts as settled for heading hold (rad/s). */
+    static final DoubleSetting HEADING_HOLD_SETTLE_RATE =
+            G.number("headingHoldSettleRate", 0.1, "rad/s", 0, 2);
+
+    /** Heading hold corrects only above this commanded translation (m/s). */
+    static final DoubleSetting HEADING_HOLD_MIN_TRANSLATION =
+            G.number("headingHoldMinTranslation", 0.2, "m/s", 0, 2);
+
+    /**
+     * Use Phoenix timesync when the bus is a CANivore. Off to compare latency; ignored on a plain
+     * CAN bus.
+     */
+    static final BooleanSetting TIMESYNC = G.bool("timesync", true);
+
     /** Driver top speed and turn rate. */
     static final DoubleSetting MAX_DRIVE_VELOCITY =
             G.number("maxDriveVelocity", 4.0, "m/s", 0.5, 5.0);
@@ -51,9 +106,33 @@ final class SwerveSettings {
 
     static final DoubleSetting DRIVE_KP = G.number("driveKP", 10.0, "A/rps", 0, 100);
     static final DoubleSetting DRIVE_KS = G.number("driveKS", 3.0, "A", 0, 20);
-    static final DoubleSetting STEER_KP = G.number("steerKP", 1000.0, "A/rot", 0, 5000);
-    static final DoubleSetting STEER_KD = G.number("steerKD", 30.0, "A/rps", 0, 500);
-    static final DoubleSetting STEER_KS = G.number("steerKS", 2.0, "A", 0, 20);
+
+    /**
+     * Steer closed-loop output, CTRE's ClosedLoopOutputType names: "Voltage" (PositionVoltage with
+     * FOC; back-EMF damps it, CTRE's default and the most common choice) or "TorqueCurrentFOC".
+     * Each has its own gains below.
+     */
+    static final StringSetting STEER_CLOSED_LOOP_OUTPUT =
+            G.string("steerClosedLoopOutput", "Voltage");
+
+    /** Steer gains for Voltage output: CTRE's generated MK4i defaults. */
+    static final DoubleSetting STEER_VOLTAGE_KP =
+            G.number("steerVoltageKP", 100.0, "V/rot", 0, 500);
+
+    static final DoubleSetting STEER_VOLTAGE_KD = G.number("steerVoltageKD", 0.5, "V/rps", 0, 20);
+    static final DoubleSetting STEER_VOLTAGE_KS = G.number("steerVoltageKS", 0.1, "V", 0, 2);
+    static final DoubleSetting STEER_VOLTAGE_KV = G.number("steerVoltageKV", 2.66, "V/rps", 0, 10);
+
+    /** Steer gains for TorqueCurrentFOC output. */
+    static final DoubleSetting STEER_TORQUE_KP =
+            G.number("steerTorqueKP", 1000.0, "A/rot", 0, 5000);
+
+    static final DoubleSetting STEER_TORQUE_KD = G.number("steerTorqueKD", 30.0, "A/rps", 0, 500);
+    static final DoubleSetting STEER_TORQUE_KS = G.number("steerTorqueKS", 2.0, "A", 0, 20);
+
+    static boolean steerVoltage() {
+        return !"TorqueCurrentFOC".equals(STEER_CLOSED_LOOP_OUTPUT.get());
+    }
 
     /**
      * Steer with MotionMagicExpoTorqueCurrentFOC (a smooth profile: less current and scrub) instead

@@ -20,6 +20,12 @@ public final class SwerveThread {
 
     private volatile DriveRequest request = DriveRequest.NEUTRAL;
     private volatile double maxWheelVelocity;
+    private volatile boolean useSetpointGenerator;
+    private volatile double rotationLookahead;
+    private volatile double maxDriveAcceleration = 10.0;
+    private volatile double maxSteerVelocity = 20.0;
+    private final SwerveSetpointGenerator generator;
+    private final double[] steerVelocity;
     private volatile boolean running;
     private volatile long faults;
     private volatile String lastFault = "";
@@ -62,6 +68,8 @@ public final class SwerveThread {
         sample = new SwerveSample(n);
         lastTargetAngle = new double[n];
         wheelForce = new double[n];
+        steerVelocity = new double[n];
+        generator = new SwerveSetpointGenerator(mx, my);
     }
 
     /** Starts the loop on its own daemon thread. Call once, during robot init. */
@@ -83,6 +91,27 @@ public final class SwerveThread {
 
     public void setMaxWheelVelocity(double metersPerSecond) {
         maxWheelVelocity = metersPerSecond;
+    }
+
+    /**
+     * Seconds ahead to rotate field-relative requests by the measured yaw rate, compensating
+     * steer/drive lag while spinning. Main thread, at boot.
+     */
+    public void setRotationLookahead(double seconds) {
+        rotationLookahead = seconds;
+    }
+
+    /**
+     * Turns the setpoint generator on or off and sets its limits. Main thread, at boot.
+     *
+     * @param maxDriveAcceleration largest wheel speed change (m/s^2)
+     * @param maxSteerVelocity fastest module turn (rad/s)
+     */
+    public void setSetpointGenerator(
+            boolean enabled, double maxDriveAcceleration, double maxSteerVelocity) {
+        this.maxDriveAcceleration = maxDriveAcceleration;
+        this.maxSteerVelocity = maxSteerVelocity;
+        this.useSetpointGenerator = enabled;
     }
 
     public long faults() {
@@ -148,6 +177,8 @@ public final class SwerveThread {
         double[] velocity = sample.targetVelocity;
         System.arraycopy(lastTargetAngle, 0, angle, 0, n);
         java.util.Arrays.fill(wheelForce, 0.0);
+        java.util.Arrays.fill(steerVelocity, 0.0);
+        sample.setpointFraction = 1.0;
         // Robot-frame rotation of the request: cos/sin of -heading (identity if robot-relative).
         double c = 1.0;
         double s = 0.0;
@@ -156,10 +187,12 @@ public final class SwerveThread {
             case NEUTRAL -> {
                 System.arraycopy(sample.angle, 0, angle, 0, n);
                 java.util.Arrays.fill(velocity, 0.0);
+                generator.reset(sample.velocity, sample.angle);
                 io.setNeutral();
                 return;
             }
             case X_LOCK -> {
+                generator.reset(sample.velocity, sample.angle);
                 for (int i = 0; i < n; i++) {
                     angle[i] = Math.atan2(my[i], mx[i]);
                     velocity[i] = 0.0;
@@ -172,6 +205,11 @@ public final class SwerveThread {
                     // With the gyro down, the main loop sends the odometry heading itself.
                     double heading =
                             r.useGyro() ? sample.yaw + r.headingOffset() : r.headingOffset();
+                    // Aim with the heading the robot will have when the modules get there: the
+                    // steer and drive loops lag, and a spinning robot turns meanwhile.
+                    if (r.useGyro() && sample.gyroOk) {
+                        heading += sample.angularVelocityZWorld * rotationLookahead;
+                    }
                     c = Math.cos(heading);
                     s = Math.sin(heading);
                     // Field to robot frame: rotate by -heading.
@@ -181,13 +219,33 @@ public final class SwerveThread {
                     vy = ry;
                 }
                 SwerveMath.discretize(vx, vy, r.omega(), dt, chassis);
-                SwerveMath.toSwerveModuleVelocities(
-                        chassis[0], chassis[1], chassis[2], mx, my, velocity, angle);
-                SwerveMath.desaturateWheelVelocities(velocity, maxWheelVelocity);
+                if (useSetpointGenerator) {
+                    generator.generate(
+                            chassis[0],
+                            chassis[1],
+                            chassis[2],
+                            dt,
+                            maxWheelVelocity,
+                            maxDriveAcceleration,
+                            maxSteerVelocity);
+                    sample.setpointFraction = generator.lastFraction();
+                    System.arraycopy(generator.angle(), 0, angle, 0, n);
+                    System.arraycopy(generator.velocity(), 0, velocity, 0, n);
+                    System.arraycopy(generator.steerVelocity(), 0, steerVelocity, 0, n);
+                } else {
+                    SwerveMath.toSwerveModuleVelocities(
+                            chassis[0], chassis[1], chassis[2], mx, my, velocity, angle);
+                    SwerveMath.desaturateWheelVelocities(velocity, maxWheelVelocity);
+                }
             }
         }
-        SwerveMath.optimize(velocity, angle, sample.angle);
-        SwerveMath.cosineScale(velocity, angle, sample.angle);
+        if (!(useSetpointGenerator && r.mode() == DriveRequest.Mode.VELOCITY)) {
+            // The generator already turns the short way and cosine-scales against its own plan;
+            // doing it again here would scale twice and could flip the target against the steer
+            // feedforward.
+            SwerveMath.optimize(velocity, angle, sample.angle);
+            SwerveMath.cosineScale(velocity, angle, sample.angle);
+        }
         double[] fx = r.wheelForceFeedforwardX();
         double[] fy = r.wheelForceFeedforwardY();
         if (r.mode() == DriveRequest.Mode.VELOCITY && fx != null && fy != null) {
@@ -198,7 +256,7 @@ public final class SwerveThread {
                 wheelForce[i] = rfx * Math.cos(angle[i]) + rfy * Math.sin(angle[i]);
             }
         }
-        io.setModules(angle, velocity, wheelForce);
+        io.setModules(angle, velocity, steerVelocity, wheelForce);
     }
 
     /** The sample being filled; for tests. */

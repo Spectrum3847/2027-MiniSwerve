@@ -48,6 +48,9 @@ public final class SwerveInputs implements LoggableInputs {
         double[] yaw = new double[n];
         double[] yawRate = new double[n];
         boolean[] good = new boolean[n];
+        boolean[] gyroOk = new boolean[n];
+        double[] fraction = new double[n];
+        boolean[] moduleOk = new boolean[n * modules];
         double[] distance = new double[n * modules];
         double[] velocity = new double[n * modules];
         double[] angle = new double[n * modules];
@@ -59,6 +62,9 @@ public final class SwerveInputs implements LoggableInputs {
             yaw[s] = x.yaw;
             yawRate[s] = x.angularVelocityZWorld;
             good[s] = x.allGood;
+            gyroOk[s] = x.gyroOk;
+            fraction[s] = x.setpointFraction;
+            System.arraycopy(x.moduleOk, 0, moduleOk, s * modules, modules);
             System.arraycopy(x.distance, 0, distance, s * modules, modules);
             System.arraycopy(x.velocity, 0, velocity, s * modules, modules);
             System.arraycopy(x.angle, 0, angle, s * modules, modules);
@@ -73,6 +79,12 @@ public final class SwerveInputs implements LoggableInputs {
         t.put("Samples/AngularVelocityZWorld", yawRate);
         // Every device signal fresh and OK, per sample.
         t.put("Samples/AllGood", good);
+        // Gyro signals fresh and OK, per sample.
+        t.put("Samples/GyroOk", gyroOk);
+        // Fraction of the request the setpoint generator allowed, per sample (1 = not limited).
+        t.put("Samples/SetpointFraction", fraction);
+        // Each module's drive and steer signals fresh and OK, [sample * 4 + module].
+        t.put("Samples/ModuleOk", moduleOk);
         // Wheel travel per sample and module (m), [sample * 4 + module].
         t.put("Samples/Distance", distance);
         // Wheel speed per sample and module (m/s).
@@ -92,6 +104,12 @@ public final class SwerveInputs implements LoggableInputs {
         t.put("Health/PigeonConnected", h.pigeonConnected);
         // Each module's devices took their config at boot.
         t.put("Health/Configured", h.configured);
+        // Steer motors fusing their CANcoder (no fused-sensor faults).
+        t.put("Health/FusedOk", h.fusedOk);
+        // CANcoder magnets readable.
+        t.put("Health/MagnetOk", h.magnetOk);
+        // CANivore timesync in use.
+        t.put("Health/Timesync", h.timesync);
         // Swerve thread cycles in a row with stale or failed signals.
         t.put("Thread/StaleCycles", staleCycles);
         // Motor currents (A).
@@ -119,6 +137,9 @@ public final class SwerveInputs implements LoggableInputs {
         double[] yaw = t.get("Samples/Yaw", new double[n]);
         double[] yawRate = t.get("Samples/AngularVelocityZWorld", new double[n]);
         boolean[] good = t.get("Samples/AllGood", new boolean[n]);
+        boolean[] gyroOk = t.get("Samples/GyroOk", good);
+        double[] fraction = t.get("Samples/SetpointFraction", new double[n]);
+        boolean[] moduleOk = t.get("Samples/ModuleOk", new boolean[n * modules]);
         double[] distance = t.get("Samples/Distance", new double[n * modules]);
         double[] velocity = t.get("Samples/Velocity", new double[n * modules]);
         double[] angle = t.get("Samples/Angle", new double[n * modules]);
@@ -130,6 +151,9 @@ public final class SwerveInputs implements LoggableInputs {
             x.yaw = yaw[s];
             x.angularVelocityZWorld = yawRate[s];
             x.allGood = good[s];
+            x.gyroOk = gyroOk[s];
+            x.setpointFraction = s < fraction.length ? fraction[s] : 1.0;
+            System.arraycopy(moduleOk, s * modules, x.moduleOk, 0, modules);
             System.arraycopy(distance, s * modules, x.distance, 0, modules);
             System.arraycopy(velocity, s * modules, x.velocity, 0, modules);
             System.arraycopy(angle, s * modules, x.angle, 0, modules);
@@ -144,6 +168,9 @@ public final class SwerveInputs implements LoggableInputs {
         copy(t.get("Health/EncoderConnected", h.encoderConnected), h.encoderConnected);
         h.pigeonConnected = t.get("Health/PigeonConnected", h.pigeonConnected);
         copy(t.get("Health/Configured", h.configured), h.configured);
+        copy(t.get("Health/FusedOk", h.fusedOk), h.fusedOk);
+        copy(t.get("Health/MagnetOk", h.magnetOk), h.magnetOk);
+        h.timesync = t.get("Health/Timesync", h.timesync);
         staleCycles = t.get("Thread/StaleCycles", staleCycles);
         copy(t.get("Health/DriveStatorCurrent", h.driveStatorCurrent), h.driveStatorCurrent);
         copy(t.get("Health/SteerStatorCurrent", h.steerStatorCurrent), h.steerStatorCurrent);

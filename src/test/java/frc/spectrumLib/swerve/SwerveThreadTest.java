@@ -20,7 +20,7 @@ class SwerveThreadTest {
         public void waitForSample(SwerveSample out) {}
 
         @Override
-        public void setModules(double[] a, double[] v, double[] f) {
+        public void setModules(double[] a, double[] v, double[] sv, double[] f) {
             angle = a.clone();
             velocity = v.clone();
             force = f.clone();

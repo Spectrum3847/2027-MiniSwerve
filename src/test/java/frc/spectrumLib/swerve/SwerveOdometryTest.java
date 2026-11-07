@@ -72,4 +72,24 @@ class SwerveOdometryTest {
         assertEquals(2.0, odo.x(), 0.01);
         assertEquals(0.0, odo.y(), 0.01);
     }
+
+    @Test
+    void aBadModuleIsLeftOut() {
+        SwerveOdometry odo = new SwerveOdometry(MX, MY);
+        SwerveSample s = new SwerveSample(4);
+        odo.update(s, true);
+        double[] weight = {1, 1, 1, 0};
+        for (int k = 0; k < 250; k++) {
+            for (int i = 0; i < 3; i++) {
+                s.distance[i] += 1.0 * 0.004;
+            }
+            s.distance[3] += 5.0 * 0.004; // a slipping or broken module reads nonsense
+            s.timestamp += 0.004;
+            odo.update(s, true, weight);
+        }
+        assertEquals(1.0, odo.x(), 1e-9);
+        assertEquals(0.0, odo.y(), 1e-9);
+        assertEquals(3, odo.modulesUsed());
+        assertEquals(0.016, odo.moduleSlip()[3], 1e-9); // still reported
+    }
 }

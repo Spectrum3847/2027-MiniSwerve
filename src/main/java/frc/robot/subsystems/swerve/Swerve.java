@@ -6,6 +6,8 @@ import frc.robot.config.ImuSettings;
 import frc.spectrumLib.framework.RobotLoop;
 import frc.spectrumLib.statemachine.WantedState;
 import frc.spectrumLib.swerve.DriveRequest;
+import frc.spectrumLib.swerve.HeadingHold;
+import frc.spectrumLib.swerve.ModuleTrust;
 import frc.spectrumLib.swerve.PhoenixSwerveConfig;
 import frc.spectrumLib.swerve.SampleQueue;
 import frc.spectrumLib.swerve.SwerveIO;
@@ -48,6 +50,18 @@ public final class Swerve implements Subsystem {
     private static final int MAX_SAMPLES_PER_LOOP = 16;
     private static final int SWERVE_THREAD_PRIORITY = 1;
 
+    private final ModuleTrust trust = new ModuleTrust("Swerve/Modules", MODULES);
+    private final HeadingHold headingHold = new HeadingHold("Swerve/HeadingHold");
+    private final boolean headingHoldEnabled = SwerveSettings.HEADING_HOLD.get();
+    private final HeadingHold.Config headingHoldConfig =
+            new HeadingHold.Config(
+                    SwerveSettings.HEADING_HOLD_KP.get(),
+                    SwerveSettings.HEADING_HOLD_MAX_CORRECTION.get(),
+                    SwerveSettings.HEADING_HOLD_SETTLE_SECONDS.get(),
+                    SwerveSettings.HEADING_HOLD_SETTLE_RATE.get(),
+                    Math.toRadians(SwerveSettings.HEADING_HOLD_RELEASE_DEG.get()),
+                    SwerveSettings.HEADING_HOLD_MIN_TRANSLATION.get());
+    private final double[] velocityError = new double[MODULES];
     private final WantedState<State> state = new WantedState<>("Swerve", State.TELEOP_DRIVE);
     private final SwerveIO io;
     private final SwerveThread thread;
@@ -94,6 +108,11 @@ public final class Swerve implements Subsystem {
                         SwerveSettings.MAX_WHEEL_VELOCITY.get(),
                         1.0 / SwerveSettings.LOOP_HZ.get(),
                         RunMode.CURRENT == RunMode.Mode.REAL ? SWERVE_THREAD_PRIORITY : 0);
+        thread.setRotationLookahead(SwerveSettings.ROTATION_LOOKAHEAD.get());
+        thread.setSetpointGenerator(
+                SwerveSettings.SETPOINT_GENERATOR.get(),
+                SwerveSettings.MAX_DRIVE_ACCELERATION.get(),
+                SwerveSettings.MAX_STEER_VELOCITY.get());
         if (io.hasHardware()) {
             thread.start();
         }
@@ -128,13 +147,21 @@ public final class Swerve implements Subsystem {
                 Hardware.STEER_STATOR_LIMIT_AMPS,
                 new PhoenixSwerveConfig.Gains(
                         SwerveSettings.DRIVE_KP.get(), 0, 0, SwerveSettings.DRIVE_KS.get(), 0, 0),
-                new PhoenixSwerveConfig.Gains(
-                        SwerveSettings.STEER_KP.get(),
-                        0,
-                        SwerveSettings.STEER_KD.get(),
-                        SwerveSettings.STEER_KS.get(),
-                        0,
-                        0),
+                SwerveSettings.steerVoltage()
+                        ? new PhoenixSwerveConfig.Gains(
+                                SwerveSettings.STEER_VOLTAGE_KP.get(),
+                                0,
+                                SwerveSettings.STEER_VOLTAGE_KD.get(),
+                                SwerveSettings.STEER_VOLTAGE_KS.get(),
+                                SwerveSettings.STEER_VOLTAGE_KV.get(),
+                                0)
+                        : new PhoenixSwerveConfig.Gains(
+                                SwerveSettings.STEER_TORQUE_KP.get(),
+                                0,
+                                SwerveSettings.STEER_TORQUE_KD.get(),
+                                SwerveSettings.STEER_TORQUE_KS.get(),
+                                0,
+                                0),
                 SwerveSettings.LOOP_HZ.get(),
                 new double[] {
                     ImuSettings.PIGEON_MOUNT_YAW.get(),
@@ -144,7 +171,9 @@ public final class Swerve implements Subsystem {
                 SwerveSettings.STEER_MOTION_MAGIC_EXPO.get(),
                 SwerveSettings.STEER_EXPO_KV.get(),
                 SwerveSettings.STEER_EXPO_KA.get(),
-                Hardware.MK4iL2.DRIVE_KT);
+                Hardware.MK4iL2.DRIVE_KT,
+                SwerveSettings.TIMESYNC.get(),
+                SwerveSettings.steerVoltage());
     }
 
     /** Where the pilot's sticks come from: -1..1 field x, field y, rotation. */
@@ -167,8 +196,10 @@ public final class Swerve implements Subsystem {
             }
         }
         Logger.processInputs("Swerve", inputs);
+        trust.update(inputs.health);
         for (int s = 0; s < inputs.count; s++) {
-            odometry.update(inputs.samples[s], gyroOk() && inputs.samples[s].allGood);
+            var sample = inputs.samples[s];
+            odometry.update(sample, gyroOk() && sample.gyroOk, trust.weights(sample));
         }
         logOutputs();
     }
@@ -185,10 +216,26 @@ public final class Swerve implements Subsystem {
                         double fwd = operatorForwardDirection();
                         double x = teleopX.getAsDouble() * maxDriveVelocity;
                         double y = teleopY.getAsDouble() * maxDriveVelocity;
+                        double turn = teleopOmega.getAsDouble();
+                        double omega = turn * maxAngularVelocity;
+                        // Always computed and logged, so a drive session shows what heading hold
+                        // would do before anyone turns it on; added only when enabled.
+                        double hold =
+                                headingHold.calculate(
+                                        headingHoldConfig,
+                                        Math.abs(turn) > 0.02,
+                                        Math.hypot(x, y),
+                                        odometry.heading(),
+                                        lastYawRate(),
+                                        RobotLoop.periodSeconds());
+                        if (headingHoldEnabled) {
+                            omega += hold;
+                        }
+
                         yield DriveRequest.velocity(
                                 x * Math.cos(fwd) - y * Math.sin(fwd),
                                 x * Math.sin(fwd) + y * Math.cos(fwd),
-                                teleopOmega.getAsDouble() * maxAngularVelocity,
+                                omega,
                                 true,
                                 gyroOk() ? odometry.yawOffset() : odometry.heading(),
                                 gyroOk());
@@ -214,24 +261,40 @@ public final class Swerve implements Subsystem {
     }
 
     /**
-     * Every module's devices are connected and took their config (logged inputs only, so replay
-     * decides the same way). False until the first health read, so the robot never drives on
-     * devices it has not checked.
+     * Every module is trusted: connected, configured, magnet readable, CANcoder fused (logged
+     * inputs only, so replay decides the same way). False until the first health read, so the robot
+     * never drives on devices it has not checked.
      */
     private boolean allConnected() {
-        var h = inputs.health;
-        for (int i = 0; i < MODULES; i++) {
-            if (!h.configured[i]
-                    || !h.driveConnected[i]
-                    || !h.steerConnected[i]
-                    || !h.encoderConnected[i]) {
-                return false;
-            }
+        return trust.allTrusted();
+    }
+
+    /** Yaw rate (rad/s): the gyro's when good, else the wheels' estimate. */
+    private double lastYawRate() {
+        if (inputs.count > 0 && gyroOk() && inputs.samples[inputs.count - 1].gyroOk) {
+            return inputs.samples[inputs.count - 1].angularVelocityZWorld;
         }
-        return true;
+        return odometry.robotVelocity()[2];
     }
 
     private void logOutputs() {
+        // Heading hold's correction is being applied (false: computed and logged only).
+        Logger.recordOutput("Swerve/HeadingHold/Applied", headingHoldEnabled);
+        if (inputs.count > 0) {
+            var last = inputs.samples[inputs.count - 1];
+            for (int i = 0; i < MODULES; i++) {
+                velocityError[i] = last.targetVelocity[i] - last.velocity[i];
+            }
+            // Commanded minus measured wheel speed per module (m/s): slip or a weak module.
+            Logger.recordOutput("Swerve/Modules/VelocityError", velocityError);
+        }
+        // Each module's disagreement with the fitted motion over the last sample (m).
+        Logger.recordOutput("Swerve/Modules/Slip", odometry.moduleSlip());
+        // Modules used by odometry in the last sample.
+        Logger.recordOutput("Swerve/Odometry/ModulesUsed", odometry.modulesUsed());
+        // Measured robot-frame chassis velocity from the last sample: vx, vy (m/s), omega (rad/s).
+        // Compare with Swerve/Request/Velocity to tune lookahead and acceleration limits.
+        Logger.recordOutput("Swerve/Odometry/RobotVelocity", odometry.robotVelocity());
         // Wheel-and-gyro odometry pose (field frame).
         Logger.recordOutput(
                 "Swerve/Odometry/Pose",
@@ -292,6 +355,7 @@ public final class Swerve implements Subsystem {
      * without moving the pose.
      */
     public void seedFieldCentric() {
+        headingHold.reset();
         odometry.resetPose(odometry.x(), odometry.y(), operatorForwardDirection());
     }
 
