@@ -3,8 +3,10 @@ package frc.spectrumSim.swerve;
 /**
  * The tire on carpet: force from slip speed. Force rises linearly with slip to its peak at {@link
  * #PEAK_SLIP}, then falls toward sliding friction ({@link #SLIDING_SHARE} of peak) as the tire
- * slides. Along and across the wheel share one friction circle. Peak force is the tire's friction
- * coefficient times the load on that wheel.
+ * slides. Slip along and across the wheel is one vector, and the force opposes it: its size from
+ * the curve at the total slip speed, its direction the slip's (an isotropic tire). So a wheel
+ * scrubbing sideways at a few cm/s while it drives still pushes mostly along its slip, not half
+ * sideways. Peak force is the tire's friction coefficient times the load on that wheel.
  */
 final class Tire {
     private Tire() {}

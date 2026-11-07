@@ -98,6 +98,23 @@ public final class SwervePhysicsSim {
     /** Wheel's own spin inertia (kg m^2): a 4 in tread wheel and hub. */
     private static final double WHEEL_INERTIA = 0.0005;
 
+    /** The field the robot drives on, or null for open floor with no walls. */
+    private frc.spectrumSim.field.Arena arena;
+
+    private final frc.spectrumSim.field.Arena.Body body = new frc.spectrumSim.field.Arena.Body();
+    private volatile int contacts;
+
+    /**
+     * Puts the robot on a field: its bumpers ({@code length} by {@code width}, m) hit the arena's
+     * walls and elements.
+     */
+    public synchronized void setArena(
+            frc.spectrumSim.field.Arena arena, double length, double width) {
+        this.arena = arena;
+        body.length = length;
+        body.width = width;
+    }
+
     /** Center of gravity above the floor (m); sets weight transfer. */
     private double cogHeight = 0.152;
 
@@ -341,14 +358,12 @@ public final class SwervePhysicsSim {
             double push = 0, side = 0;
             for (int k = 0; k < wheelSteps; k++) {
                 double slipAlong = wheelOmega[i] * r - along;
-                double p = grip * Tire.gripCurve(slipAlong);
-                double sd = -grip * Tire.gripCurve(across);
-                double total = Math.hypot(p, sd);
-                double cap = grip * Tire.slidingFactor(Math.hypot(slipAlong, across));
-                if (total > cap) {
-                    p *= cap / total;
-                    sd *= cap / total;
-                }
+                // One slip vector, one force against it: its size from the grip curve of the
+                // total slip, its direction the slip's.
+                double slip = Math.hypot(slipAlong, across);
+                double perSlip = slip > 1e-9 ? grip * Tire.gripCurve(slip) / slip : 0;
+                double p = perSlip * slipAlong;
+                double sd = -perSlip * across;
                 double wheelTorque = motorTorque - p * r - ROLLING_DRAG * r * r * wheelOmega[i];
                 wheelOmega[i] += wheelTorque / wheelInertia * wdt;
                 push += p / wheelSteps;
@@ -393,9 +408,42 @@ public final class SwervePhysicsSim {
         truthX += (vx * ch - vy * sh) * dt;
         truthY += (vx * sh + vy * ch) * dt;
         truthHeading = h + omega * dt;
+        if (arena != null) {
+            collide(inertiaEff);
+        }
         if (!dead("Pigeon")) {
             devices.senseGyro(truthHeading, omega, batteryVolts);
         }
+    }
+
+    /**
+     * Bumpers against the field: the true pose (which starts at 0, 0, 0) placed on the field at the
+     * arena's start pose, pushed out of walls and elements, and the contact impulses taken out of
+     * the body's motion.
+     */
+    private void collide(double inertia) {
+        double c0 = Math.cos(arena.startHeading), s0 = Math.sin(arena.startHeading);
+        double heading = arena.startHeading + truthHeading;
+        double ch = Math.cos(heading), sh = Math.sin(heading);
+        body.x = arena.startX + truthX * c0 - truthY * s0;
+        body.y = arena.startY + truthX * s0 + truthY * c0;
+        body.heading = heading;
+        body.vx = vx * ch - vy * sh;
+        body.vy = vx * sh + vy * ch;
+        body.omega = omega;
+        body.mass = robotMassKg;
+        body.inertia = inertia;
+        int n = arena.resolve(body);
+        contacts = n;
+        if (n == 0) {
+            return;
+        }
+        double dx = body.x - arena.startX, dy = body.y - arena.startY;
+        truthX = dx * c0 + dy * s0;
+        truthY = -dx * s0 + dy * c0;
+        vx = body.vx * ch + body.vy * sh;
+        vy = -body.vx * sh + body.vy * ch;
+        omega = body.omega;
     }
 
     /**
@@ -504,6 +552,19 @@ public final class SwervePhysicsSim {
         synchronized (loadSnapshot) {
             System.arraycopy(loadSnapshot, 0, loadLog, 0, loadLog.length);
             System.arraycopy(liftSnapshot, 0, liftLog, 0, liftLog.length);
+        }
+        if (arena != null) {
+            double c0 = Math.cos(arena.startHeading), s0 = Math.sin(arena.startHeading);
+            // The robot's true pose on the field (field frame), for AdvantageScope's field view.
+            org.littletonrobotics.junction.Logger.recordOutput(
+                    "Sim/FieldPose",
+                    new org.wpilib.math.geometry.Pose2d(
+                            arena.startX + x * c0 - y * s0,
+                            arena.startY + x * s0 + y * c0,
+                            org.wpilib.math.geometry.Rotation2d.fromRadians(
+                                    arena.startHeading + truthHeading)));
+            // Walls and field elements the bumpers touched in the last physics step.
+            org.littletonrobotics.junction.Logger.recordOutput("Sim/Contacts", contacts);
         }
         // Each wheel's load on the floor in the sim, FL FR BL BR (N): weight transfer.
         org.littletonrobotics.junction.Logger.recordOutput("Sim/WheelLoads", loadLog);

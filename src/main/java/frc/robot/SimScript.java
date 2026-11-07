@@ -17,9 +17,9 @@ import org.wpilib.system.Timer;
  * so it tests what the robot will do.
  *
  * <p>Run with {@code MINISWERVE_SIM_SCRIPT=drive ./gradlew run -PnoSimGui} ({@code radius} for the
- * wheel-radius utility, {@code auto} for the drive-forward auto then demo driving, {@code faults}
- * to unplug and reboot devices mid-drive); it exits when done. Then compare {@code
- * Swerve/Odometry/Pose} with {@code Sim/TruthPose} in the log.
+ * wheel-radius utility, {@code auto} for the drive-forward auto then demo driving, {@code walls}
+ * for driving into the field walls, {@code faults} to unplug and reboot devices mid-drive); it
+ * exits when done. Then compare {@code Swerve/Odometry/Pose} with {@code Sim/TruthPose} in the log.
  */
 final class SimScript {
     private record Step(
@@ -118,6 +118,21 @@ final class SimScript {
         new Step(2.0, "recovered", 0, 0, 0),
     };
 
+    /**
+     * Field walls (SPECTRUM_SIM_FIELD=empty, start 2, 2): strafes right into the side wall, drives
+     * along it while pushing into it, backs into the alliance wall, and pulls away. The robot must
+     * stop at each wall, slide along it, and keep driving.
+     */
+    private static final Step[] WALLS = {
+        new Step(1.0, "disabled", 0, 0, 0),
+        new Step(2.5, "strafe right into the side wall", 0.8, 0, 0),
+        new Step(2.0, "drive along the wall, pushing into it", 0.3, -0.8, 0),
+        new Step(1.5, "drive along the wall", 0, -0.8, 0),
+        new Step(3.0, "back into the alliance wall", 0, 0.8, 0),
+        new Step(1.5, "pull away", -0.5, -0.5, 0),
+        new Step(0.5, "stop", 0, 0, 0),
+    };
+
     private final Step[] steps;
     private final GamepadSim pad = new GamepadSim(0);
     private double start = Double.NaN;
@@ -134,6 +149,7 @@ final class SimScript {
             case "radius" -> new SimScript(RADIUS, faults);
             case "faults" -> new SimScript(FAULTS, faults);
             case "auto" -> new SimScript(AUTO, faults);
+            case "walls" -> new SimScript(WALLS, faults);
             default -> throw new IllegalArgumentException("Unknown MINISWERVE_SIM_SCRIPT: " + name);
         };
     }

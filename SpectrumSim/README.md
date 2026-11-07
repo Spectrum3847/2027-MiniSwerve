@@ -12,12 +12,15 @@ robot.
 - Run the sim with `./gradlew run` or VS Code's "Simulate Robot Code" (which launches the same
   `run` task); both put SpectrumSim on the classpath. A launch without it stops at boot saying so
   rather than run with no physics.
-- Environment: `SPECTRUM_SIM_SPEED` (a multiple of real time, or `max`; default `max` for a scripted
+- Environment: `SPECTRUM_SIM_FIELD` (`empty`, the default: the field's walls; `none`: open floor),
+  `SPECTRUM_SIM_START` (robot start on the field, `x,y,degrees`, default `2,2,0`),
+  `SPECTRUM_SIM_SPEED` (a multiple of real time, or `max`; default `max` for a scripted
   run, else real time), `SPECTRUM_SIM_DEVICES=phoenix` (drivetrain on Phoenix's own simulator, on
   the wall clock, not repeatable).
 
 | Folder | What |
 |---|---|
 | `src/main/java/frc/spectrumSim/` | Sim clock, TalonFX model, motor models, the `DesktopSim` implementation |
+| `src/main/java/frc/spectrumSim/field/` | The field: walls and elements, bumper contacts |
 | `src/main/java/frc/spectrumSim/swerve/` | Drivetrain physics and its IO on the models (or on Phoenix's simulator) |
 | `src/test/java/frc/spectrumSim/` | Tests; `tools/` holds `SimReplay` and `TalonCrosscheck` (Gradle tasks `simReplay`, `talonCrosscheck`) |

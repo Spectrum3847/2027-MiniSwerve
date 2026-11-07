@@ -133,7 +133,11 @@ public final class Swerve implements Subsystem {
                                             // shows up as odometry error.
                                             Hardware.MK4iL2.NOMINAL_WHEEL_RADIUS_METERS,
                                             Units.inchesToMeters(
-                                                    SwerveSettings.COG_HEIGHT_INCHES.get())),
+                                                    SwerveSettings.COG_HEIGHT_INCHES.get()),
+                                            Units.inchesToMeters(
+                                                    SwerveSettings.BUMPER_LENGTH_INCHES.get()),
+                                            Units.inchesToMeters(
+                                                    SwerveSettings.BUMPER_WIDTH_INCHES.get())),
                                     simFaults)
                             : null;
             io =
