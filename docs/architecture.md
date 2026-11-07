@@ -245,12 +245,13 @@ How it fits here:
 ## Simulation: rigid body and device faults
 
 The robot's physical description is configuration (Robot Settings), shared by the sim and the real
-robot: `swerve/robotMass` (weigh it ready to play) and `swerve/tireFriction` (tread on carpet).
-They set the traction limit (`Swerve/TractionLimit`: friction x g, less what spins up the drive
-rotors), logged as a reference. Nothing caps acceleration below what the motors can give: the
-generator's `maxDriveAcceleration` defaults to 30 m/s^2, and traction is protected by the drive
-slip current (CTRE's SlipCurrent: the stator and peak torque current where the wheels start to
-slip), to be measured on the robot. Center-of-gravity height (weight transfer, tipping) can join them later.
+robot: `swerve/robotWeightLbs` (weigh it ready to play, in pounds) and `swerve/tireFriction` (tread on carpet).
+They set the traction limit, friction x g, and the drive current at the slip point: the tire's
+share of friction x weight through the gearing plus what spins up the motor rotor, over its torque
+constant. `swerve/tractionUse` (default 0.97) takes just under both: the drive slip current
+(CTRE's SlipCurrent: stator limit and peak torque current, capped by `Hardware`) and the setpoint
+generator's planned acceleration. Logged under `Swerve/Traction/`. At the 55 lb placeholder on MK4i L2 Falcons
+the slip current is about 31 A. Measure the real slip point and raise `tractionUse` toward 1. Center-of-gravity height (weight transfer, tipping) can join them later.
 
 `SwervePhysicsSim` treats the robot as one rigid body. Each wheel pushes along its direction with
 its motor's torque and grips sideways with tire friction (both limited by friction on carpet, about

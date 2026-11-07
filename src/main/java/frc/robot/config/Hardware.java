@@ -65,8 +65,10 @@ public final class Hardware {
     public static final double NOMINAL_TRACK_METERS = Inches.of(14).in(Meters);
 
     /**
-     * Drive slip current (A): CTRE's SlipCurrent, used as both the stator current limit and the
-     * peak torque current, so the wheels stop short of slipping. HARD STOP.
+     * Upper cap on the drive slip current (A). The slip current itself (CTRE's SlipCurrent: stator
+     * limit and peak torque current) is computed from robotMass, tireFriction and the gearing, just
+     * under the point the wheels slip (SwerveConfigs.driveSlipCurrent); this only caps it. HARD
+     * STOP.
      */
     public static final double DRIVE_SLIP_CURRENT_AMPS = 80.0;
 

@@ -105,7 +105,7 @@ public final class Swerve implements Subsystem {
             sim =
                     RunMode.CURRENT == RunMode.Mode.SIM
                             ? new SwervePhysicsSim(
-                                    SwerveSettings.ROBOT_MASS.get(),
+                                    SwerveSettings.robotMassKg(),
                                     SwerveSettings.TIRE_FRICTION.get(),
                                     0.004,
                                     0.01,
@@ -135,12 +135,10 @@ public final class Swerve implements Subsystem {
         thread.setRotationLookahead(SwerveSettings.ROTATION_LOOKAHEAD.get());
         thread.setSetpointGenerator(
                 SwerveSettings.SETPOINT_GENERATOR.get(),
-                SwerveSettings.MAX_DRIVE_ACCELERATION.get(),
+                SwerveConfigs.plannedAccelerationLimit(),
                 SwerveSettings.MAX_STEER_VELOCITY.get(),
                 SwerveSettings.MAX_STEER_ACCELERATION.get());
-        // Traction limit from robotMass and tireFriction (m/s^2): a reference for tuning the drive
-        // slip current. Nothing is limited by it; the motors get full power.
-        Logger.recordOutput("Swerve/TractionLimit", SwerveConfigs.tractionLimit());
+        SwerveConfigs.logTraction();
         if (io.hasHardware()) {
             thread.start();
         }

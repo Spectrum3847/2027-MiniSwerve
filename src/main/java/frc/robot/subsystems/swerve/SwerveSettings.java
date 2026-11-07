@@ -1,5 +1,8 @@
 package frc.robot.subsystems.swerve;
 
+import static org.wpilib.units.Units.Kilograms;
+import static org.wpilib.units.Units.Pounds;
+
 import frc.robot.config.Hardware;
 import frc.spectrumLib.robotsettings.BooleanSetting;
 import frc.spectrumLib.robotsettings.DoubleSetting;
@@ -122,6 +125,13 @@ final class SwerveSettings {
     static final DoubleSetting MAX_STEER_ACCELERATION =
             G.number("maxSteerAcceleration", 300, "rad/s^2", 20, 1000);
 
+    /**
+     * Fraction of the computed traction to use (just under 1): the drive slip current and the
+     * planned acceleration are this much of the computed slip point. Raise toward 1 once the real
+     * slip point is measured; lower if the wheels spin.
+     */
+    static final DoubleSetting TRACTION_USE = G.number("tractionUse", 0.97, "", 0.5, 1.0);
+
     /** Driver top speed and turn rate. */
     static final DoubleSetting MAX_DRIVE_VELOCITY =
             G.number("maxDriveVelocity", 4.0, "m/s", 0.5, 5.0);
@@ -174,10 +184,15 @@ final class SwerveSettings {
             G.number("steerExpoKa", 1.2 / Hardware.MK4iL2.STEER_RATIO, "V/(rps/s)", 0.001, 5);
 
     /**
-     * The robot's weight ready to play: battery and bumpers on (kg). Weigh it. Sets the traction
-     * limit on the robot (with tireFriction) and the sim's physics.
+     * The robot's weight ready to play, battery and bumpers on (lb). Weigh it. Sets the drive slip
+     * current and the sim's physics (with tireFriction). Placeholder until weighed.
      */
-    static final DoubleSetting ROBOT_MASS = G.number("robotMass", 18.0, "kg", 5, 80);
+    static final DoubleSetting ROBOT_WEIGHT_LBS = G.number("robotWeightLbs", 55.0, "lb", 10, 175);
+
+    /** {@link #ROBOT_WEIGHT_LBS} in kilograms. */
+    static double robotMassKg() {
+        return Pounds.of(ROBOT_WEIGHT_LBS.get()).in(Kilograms);
+    }
 
     /**
      * Tire-to-carpet friction coefficient for this tread (about 1.1 for typical FRC tread on
