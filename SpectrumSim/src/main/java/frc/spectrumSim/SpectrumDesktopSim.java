@@ -11,6 +11,9 @@ import frc.spectrumSim.field.SimRobot;
 import frc.spectrumSim.swerve.PhoenixSwerveSim;
 import frc.spectrumSim.swerve.SwerveIOSim;
 import frc.spectrumSim.swerve.SwervePhysicsSim;
+import frc.spectrumSim.vision.CameraSim;
+import org.wpilib.fields.Field;
+import org.wpilib.math.geometry.Transform3d;
 
 /**
  * SpectrumSim's {@link DesktopSim}, found by robot code through {@code ServiceLoader}
@@ -29,6 +32,7 @@ import frc.spectrumSim.swerve.SwervePhysicsSim;
  */
 public final class SpectrumDesktopSim implements DesktopSim {
     private SimClock clock;
+    private SwervePhysicsSim physics;
 
     @Override
     public void init(boolean scripted) {
@@ -48,7 +52,7 @@ public final class SpectrumDesktopSim implements DesktopSim {
 
     @Override
     public SimulatedSwerve swerve(PhoenixSwerveConfig cfg, SwerveSimSpec spec, SimFaults faults) {
-        var physics =
+        physics =
                 new SwervePhysicsSim(
                         MotorModel.byName(spec.driveMotor()),
                         MotorModel.byName(spec.steerMotor()),
@@ -164,6 +168,24 @@ public final class SpectrumDesktopSim implements DesktopSim {
 
     private static SimRobot other(double x, double y, double heading, SimRobot.Behavior b) {
         return new SimRobot(x, y, heading, 60, 0.9, 0.9, 1.1, 4.5, 10, b);
+    }
+
+    @Override
+    public void cameras(Field field, String[] names, Transform3d[] robotToCamera) {
+        if (clock == null || physics == null) {
+            return; // Phoenix's simulator on the wall clock: no repeatable cameras
+        }
+        SwervePhysicsSim truth = physics;
+        for (int i = 0; i < names.length; i++) {
+            var camera =
+                    new CameraSim(
+                            names[i],
+                            robotToCamera[i],
+                            CameraSim.Model.thriftiestCam(),
+                            field,
+                            truth::fieldPose);
+            clock.addStepper(camera::step);
+        }
     }
 
     @Override

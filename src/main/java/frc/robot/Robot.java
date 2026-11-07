@@ -7,6 +7,8 @@ import frc.robot.opmodes.DriveTeleop;
 import frc.robot.opmodes.WheelRadiusUtility;
 import frc.robot.pilot.Pilot;
 import frc.robot.subsystems.swerve.Swerve;
+import frc.robot.subsystems.vision.Vision;
+import frc.robot.subsystems.vision.VisionSettings;
 import frc.spectrumLib.framework.DesktopSim;
 import frc.spectrumLib.framework.OpModeLoop;
 import frc.spectrumLib.framework.RobotLoop;
@@ -19,7 +21,9 @@ import frc.spectrumLib.telemetry.Alert;
 import frc.spectrumLib.telemetry.Telemetry;
 import java.nio.file.Path;
 import org.wpilib.command2.CommandScheduler;
+import org.wpilib.fields.Field;
 import org.wpilib.hardware.hal.RobotMode;
+import org.wpilib.math.geometry.Transform3d;
 import org.wpilib.system.Filesystem;
 import org.wpilib.util.Alert.Level;
 
@@ -47,6 +51,7 @@ public class Robot extends SpectrumRobot {
 
     private final Alert mainThreadPriorityAlert = new Alert("", Level.MEDIUM);
     private final Swerve swerve;
+    private final Vision vision;
     private final SimScript simScript;
     private final DesktopSim desktopSim;
     private final OpModeLoop opModeLoop = new OpModeLoop();
@@ -77,6 +82,15 @@ public class Robot extends SpectrumRobot {
         SimFaults simFaults = RunMode.CURRENT == RunMode.Mode.SIM ? new SimFaults() : null;
         swerve = new Swerve(simFaults, desktopSim);
         simScript = SimScript.fromEnvironment(simFaults);
+        VisionSettings.Camera[] cameras = VisionSettings.cameras();
+        vision = new Vision(cameras);
+        if (desktopSim != null) {
+            Transform3d[] mounts = new Transform3d[cameras.length];
+            for (int i = 0; i < cameras.length; i++) {
+                mounts[i] = cameras[i].robotToCamera();
+            }
+            desktopSim.cameras(Field.loadField(VisionSettings.FIELD), vision.names(), mounts);
+        }
         // The pilot only binds controls; the bindings keep it alive.
         new Pilot(swerve);
         registerOpModes();
@@ -101,6 +115,7 @@ public class Robot extends SpectrumRobot {
         }
         RobotSettings.periodic();
         swerve.updateInputs();
+        vision.periodic();
         opModeLoop.run();
         CommandScheduler.getInstance().run();
         swerve.applyWantedState();

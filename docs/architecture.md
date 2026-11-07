@@ -58,9 +58,36 @@ Logs carry the git SHA, branch and dirty flag.
 
 ## Vision
 
-Our PhotonVision fork will publish a compact, versioned per-camera struct (frame header + per-tag
-bearing, range, corners, margin) instead of PhotonLib's results. The struct definitions live in
-`frc.spectrumLib.vision` and are shared with the fork. Sim produces the same structs.
+PhotonLib's results carry far more than the pose estimator and object tracking use, so Spectrum's
+PhotonVision fork sends only what the robot needs: one compact, versioned binary frame per camera
+frame (`frc.spectrumLib.vision.VisionFrame`, v1), on NetworkTables raw topic
+`/spectrum/vision/<camera>/frames`. Header: version, kind (tags or objects), count, the camera's
+frame counter, capture time on the robot clock (ns). Per tag (50 bytes): id, bearing (yaw, pitch)
+and range to its center in the camera frame, decision margin, the four corners in pixels (for mount
+calibration). Per object (22 bytes): class, confidence, bearing to the box's bottom center, box
+size. `VisionFrame.java` is copied word for word into the fork, which must publish the capture time
+on the robot's clock. A camera with nothing in view still sends empty frames, so silence means
+trouble. The robot does not use PhotonLib.
+
+`Vision` (robot) reads every frame each loop, logs the raw bytes as the AdvantageKit input (50
+bytes a tag: replay decodes exactly what the robot did), decodes them without allocating, counts
+dropped (frame counter gaps) and bad frames, logs latency, and raises an alert when an enabled
+camera goes quiet for 0.5 s. A dead camera drops out; the robot keeps going on odometry and the
+others. Cameras and their mounts are Robot Settings (`vision.<camera>/enabled`, `x`, `y`, `z`,
+`rollDeg`, `pitchDeg`, `yawDeg`); MiniSwerve has none yet, so they are off on the robot and on in
+sim at placeholder mounts (front and back, 0.3 m up, tilted 15 deg up). The tag layout is WPILib
+2027's `Fields.FRC_2026_REBUILT_ANDY_MARK` until the 2027 field is out.
+
+In sim, SpectrumSim's `CameraSim` makes the same frames from the true pose: the field's tags
+through a pinhole camera (Thriftiest Cam: 1280x800, about 70 deg, 60 fps, 25 ms), 0.3 px corner
+noise, bearing from the noisy corners' center as the coprocessor computes it, range noise 0.005 +
+0.005 r^2 m, published on the same topic after the camera's latency, on the sim clock with seeded
+noise. Checked on the drive script against the true geometry: bearing error 0.007 deg median, range
+error 9 cm median (the noise model at 4 to 8 m), latency 31 ms as the robot reads it; two runs give
+identical frames, and replay matches. No lens distortion, blur, occlusion or object detection yet.
+
+Next: TagEKF (pose from these frames, driving the robot, with WPILib's estimator as a logged
+shadow), then the fork publishing `VisionFrame`.
 
 ## Autos and modes
 

@@ -46,6 +46,18 @@ public interface DesktopSim {
      */
     SimulatedSwerve swerve(PhoenixSwerveConfig cfg, SwerveSimSpec spec, SimFaults faults);
 
+    /**
+     * Cameras on the simulated robot: each sends frames ({@code VisionFrame}) on its NetworkTables
+     * topic, seeing the field's AprilTags from the true pose. Call after {@link #swerve}.
+     *
+     * @param names camera names (their topics)
+     * @param robotToCamera each camera's mount on the robot
+     */
+    void cameras(
+            org.wpilib.fields.Field field,
+            String[] names,
+            org.wpilib.math.geometry.Transform3d[] robotToCamera);
+
     /** Starts sim time. Last thing in robot init. */
     void start();
 
