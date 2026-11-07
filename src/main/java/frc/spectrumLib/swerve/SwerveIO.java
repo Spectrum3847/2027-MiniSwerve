@@ -17,9 +17,8 @@ public interface SwerveIO {
      *
      * @param angle module directions (rad)
      * @param velocity wheel speeds (m/s)
-     * @param steerVelocity how fast each module is being turned (rad/s), for coupling compensation
      */
-    void setModules(double[] angle, double[] velocity, double[] steerVelocity);
+    void setModules(double[] angle, double[] velocity);
 
     /** Swerve thread: all motors neutral. */
     void setNeutral();
@@ -38,7 +37,7 @@ public interface SwerveIO {
                 public void waitForSample(SwerveSample out) {}
 
                 @Override
-                public void setModules(double[] angle, double[] velocity, double[] steerVelocity) {}
+                public void setModules(double[] angle, double[] velocity) {}
 
                 @Override
                 public void setNeutral() {}

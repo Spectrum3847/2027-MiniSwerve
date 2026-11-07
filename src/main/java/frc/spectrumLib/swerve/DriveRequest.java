@@ -9,7 +9,9 @@ package frc.spectrumLib.swerve;
  * @param vy left (m/s)
  * @param omega CCW rotation (rad/s)
  * @param fieldRelative vx/vy are field-frame; the thread rotates them by the live gyro heading
- * @param headingOffset field heading minus gyro yaw (rad), so the thread can use fresh yaw
+ * @param headingOffset with {@code useGyro}: field heading minus gyro yaw (rad), so the thread can
+ *     use fresh yaw; without: the field heading itself (rad)
+ * @param useGyro the gyro is good; false makes the thread use {@code headingOffset} as the heading
  */
 public record DriveRequest(
         Mode mode,
@@ -17,7 +19,8 @@ public record DriveRequest(
         double vy,
         double omega,
         boolean fieldRelative,
-        double headingOffset) {
+        double headingOffset,
+        boolean useGyro) {
 
     public enum Mode {
         /** Motors neutral (brake or coast per config). */
@@ -28,6 +31,8 @@ public record DriveRequest(
         X_LOCK
     }
 
-    public static final DriveRequest NEUTRAL = new DriveRequest(Mode.NEUTRAL, 0, 0, 0, false, 0);
-    public static final DriveRequest X_LOCK = new DriveRequest(Mode.X_LOCK, 0, 0, 0, false, 0);
+    public static final DriveRequest NEUTRAL =
+            new DriveRequest(Mode.NEUTRAL, 0, 0, 0, false, 0, true);
+    public static final DriveRequest X_LOCK =
+            new DriveRequest(Mode.X_LOCK, 0, 0, 0, false, 0, true);
 }

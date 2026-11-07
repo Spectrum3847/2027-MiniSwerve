@@ -56,6 +56,11 @@ public final class SwerveIOPhoenix implements SwerveIO {
     private final double metersPerWheelRotation;
     private final SwervePhysicsSim sim;
     private long lastSimNanos;
+
+    /** Whether each module's three devices took their config at boot. */
+    private final boolean[] configured;
+
+    private final boolean pigeonConfigured;
     private long nextDeadlineNanos;
 
     /**
@@ -77,7 +82,8 @@ public final class SwerveIOPhoenix implements SwerveIO {
         steerVelocity = new StatusSignal<?>[n];
         metersPerWheelRotation = 2 * Math.PI * cfg.wheelRadius();
         pigeon = new Pigeon2(cfg.pigeonId(), bus);
-        pigeon.getConfigurator().apply(new Pigeon2Configuration());
+        configured = new boolean[n];
+        pigeonConfigured = apply(() -> pigeon.getConfigurator().apply(new Pigeon2Configuration()));
 
         List<BaseStatusSignal> fastList = new ArrayList<>();
         List<BaseStatusSignal> slowList = new ArrayList<>();
@@ -85,9 +91,12 @@ public final class SwerveIOPhoenix implements SwerveIO {
             encoder[i] = new CANcoder(cfg.encoderIds()[i], bus);
             drive[i] = new TalonFX(cfg.driveIds()[i], bus);
             steer[i] = new TalonFX(cfg.steerIds()[i], bus);
-            encoder[i].getConfigurator().apply(encoderConfig(i));
-            steer[i].getConfigurator().apply(steerConfig(i));
-            drive[i].getConfigurator().apply(driveConfig(i));
+            final int m = i;
+            // Configure all three even if one fails, so each device's state is known.
+            boolean encoderOk = apply(() -> encoder[m].getConfigurator().apply(encoderConfig(m)));
+            boolean steerOk = apply(() -> steer[m].getConfigurator().apply(steerConfig(m)));
+            boolean driveOk = apply(() -> drive[m].getConfigurator().apply(driveConfig(m)));
+            configured[i] = encoderOk && steerOk && driveOk;
 
             drivePosition[i] = drive[i].getPosition();
             driveVelocity[i] = drive[i].getVelocity();
@@ -115,7 +124,11 @@ public final class SwerveIOPhoenix implements SwerveIO {
         fastList.add(yawRate);
         fast = fastList.toArray(new BaseStatusSignal[0]);
         slow = slowList.toArray(new BaseStatusSignal[0]);
-        BaseStatusSignal.setUpdateFrequencyForAll(cfg.signalHz(), fast);
+        for (int t = 0; t < CONFIG_TRIES; t++) {
+            if (BaseStatusSignal.setUpdateFrequencyForAll(cfg.signalHz(), fast).isOK()) {
+                break;
+            }
+        }
         // The steer motors' FusedCANcoder feedback reads these frames: keep them on, or
         // optimizeBusUtilization below turns them off and the steer loop runs blind.
         for (int i = 0; i < n; i++) {
@@ -133,6 +146,18 @@ public final class SwerveIOPhoenix implements SwerveIO {
         if (sim != null) {
             sim.attach(cfg, drive, steer, encoder, pigeon);
         }
+    }
+
+    private static final int CONFIG_TRIES = 5;
+
+    /** Runs a blocking Phoenix call until it returns OK, up to {@link #CONFIG_TRIES} times. */
+    private static boolean apply(java.util.function.Supplier<com.ctre.phoenix6.StatusCode> call) {
+        for (int t = 0; t < CONFIG_TRIES; t++) {
+            if (call.get().isOK()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private CANcoderConfiguration encoderConfig(int i) {
@@ -241,12 +266,14 @@ public final class SwerveIOPhoenix implements SwerveIO {
     }
 
     @Override
-    public void setModules(double[] angle, double[] velocity, double[] steerVelocity) {
+    public void setModules(double[] angle, double[] velocity) {
         double couple = cfg.coupleRatio() / cfg.driveRatio();
         for (int i = 0; i < n; i++) {
             steer[i].setControl(steerRequest.withPosition(angle[i] / (2 * Math.PI)));
             double wheelRps = velocity[i] / metersPerWheelRotation;
-            double steerRps = steerVelocity[i] / (2 * Math.PI);
+            // Coupling feedforward from the module's measured turn rate: a commanded rate would
+            // spike whenever the target angle jumps.
+            double steerRps = steerVelocity[i].getValueAsDouble();
             drive[i].setControl(driveRequest.withVelocity(wheelRps + steerRps * couple));
         }
     }
@@ -275,6 +302,7 @@ public final class SwerveIOPhoenix implements SwerveIO {
             h.steerDeviceTemp[i] = slow[b + 5].getValueAsDouble();
         }
         h.supplyVoltage = slow[6].getValueAsDouble();
-        h.pigeonConnected = pigeon.isConnected();
+        h.pigeonConnected = pigeon.isConnected() && pigeonConfigured;
+        System.arraycopy(configured, 0, h.configured, 0, n);
     }
 }

@@ -9,7 +9,11 @@ package frc.spectrumLib.swerve;
  * copies it again into logged inputs. Nothing here allocates after construction.
  */
 public final class SwerveSample {
-    /** Capture time, seconds, on the robot's monotonic clock (same base as the log). */
+    /**
+     * When the thread read the sample, seconds, on Phoenix's clock ({@code
+     * Utils.getCurrentTimeSeconds}). Matches WPILib's clock in sim; check it on SystemCore before
+     * pairing samples with camera timestamps.
+     */
     public double timestamp;
 
     /** Wheel travel per module (m), with steer coupling removed. */

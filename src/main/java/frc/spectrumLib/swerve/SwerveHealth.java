@@ -10,6 +10,9 @@ public final class SwerveHealth {
     public final boolean[] encoderConnected;
     public boolean pigeonConnected;
 
+    /** Each module's drive, steer and CANcoder took their config at boot. */
+    public final boolean[] configured;
+
     /** Amps. */
     public final double[] driveStatorCurrent;
 
@@ -29,6 +32,7 @@ public final class SwerveHealth {
         driveConnected = new boolean[modules];
         steerConnected = new boolean[modules];
         encoderConnected = new boolean[modules];
+        configured = new boolean[modules];
         driveStatorCurrent = new double[modules];
         steerStatorCurrent = new double[modules];
         driveSupplyCurrent = new double[modules];

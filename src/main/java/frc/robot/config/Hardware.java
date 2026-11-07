@@ -48,7 +48,10 @@ public final class Hardware {
         /** Steer motor rotations per module rotation: 150/7. */
         public static final double STEER_RATIO = 150.0 / 7.0;
 
-        /** Drive rotations the wheel turns per steer rotation (MK4i couples them): 50/14. */
+        /**
+         * Drive motor rotations per module rotation from the steer gearing: 50/14, the same sign in
+         * every drive motor's own frame (as Phoenix's coupling ratio is applied).
+         */
         public static final double COUPLE_RATIO = 50.0 / 14.0;
 
         /** Nominal 4 in wheel (m). The calibrated radius is a Robot Setting. */
@@ -64,7 +67,10 @@ public final class Hardware {
     /** Steer motor stator current limit (A). HARD STOP. */
     public static final double STEER_STATOR_LIMIT_AMPS = 40.0;
 
-    /** Drive motors: left side not inverted, right side inverted (SDS MK4i). HARD STOP. */
+    /**
+     * Drive motors: left side not inverted, right side inverted. Same on every MK4i (Phoenix
+     * Tuner's generated MK4i constants: kInvertLeftSide false, kInvertRightSide true). HARD STOP.
+     */
     private static final boolean[] DRIVE_INVERTED = {false, true, false, true};
 
     /** A copy of {@link #DRIVE_INVERTED}, FL FR BL BR. */
@@ -72,6 +78,10 @@ public final class Hardware {
         return DRIVE_INVERTED.clone();
     }
 
-    /** MK4i steer motors run opposite the module (SDS). HARD STOP. */
+    /**
+     * MK4i steer motors run opposite the module: Clockwise_Positive, CANcoder
+     * CounterClockwise_Positive (Tuner's kSteerMotorReversed true; team 1710's COTS table). HARD
+     * STOP.
+     */
     public static final boolean STEER_INVERTED = true;
 }

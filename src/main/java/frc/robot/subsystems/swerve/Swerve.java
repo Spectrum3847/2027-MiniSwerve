@@ -56,6 +56,8 @@ public final class Swerve implements Subsystem {
     private final double maxAngularVelocity;
     private final Alert disconnectedAlert = new Alert("", Level.HIGH);
     private final Alert threadFaultAlert = new Alert("", Level.HIGH);
+    private final Alert gyroAlert =
+            new Alert("Swerve: Pigeon down, heading from wheels only", Level.HIGH);
 
     private DoubleSupplier teleopX = () -> 0;
     private DoubleSupplier teleopY = () -> 0;
@@ -147,14 +149,14 @@ public final class Swerve implements Subsystem {
             inputs.droppedSamples = queue.dropped();
             inputs.threadFaults = thread.faults();
             inputs.lastThreadFault = thread.lastFault();
+            inputs.staleCycles = thread.staleCycles();
             if (RobotLoop.everySeconds(0.1)) {
                 io.updateHealth(inputs.health);
             }
         }
         Logger.processInputs("Swerve", inputs);
-        boolean gyroOk = inputs.health.pigeonConnected;
         for (int s = 0; s < inputs.count; s++) {
-            odometry.update(inputs.samples[s], gyroOk && inputs.samples[s].allGood);
+            odometry.update(inputs.samples[s], gyroOk() && inputs.samples[s].allGood);
         }
         logOutputs();
     }
@@ -173,7 +175,8 @@ public final class Swerve implements Subsystem {
                                     teleopY.getAsDouble() * maxDriveVelocity,
                                     teleopOmega.getAsDouble() * maxAngularVelocity,
                                     true,
-                                    odometry.yawOffset());
+                                    gyroOk() ? odometry.yawOffset() : odometry.heading(),
+                                    gyroOk());
                 };
         boolean devicesOk = allConnected();
         if (!devicesOk) {
@@ -189,13 +192,23 @@ public final class Swerve implements Subsystem {
                 new double[] {request.vx(), request.vy(), request.omega()});
     }
 
+    /** The Pigeon is connected and configured (logged input). */
+    private boolean gyroOk() {
+        return inputs.health.pigeonConnected;
+    }
+
+    /**
+     * Every module's devices are connected and took their config (logged inputs only, so replay
+     * decides the same way). False until the first health read, so the robot never drives on
+     * devices it has not checked.
+     */
     private boolean allConnected() {
-        if (!io.hasHardware() && inputs.count == 0) {
-            return true; // replay: nothing to check beyond the logged inputs
-        }
         var h = inputs.health;
         for (int i = 0; i < MODULES; i++) {
-            if (!h.driveConnected[i] || !h.steerConnected[i] || !h.encoderConnected[i]) {
+            if (!h.configured[i]
+                    || !h.driveConnected[i]
+                    || !h.steerConnected[i]
+                    || !h.encoderConnected[i]) {
                 return false;
             }
         }
@@ -215,10 +228,14 @@ public final class Swerve implements Subsystem {
         // Heading came from the gyro (false: from the wheels).
         Logger.recordOutput("Swerve/Odometry/UsedGyro", odometry.usedGyro());
         boolean connected = allConnected();
-        disconnectedAlert.setText("Swerve: a drive, steer or CANcoder is disconnected");
+        disconnectedAlert.setText(
+                "Swerve: a drive, steer or CANcoder is disconnected or failed to configure");
         disconnectedAlert.set(!connected);
-        threadFaultAlert.setText("Swerve thread faults: " + inputs.lastThreadFault);
+        if (inputs.threadFaults > 0 && !threadFaultAlert.get()) {
+            threadFaultAlert.setText("Swerve thread faults: " + inputs.lastThreadFault);
+        }
         threadFaultAlert.set(inputs.threadFaults > 0);
+        gyroAlert.set(!gyroOk());
         if (sim != null) {
             // Sim only: the true pose, for judging odometry. Never read by logic.
             Pose2d truth =

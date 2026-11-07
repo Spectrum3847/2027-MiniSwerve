@@ -76,4 +76,13 @@ compensation) and queues the sample. In sim, `SwervePhysicsSim` moves the same P
 
 Sim check: `MINISWERVE_SIM_SCRIPT=drive ./gradlew run -PnoSimGui`, then
 `python tools/swerve_summary.py logs/<log>.wpilog`. On 2026-11-07: 249 Hz, no dropped samples,
-odometry 3 cm mean / 6 cm max from truth over ~16 m; replay reproduces odometry within 1e-7 m.
+odometry 3 cm mean / 5 cm max from truth over ~16 m; replay reproduces odometry, request and
+state exactly.
+
+Safety: the robot drives only when every module's devices are connected and took their config
+(logged health); the thread goes neutral after 5 stale-signal cycles (20 ms) and on any fault; with
+the Pigeon down, field-relative uses the odometry (wheel) heading.
+
+Open on the robot: CAN bus load at 250 Hz on SystemCore's bus (8 Talons + 4 CANcoders + Pigeon;
+may need 200 Hz or a CANivore), whether Phoenix's clock matches WPILib's on SystemCore, and the
+four CANcoder magnet offsets. MK4i inverts, ratios and coupling are fixed facts (see `Hardware`).

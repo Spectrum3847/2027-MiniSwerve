@@ -1,6 +1,5 @@
 package frc.spectrumLib.swerve;
 
-import java.util.Arrays;
 import org.littletonrobotics.junction.LogTable;
 import org.littletonrobotics.junction.inputs.LoggableInputs;
 
@@ -28,6 +27,9 @@ public final class SwerveInputs implements LoggableInputs {
 
     public String lastThreadFault = "";
 
+    /** Swerve thread cycles in a row with stale or failed signals (it goes neutral at 5). */
+    public long staleCycles;
+
     public SwerveInputs(int modules, int maxSamplesPerLoop) {
         this.modules = modules;
         samples = new SwerveSample[maxSamplesPerLoop];
@@ -37,6 +39,8 @@ public final class SwerveInputs implements LoggableInputs {
         health = new SwerveHealth(modules);
     }
 
+    // Allocates its arrays each main loop (100 Hz, not the 250 Hz thread): AdvantageKit copies
+    // what it is given anyway, and the arrays must match this loop's sample count.
     @Override
     public void toLog(LogTable t) {
         int n = count;
@@ -86,6 +90,10 @@ public final class SwerveInputs implements LoggableInputs {
         t.put("Health/SteerConnected", h.steerConnected);
         t.put("Health/EncoderConnected", h.encoderConnected);
         t.put("Health/PigeonConnected", h.pigeonConnected);
+        // Each module's devices took their config at boot.
+        t.put("Health/Configured", h.configured);
+        // Swerve thread cycles in a row with stale or failed signals.
+        t.put("Thread/StaleCycles", staleCycles);
         // Motor currents (A).
         t.put("Health/DriveStatorCurrent", h.driveStatorCurrent);
         t.put("Health/SteerStatorCurrent", h.steerStatorCurrent);
@@ -135,6 +143,8 @@ public final class SwerveInputs implements LoggableInputs {
         copy(t.get("Health/SteerConnected", h.steerConnected), h.steerConnected);
         copy(t.get("Health/EncoderConnected", h.encoderConnected), h.encoderConnected);
         h.pigeonConnected = t.get("Health/PigeonConnected", h.pigeonConnected);
+        copy(t.get("Health/Configured", h.configured), h.configured);
+        staleCycles = t.get("Thread/StaleCycles", staleCycles);
         copy(t.get("Health/DriveStatorCurrent", h.driveStatorCurrent), h.driveStatorCurrent);
         copy(t.get("Health/SteerStatorCurrent", h.steerStatorCurrent), h.steerStatorCurrent);
         copy(t.get("Health/DriveSupplyCurrent", h.driveSupplyCurrent), h.driveSupplyCurrent);
@@ -153,11 +163,5 @@ public final class SwerveInputs implements LoggableInputs {
 
     private static void copy(boolean[] from, boolean[] to) {
         System.arraycopy(from, 0, to, 0, Math.min(from.length, to.length));
-    }
-
-    /** Clears the per-loop samples (for a loop where none arrived). */
-    public void clearSamples() {
-        count = 0;
-        Arrays.fill(samples[0].distance, 0.0);
     }
 }

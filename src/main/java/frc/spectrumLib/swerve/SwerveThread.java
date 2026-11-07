@@ -24,11 +24,14 @@ public final class SwerveThread {
     private volatile long faults;
     private volatile String lastFault = "";
     private volatile long cycles;
+    private volatile long staleCycles;
+
+    /** Stale-signal cycles in a row before the thread stops driving (20 ms at 250 Hz). */
+    static final int MAX_STALE_CYCLES = 5;
 
     private final SwerveSample sample;
     private final double[] chassis = new double[3];
     private final double[] lastTargetAngle;
-    private final double[] steerVelocity;
     private boolean haveTargets;
     private double lastTimestamp;
 
@@ -57,7 +60,6 @@ public final class SwerveThread {
         int n = mx.length;
         sample = new SwerveSample(n);
         lastTargetAngle = new double[n];
-        steerVelocity = new double[n];
     }
 
     /** Starts the loop on its own daemon thread. Call once, during robot init. */
@@ -89,6 +91,11 @@ public final class SwerveThread {
         return lastFault;
     }
 
+    /** Cycles in a row with stale or failed signals. */
+    public long staleCycles() {
+        return staleCycles;
+    }
+
     public long cycles() {
         return cycles;
     }
@@ -102,7 +109,9 @@ public final class SwerveThread {
         while (running) {
             try {
                 io.waitForSample(sample);
-                computeTargets(request);
+                staleCycles = sample.allGood ? 0 : staleCycles + 1;
+                // Never steer against frozen readings: after a few stale cycles, go neutral.
+                computeTargets(staleCycles >= MAX_STALE_CYCLES ? DriveRequest.NEUTRAL : request);
                 System.arraycopy(sample.targetAngle, 0, lastTargetAngle, 0, lastTargetAngle.length);
                 lastTimestamp = sample.timestamp;
                 queue.offer(sample);
@@ -110,6 +119,13 @@ public final class SwerveThread {
             } catch (RuntimeException e) {
                 faults++;
                 lastFault = e.toString();
+                // Do not keep the last setpoint, and do not spin if every cycle throws.
+                try {
+                    io.setNeutral();
+                } catch (RuntimeException ignored) {
+                    // Already counted the fault; nothing more to do this cycle.
+                }
+                java.util.concurrent.locks.LockSupport.parkNanos((long) (periodSeconds * 1e9));
             }
         }
         io.setNeutral();
@@ -147,7 +163,9 @@ public final class SwerveThread {
                 double vx = r.vx();
                 double vy = r.vy();
                 if (r.fieldRelative()) {
-                    double heading = sample.yaw + r.headingOffset();
+                    // With the gyro down, the main loop sends the odometry heading itself.
+                    double heading =
+                            r.useGyro() ? sample.yaw + r.headingOffset() : r.headingOffset();
                     double c = Math.cos(heading);
                     double s = Math.sin(heading);
                     // Field to robot frame: rotate by -heading.
@@ -164,10 +182,7 @@ public final class SwerveThread {
         }
         SwerveMath.optimize(velocity, angle, sample.angle);
         SwerveMath.cosineScale(velocity, angle, sample.angle);
-        for (int i = 0; i < n; i++) {
-            steerVelocity[i] = SwerveMath.angleModulus(angle[i] - lastTargetAngle[i]) / dt;
-        }
-        io.setModules(angle, velocity, steerVelocity);
+        io.setModules(angle, velocity);
     }
 
     /** The sample being filled; for tests. */
