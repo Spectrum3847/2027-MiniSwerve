@@ -42,6 +42,17 @@ class WheelLoadsTest {
     }
 
     @Test
+    void oneCornerUpTheOtherThreeBalanceExactly() {
+        var l = new WheelLoads(MX, MY);
+        l.update(MASS, 0.3, 4.5, 4.5); // hard diagonal: front-left lifts
+        assertTrue(l.lifted(0));
+        assertEquals(0, l.load(0), 1e-9);
+        assertEquals(110.25, l.load(1), 1e-6);
+        assertEquals(110.25, l.load(2), 1e-6);
+        assertEquals(270.0, l.load(3), 1e-6);
+    }
+
+    @Test
     void pastTheTippingPointTheFrontWheelsLift() {
         var l = new WheelLoads(MX, MY);
         // Tips when a / g > half wheelbase / height: 0.25 / 0.3 g is about 8.2 m/s^2.

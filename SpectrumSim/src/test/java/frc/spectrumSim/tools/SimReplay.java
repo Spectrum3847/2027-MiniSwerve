@@ -98,7 +98,7 @@ public final class SimReplay {
         DEFAULTS.put("gearEff", 0.9);
         DEFAULTS.put("gearDrag", 0.1);
         DEFAULTS.put("inertia", 0.6);
-        DEFAULTS.put("cog", 0.25);
+        DEFAULTS.put("cog", 0.152);
         DEFAULTS.put("latency", 0.0);
         DEFAULTS.put("realBattery", 1.0);
         DEFAULTS.put("phoenix", 0.0);

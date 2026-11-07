@@ -99,7 +99,7 @@ public final class SwervePhysicsSim {
     private static final double WHEEL_INERTIA = 0.0005;
 
     /** Center of gravity above the floor (m); sets weight transfer. */
-    private double cogHeight = 0.2;
+    private double cogHeight = 0.152;
 
     /** Net tire force over mass last step (m/s^2, robot frame): what shifts the wheel loads. */
     private double lastAx;
@@ -177,6 +177,10 @@ public final class SwervePhysicsSim {
         this.mx = mx.clone();
         this.my = my.clone();
         loads = new WheelLoads(mx, my);
+        loadLog = new double[mx.length];
+        liftLog = new boolean[mx.length];
+        loadSnapshot = new double[mx.length];
+        liftSnapshot = new boolean[mx.length];
     }
 
     /** Called by the IO once its simulated devices exist. */
@@ -373,6 +377,12 @@ public final class SwervePhysicsSim {
                         : batteryOverride;
         lastAx = fx / robotMassKg;
         lastAy = fy / robotMassKg;
+        synchronized (loadSnapshot) {
+            for (int i = 0; i < n; i++) {
+                loadSnapshot[i] = loads.load(i);
+                liftSnapshot[i] = loads.lifted(i);
+            }
+        }
         // Rigid body in the robot frame (the frame turns with the robot).
         vx += (fx / robotMassKg + omega * vy) * dt;
         vy += (fy / robotMassKg - omega * vx) * dt;
@@ -469,8 +479,12 @@ public final class SwervePhysicsSim {
         return f != null && f.unpowered(device);
     }
 
-    private final double[] loadLog = new double[4];
-    private final boolean[] liftLog = new boolean[4];
+    // Loads as of the end of the last step, copied there so the main thread never sees one half
+    // written (Phoenix mode steps on another thread).
+    private final double[] loadLog;
+    private final boolean[] liftLog;
+    private final double[] loadSnapshot;
+    private final boolean[] liftSnapshot;
 
     /**
      * Main thread: logs the true pose and odometry's error against it. Sim truth for judging
@@ -487,9 +501,9 @@ public final class SwervePhysicsSim {
         // Odometry position error against truth (m).
         org.littletonrobotics.junction.Logger.recordOutput(
                 "Sim/OdometryError", Math.hypot(odometryX - x, odometryY - y));
-        for (int i = 0; i < loadLog.length; i++) {
-            loadLog[i] = loads.load(i);
-            liftLog[i] = loads.lifted(i);
+        synchronized (loadSnapshot) {
+            System.arraycopy(loadSnapshot, 0, loadLog, 0, loadLog.length);
+            System.arraycopy(liftSnapshot, 0, liftLog, 0, liftLog.length);
         }
         // Each wheel's load on the floor in the sim, FL FR BL BR (N): weight transfer.
         org.littletonrobotics.junction.Logger.recordOutput("Sim/WheelLoads", loadLog);
@@ -546,6 +560,8 @@ public final class SwervePhysicsSim {
 
     /** Puts the true robot at a pose (sim setup). */
     public void resetTruth(double x, double y, double heading) {
+        lastAx = 0; // no acceleration carried across a reset
+        lastAy = 0;
         truthX = x;
         truthY = y;
         truthHeading = heading;

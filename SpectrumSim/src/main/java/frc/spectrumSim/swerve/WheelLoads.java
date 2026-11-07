@@ -7,9 +7,10 @@ package frc.spectrumSim.swerve;
  * lifts wheels and tips.
  *
  * <p>Quasi-static and rigid: the chassis does not flex or tilt, so loads follow the acceleration at
- * once. With wheels in a symmetric layout (any rectangle) the four-wheel split is exact; a wheel
- * whose load would go negative is lifted (load 0) and the robot is starting to tip. Tipping itself
- * (the body rotating up) is not modeled yet.
+ * once. Exact for wheels laid out symmetrically about the center of gravity (any centered
+ * rectangle, every swerve we build). A wheel whose load would go negative is lifted (load 0) and
+ * the robot is starting to tip: with one wheel up the other three are solved exactly, with more up
+ * the rest share the weight. Tipping itself (the body rotating up) is not modeled yet.
  */
 final class WheelLoads {
     private static final double GRAVITY = 9.81;
@@ -60,7 +61,17 @@ final class WheelLoads {
             load[i] = Math.max(0, l);
             total += load[i];
         }
-        // A lifted wheel's (negative) share is carried by the rest: the weight is still all there.
+        int up = 0, liftedWheel = -1;
+        for (int i = 0; i < n; i++) {
+            if (lifted[i]) {
+                up++;
+                liftedWheel = i;
+            }
+        }
+        if (up == 1 && n == 4 && solveThree(liftedWheel, massKg, cogHeight, ax, ay)) {
+            return;
+        }
+        // Several wheels up: the rest share the weight, in proportion to what they carried.
         if (total > 0) {
             double scale = massKg * GRAVITY / total;
             for (int i = 0; i < n; i++) {
@@ -68,6 +79,41 @@ final class WheelLoads {
             }
         }
     }
+
+    /**
+     * One wheel up: the three still down carry the weight and both tipping moments exactly (three
+     * equations, three loads). False if that would need a negative load (a second wheel lifts).
+     */
+    private boolean solveThree(int up, double massKg, double cogHeight, double ax, double ay) {
+        int[] k = three;
+        int c = 0;
+        for (int i = 0; i < 4; i++) {
+            if (i != up) {
+                k[c++] = i;
+            }
+        }
+        // Rows: sum N = W, sum N mx = -m h ax, sum N my = -m h ay. Cramer's rule.
+        double w = massKg * GRAVITY, px = -massKg * cogHeight * ax, py = -massKg * cogHeight * ay;
+        double a1 = mx[k[0]], a2 = mx[k[1]], a3 = mx[k[2]];
+        double b1 = my[k[0]], b2 = my[k[1]], b3 = my[k[2]];
+        double det = (a2 * b3 - a3 * b2) - (a1 * b3 - a3 * b1) + (a1 * b2 - a2 * b1);
+        if (Math.abs(det) < 1e-12) {
+            return false;
+        }
+        double n1 = (w * (a2 * b3 - a3 * b2) - px * (b3 - b2) + py * (a3 - a2)) / det;
+        double n2 = (-w * (a1 * b3 - a3 * b1) + px * (b3 - b1) - py * (a3 - a1)) / det;
+        double n3 = (w * (a1 * b2 - a2 * b1) - px * (b2 - b1) + py * (a2 - a1)) / det;
+        if (n1 < 0 || n2 < 0 || n3 < 0) {
+            return false;
+        }
+        load[k[0]] = n1;
+        load[k[1]] = n2;
+        load[k[2]] = n3;
+        load[up] = 0;
+        return true;
+    }
+
+    private final int[] three = new int[3];
 
     /** Wheel {@code i}'s load on the floor (N). */
     double load(int i) {
