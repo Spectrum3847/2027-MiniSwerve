@@ -35,7 +35,7 @@ import java.util.TreeMap;
  * <p>Over 400 lines: ported whole from FM Params; to be split into layer reading, saving and
  * problems.
  *
- * <p>Index: Locations · register · layers/read · applyLive · prepareSave/write · problems
+ * <p>Index: Locations | register | layers/read | applyLive | prepareSave/write | problems
  */
 final class SettingStore {
     /**
