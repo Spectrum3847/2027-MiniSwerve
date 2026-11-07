@@ -45,4 +45,4 @@ jobs:
         with:
           persist-credentials: false
       - name: No com.ctre.phoenix6.swerve imports
-        run: "! grep -rn 'com\.ctre\.phoenix6\.swerve' src"
+        run: '! grep -rnE "com\.ctre\.phoenix6\.swerve" src'

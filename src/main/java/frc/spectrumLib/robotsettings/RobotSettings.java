@@ -77,7 +77,7 @@ import org.wpilib.util.Alert.Level;
  * that differs from the git layers to the robot-local folder. Disabled only; the file write runs on
  * a background thread and reaches the disk before it replaces the old file.
  *
- * <p>Main thread only.
+ * <p>Main thread only. Index: group · start · periodic · saving · report/manifest
  */
 public final class RobotSettings {
     private RobotSettings() {}

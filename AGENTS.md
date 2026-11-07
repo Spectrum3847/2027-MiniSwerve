@@ -14,7 +14,8 @@ SystemCore image), and the testbed for the 2027 competition code. Read this file
 - Java 25 from the WPILib 2027 install: `export JAVA_HOME=/c/Users/Public/wpilib/<2027 folder>/jdk`.
 - `./gradlew build` compiles, applies Spotless (Google Java Format AOSP) and runs tests.
 - `./gradlew run -PnoSimGui` runs the sim headless and writes `logs/*.wpilog`.
-- Replay: `MINISWERVE_REPLAY=1 ./gradlew run -PnoSimGui` (AdvantageKit picks the log).
+- Replay: `AKIT_LOG_PATH=logs/<log>.wpilog MINISWERVE_REPLAY=1 ./gradlew run -PnoSimGui`. Always
+  set the path: without it AdvantageKit picks the newest log, which may be a `_replay` output.
 - Compiling is not verification. A behavior change needs a sim run, a replay comparison or a bench
   test, written up under "How I verified" in the PR.
 - WPILib is 2027 alpha (`org.wpilib.*`). Don't guess 2026 names; check the jars (`javap`) or this

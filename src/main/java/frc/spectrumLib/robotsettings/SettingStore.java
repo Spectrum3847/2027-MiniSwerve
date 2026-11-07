@@ -31,6 +31,11 @@ import java.util.TreeMap;
  * The settings registry: resolves each setting through the file layers, applies live changes, and
  * prepares saves. No WPILib or AdvantageKit here, so the precedence rules can be unit tested;
  * {@link RobotSettings} wires it to the logger, alerts and the transport.
+ *
+ * <p>Over 400 lines: ported whole from FM Params; to be split into layer reading, saving and
+ * problems.
+ *
+ * <p>Index: Locations � register � layers/read � applyLive � prepareSave/write � problems
  */
 final class SettingStore {
     /**
@@ -125,13 +130,13 @@ final class SettingStore {
     // ── Declaring and resolving ─────────────────────────────────────────────
 
     /** Points the store at its files and re-resolves every setting already declared. */
-    void configure(Locations s) {
-        locations = s;
-        if (s.localDir() != null) {
-            deleteStaleTemps(s.localDir());
+    void configure(Locations loc) {
+        locations = loc;
+        if (loc.localDir() != null) {
+            deleteStaleTemps(loc.localDir());
         }
-        if (s.legacyDir() != null) {
-            deleteStaleTemps(s.legacyDir());
+        if (loc.legacyDir() != null) {
+            deleteStaleTemps(loc.legacyDir());
         }
         layers.clear();
         problems.keySet()
