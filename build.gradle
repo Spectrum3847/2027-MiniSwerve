@@ -230,6 +230,8 @@ createVersionFile.dependsOn(eventDeploy)
 // Style Guide: https://source.android.com/docs/setup/contribute/code-style#java-style-rules
 project.compileJava.dependsOn(spotlessApply)
 spotless {
+    // LF everywhere, so a Windows checkout with CRLF files never fails the format check in CI.
+    lineEndings = com.diffplug.spotless.LineEnding.UNIX
     java {
         target fileTree('.') {
             include '**/*.java'

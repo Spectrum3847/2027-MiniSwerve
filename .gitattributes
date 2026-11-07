@@ -1,4 +1,12 @@
+# Everything is stored and checked out with LF, on every OS, whatever core.autocrlf says.
 * text=auto eol=lf
+# Windows-only scripts need CRLF to run.
 *.bat text eol=crlf
+*.cmd text eol=crlf
+# Binary files: never touch.
 *.jar binary
 *.glb binary
+*.png binary
+*.jpg binary
+*.wpilog binary
+*.hoot binary
