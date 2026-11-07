@@ -21,6 +21,7 @@ public final class SwerveOdometry {
     private final double[] twist = new double[3];
     private final double[] residual;
     private int modulesUsed;
+    private final double[] robotVelocity = new double[3];
 
     private double x;
     private double y;
@@ -28,6 +29,7 @@ public final class SwerveOdometry {
     private double yawOffset; // heading = yaw + yawOffset
     private boolean primed;
     private double lastYaw;
+    private double lastTimestamp;
     private double slip;
     private boolean usedGyro;
 
@@ -107,6 +109,13 @@ public final class SwerveOdometry {
             // comes back.
             yawOffset += twist[2] - SwerveMath.angleModulus(s.yaw - lastYaw);
         }
+        double sampleDt = s.timestamp - lastTimestamp;
+        lastTimestamp = s.timestamp;
+        if (sampleDt > 1e-4) {
+            robotVelocity[0] = twist[0] / sampleDt;
+            robotVelocity[1] = twist[1] / sampleDt;
+            robotVelocity[2] = dTheta / sampleDt;
+        }
         lastYaw = s.yaw;
         // Integrate the robot-frame twist along an arc (Pose2d.exp), then rotate into the field.
         double sin = Math.sin(dTheta);
@@ -157,6 +166,11 @@ public final class SwerveOdometry {
      */
     public double[] moduleSlip() {
         return residual;
+    }
+
+    /** Measured robot-frame velocity over the last sample: vx, vy (m/s), omega (rad/s). */
+    public double[] robotVelocity() {
+        return robotVelocity;
     }
 
     /** Modules used in the last sample's fit. */

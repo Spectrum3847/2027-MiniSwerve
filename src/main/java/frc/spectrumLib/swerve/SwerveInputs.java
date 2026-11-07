@@ -49,6 +49,7 @@ public final class SwerveInputs implements LoggableInputs {
         double[] yawRate = new double[n];
         boolean[] good = new boolean[n];
         boolean[] gyroOk = new boolean[n];
+        double[] fraction = new double[n];
         boolean[] moduleOk = new boolean[n * modules];
         double[] distance = new double[n * modules];
         double[] velocity = new double[n * modules];
@@ -62,6 +63,7 @@ public final class SwerveInputs implements LoggableInputs {
             yawRate[s] = x.angularVelocityZWorld;
             good[s] = x.allGood;
             gyroOk[s] = x.gyroOk;
+            fraction[s] = x.setpointFraction;
             System.arraycopy(x.moduleOk, 0, moduleOk, s * modules, modules);
             System.arraycopy(x.distance, 0, distance, s * modules, modules);
             System.arraycopy(x.velocity, 0, velocity, s * modules, modules);
@@ -79,6 +81,8 @@ public final class SwerveInputs implements LoggableInputs {
         t.put("Samples/AllGood", good);
         // Gyro signals fresh and OK, per sample.
         t.put("Samples/GyroOk", gyroOk);
+        // Fraction of the request the setpoint generator allowed, per sample (1 = not limited).
+        t.put("Samples/SetpointFraction", fraction);
         // Each module's drive and steer signals fresh and OK, [sample * 4 + module].
         t.put("Samples/ModuleOk", moduleOk);
         // Wheel travel per sample and module (m), [sample * 4 + module].
@@ -134,6 +138,7 @@ public final class SwerveInputs implements LoggableInputs {
         double[] yawRate = t.get("Samples/AngularVelocityZWorld", new double[n]);
         boolean[] good = t.get("Samples/AllGood", new boolean[n]);
         boolean[] gyroOk = t.get("Samples/GyroOk", good);
+        double[] fraction = t.get("Samples/SetpointFraction", new double[n]);
         boolean[] moduleOk = t.get("Samples/ModuleOk", new boolean[n * modules]);
         double[] distance = t.get("Samples/Distance", new double[n * modules]);
         double[] velocity = t.get("Samples/Velocity", new double[n * modules]);
@@ -147,6 +152,7 @@ public final class SwerveInputs implements LoggableInputs {
             x.angularVelocityZWorld = yawRate[s];
             x.allGood = good[s];
             x.gyroOk = gyroOk[s];
+            x.setpointFraction = s < fraction.length ? fraction[s] : 1.0;
             System.arraycopy(moduleOk, s * modules, x.moduleOk, 0, modules);
             System.arraycopy(distance, s * modules, x.distance, 0, modules);
             System.arraycopy(velocity, s * modules, x.velocity, 0, modules);

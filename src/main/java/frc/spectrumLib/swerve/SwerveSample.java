@@ -40,6 +40,12 @@ public final class SwerveSample {
     /** The gyro's yaw and yaw rate were fresh and OK in this sample. */
     public boolean gyroOk;
 
+    /**
+     * Fraction of the request the setpoint generator allowed this cycle (1 = not limited). Shows
+     * how often maxDriveAcceleration is holding the robot back.
+     */
+    public double setpointFraction = 1.0;
+
     /** Commanded module direction this cycle (rad). */
     public final double[] targetAngle;
 
@@ -66,6 +72,7 @@ public final class SwerveSample {
         angularVelocityZWorld = from.angularVelocityZWorld;
         allGood = from.allGood;
         gyroOk = from.gyroOk;
+        setpointFraction = from.setpointFraction;
         System.arraycopy(from.moduleOk, 0, moduleOk, 0, moduleOk.length);
         System.arraycopy(from.distance, 0, distance, 0, distance.length);
         System.arraycopy(from.velocity, 0, velocity, 0, velocity.length);

@@ -178,6 +178,7 @@ public final class SwerveThread {
         System.arraycopy(lastTargetAngle, 0, angle, 0, n);
         java.util.Arrays.fill(wheelForce, 0.0);
         java.util.Arrays.fill(steerVelocity, 0.0);
+        sample.setpointFraction = 1.0;
         // Robot-frame rotation of the request: cos/sin of -heading (identity if robot-relative).
         double c = 1.0;
         double s = 0.0;
@@ -225,6 +226,7 @@ public final class SwerveThread {
                             maxWheelVelocity,
                             maxDriveAcceleration,
                             maxSteerVelocity);
+                    sample.setpointFraction = generator.lastFraction();
                     System.arraycopy(generator.angle(), 0, angle, 0, n);
                     System.arraycopy(generator.velocity(), 0, velocity, 0, n);
                     System.arraycopy(generator.steerVelocity(), 0, steerVelocity, 0, n);

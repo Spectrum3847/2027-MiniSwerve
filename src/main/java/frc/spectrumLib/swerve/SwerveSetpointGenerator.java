@@ -42,6 +42,8 @@ public final class SwerveSetpointGenerator {
     private final double[] dy;
     private final double[] chassis = new double[3];
 
+    private double lastFraction = 1.0;
+
     // Outputs.
     private final double[] velocity;
     private final double[] angle;
@@ -130,6 +132,7 @@ public final class SwerveSetpointGenerator {
             }
             s = lo;
         }
+        lastFraction = s;
         pvx += s * (vx - pvx);
         pvy += s * (vy - pvy);
         pw += s * (omega - pw);
@@ -173,6 +176,14 @@ public final class SwerveSetpointGenerator {
             }
         }
         return true;
+    }
+
+    /**
+     * Fraction of the way from last setpoint to the request taken this cycle: 1 when not limited,
+     * below 1 when acceleration limited the step.
+     */
+    public double lastFraction() {
+        return lastFraction;
     }
 
     /** Wheel speeds (m/s), signed: negative drives the wheel backward. */

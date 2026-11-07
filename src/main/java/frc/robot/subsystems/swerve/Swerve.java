@@ -208,16 +208,21 @@ public final class Swerve implements Subsystem {
                         double y = teleopY.getAsDouble() * maxDriveVelocity;
                         double turn = teleopOmega.getAsDouble();
                         double omega = turn * maxAngularVelocity;
+                        // Always computed and logged, so a drive session shows what heading hold
+                        // would do before anyone turns it on; added only when enabled.
+                        double hold =
+                                headingHold.calculate(
+                                        headingHoldConfig,
+                                        Math.abs(turn) > 0.02,
+                                        Math.hypot(x, y),
+                                        odometry.heading(),
+                                        lastYawRate(),
+                                        RobotLoop.periodSeconds());
                         if (headingHoldEnabled) {
-                            omega +=
-                                    headingHold.calculate(
-                                            headingHoldConfig,
-                                            Math.abs(turn) > 0.02,
-                                            Math.hypot(x, y),
-                                            odometry.heading(),
-                                            lastYawRate(),
-                                            RobotLoop.periodSeconds());
+                            omega += hold;
                         }
+                        // Heading hold's correction is being applied (false: shadow only).
+                        Logger.recordOutput("Swerve/HeadingHold/Applied", headingHoldEnabled);
                         yield DriveRequest.velocity(
                                 x * Math.cos(fwd) - y * Math.sin(fwd),
                                 x * Math.sin(fwd) + y * Math.cos(fwd),
@@ -273,6 +278,9 @@ public final class Swerve implements Subsystem {
         Logger.recordOutput("Swerve/Modules/Slip", odometry.moduleSlip());
         // Modules used by odometry in the last sample.
         Logger.recordOutput("Swerve/Odometry/ModulesUsed", odometry.modulesUsed());
+        // Measured robot-frame chassis velocity from the last sample: vx, vy (m/s), omega (rad/s).
+        // Compare with Swerve/Request/Velocity to tune lookahead and acceleration limits.
+        Logger.recordOutput("Swerve/Odometry/RobotVelocity", odometry.robotVelocity());
         // Wheel-and-gyro odometry pose (field frame).
         Logger.recordOutput(
                 "Swerve/Odometry/Pose",
