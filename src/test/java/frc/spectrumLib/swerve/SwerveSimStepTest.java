@@ -55,6 +55,7 @@ class SwerveSimStepTest {
                         5.84 / 304,
                         true,
                         steerVoltage,
+                        0,
                         0);
         var physics =
                 new SwervePhysicsSim(
@@ -129,6 +130,7 @@ class SwerveSimStepTest {
                         5.84 / 304,
                         true,
                         true,
+                        0,
                         0);
         var physics =
                 new SwervePhysicsSim(

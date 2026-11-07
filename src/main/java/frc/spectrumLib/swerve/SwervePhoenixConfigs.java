@@ -42,6 +42,10 @@ final class SwervePhoenixConfigs {
         c.MotionMagic.MotionMagicExpo_kA = cfg.steerExpoKa();
         c.CurrentLimits.StatorCurrentLimit = cfg.steerStatorCurrentLimit();
         c.CurrentLimits.StatorCurrentLimitEnable = true;
+        if (cfg.steerSupplyCurrentLimit() > 0) {
+            c.CurrentLimits.SupplyCurrentLimit = cfg.steerSupplyCurrentLimit();
+            c.CurrentLimits.SupplyCurrentLimitEnable = true;
+        }
         c.TorqueCurrent.PeakForwardTorqueCurrent = cfg.steerStatorCurrentLimit();
         c.TorqueCurrent.PeakReverseTorqueCurrent = -cfg.steerStatorCurrentLimit();
         c.Slot0 = slot0(cfg.steer());

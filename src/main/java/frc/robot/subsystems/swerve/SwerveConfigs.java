@@ -65,7 +65,8 @@ final class SwerveConfigs {
                 Hardware.MK4iL2.DRIVE_KT,
                 SwerveSettings.TIMESYNC.get(),
                 SwerveSettings.steerVoltage(),
-                0);
+                Hardware.DRIVE_SUPPLY_LIMIT_AMPS,
+                Hardware.STEER_SUPPLY_LIMIT_AMPS);
     }
 
     /**
