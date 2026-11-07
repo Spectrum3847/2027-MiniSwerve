@@ -42,6 +42,15 @@ public final class SwervePhysicsSim {
     private double batteryOpenVolts = 12.7;
 
     /**
+     * Open-circuit voltage lost per amp-hour drawn: FM's TXMAN1 matches lost 0.6 to 1.6 V on about
+     * 1.1 Ah each (open-circuit from voltage plus 0.012 ohm times current, first vs last 10 s).
+     */
+    private static final double VOLTS_PER_AMP_HOUR = 0.8;
+
+    /** Charge drawn from the battery so far (Ah). */
+    private double chargeUsedAh;
+
+    /**
      * Battery internal plus wiring resistance (ohm); voltage sags by this times total current.
      * Fitted from FM's 13 TXMAN1 matches (tools/battery_fit.py): 0.011 to 0.014, median 0.012.
      */
@@ -394,10 +403,15 @@ public final class SwervePhysicsSim {
                     batteryVolts,
                     !dead(encoderName[i]));
         }
+        chargeUsedAh += supplyAmps * dt / 3600;
         // The battery sags under everything drawn this step (drive and steer).
         batteryVolts =
                 Double.isNaN(batteryOverride)
-                        ? Math.max(6.0, batteryOpenVolts - batteryResistance * supplyAmps)
+                        ? Math.max(
+                                6.0,
+                                batteryOpenVolts
+                                        - VOLTS_PER_AMP_HOUR * chargeUsedAh
+                                        - batteryResistance * supplyAmps)
                         : batteryOverride;
         lastAx = fx / robotMassKg;
         lastAy = fy / robotMassKg;

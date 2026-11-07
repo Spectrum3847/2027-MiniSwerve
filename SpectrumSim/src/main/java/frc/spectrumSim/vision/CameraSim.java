@@ -57,11 +57,14 @@ public final class CameraSim {
             double cx,
             double cy,
             double fps,
-            double latencySeconds,
+            double latencySeconds, // median capture-to-robot; the spread is FM's measured one
             double pixelNoise) {
-        /** Arducam/Thriftiest Cam at 1280x800, about 70 deg across, 60 fps, 25 ms to the robot. */
+        /**
+         * Arducam/Thriftiest Cam at 1280x800, about 70 deg across, 60 fps; latency as measured on
+         * FM's Orin (median 15.7 ms, spread from the logs).
+         */
         public static Model thriftiestCam() {
-            return new Model(1280, 800, 915, 915, 640, 400, 60, 0.025, 0.3);
+            return new Model(1280, 800, 915, 915, 640, 400, 60, 0.0157, 0.3);
         }
     }
 
@@ -115,6 +118,33 @@ public final class CameraSim {
         return name;
     }
 
+    /**
+     * Capture to robot latency on a real coprocessor (s, share of frames, 2 ms bins): FM's Orin
+     * over 13 TXMAN1 matches, 33,396 frames, median 15.7 ms. The model's latency scales it.
+     */
+    private static final double[] LATENCY_BIN = {0.012, 0.014, 0.016, 0.018, 0.020, 0.022};
+
+    private static final double[] LATENCY_SHARE = {0.022, 0.562, 0.229, 0.047, 0.049, 0.011};
+
+    private double latency() {
+        double total = 0;
+        for (double s : LATENCY_SHARE) {
+            total += s;
+        }
+        double u = random.nextDouble() * total;
+        double sum = 0;
+        double bin = LATENCY_BIN[1];
+        for (int i = 0; i < LATENCY_BIN.length; i++) {
+            sum += LATENCY_SHARE[i];
+            if (u < sum) {
+                bin = LATENCY_BIN[i];
+                break;
+            }
+        }
+        double measured = bin + random.nextDouble() * 0.002; // within the 2 ms bin
+        return measured * model.latencySeconds() / 0.0157;
+    }
+
     /** One sim-clock tick: expose a frame when one is due, send frames whose latency is up. */
     public void step(double dt) {
         long now = RobotController.getMonotonicTime();
@@ -124,7 +154,7 @@ public final class CameraSim {
             capture(now);
             byte[] bytes = new byte[frame.encodedLength()];
             frame.encode(bytes, 0);
-            inFlight.add(new Pending(now + (long) (model.latencySeconds() * 1e9), bytes));
+            inFlight.add(new Pending(now + (long) (latency() * 1e9), bytes));
         }
         while (!inFlight.isEmpty() && inFlight.peek().dueNanos() <= now) {
             publisher.set(inFlight.poll().bytes());
