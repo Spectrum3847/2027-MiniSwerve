@@ -24,5 +24,6 @@ robot.
 |---|---|
 | `src/main/java/frc/spectrumSim/` | Sim clock, TalonFX model, motor models, the `DesktopSim` implementation |
 | `src/main/java/frc/spectrumSim/field/` | The field: walls and elements, bumper contacts |
+| `src/main/java/frc/spectrumSim/vision/` | Cameras seeing AprilTags from the true pose |
 | `src/main/java/frc/spectrumSim/swerve/` | Drivetrain physics and its IO on the models (or on Phoenix's simulator) |
 | `src/test/java/frc/spectrumSim/` | Tests; `tools/` holds `SimReplay` and `TalonCrosscheck` (Gradle tasks `simReplay`, `talonCrosscheck`) |

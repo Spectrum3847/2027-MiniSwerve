@@ -668,6 +668,21 @@ public final class SwervePhysicsSim {
         truthHeading = heading;
     }
 
+    /**
+     * The robot's true pose on the field (field frame): the arena's start pose plus the true motion
+     * since. Sim thread (the sim clock's), for simulated sensors such as cameras.
+     */
+    public Pose2d fieldPose() {
+        double sx = arena != null ? arena.startX : 0;
+        double sy = arena != null ? arena.startY : 0;
+        double sh = arena != null ? arena.startHeading : 0;
+        double c0 = Math.cos(sh), s0 = Math.sin(sh);
+        return new Pose2d(
+                sx + truthX * c0 - truthY * s0,
+                sy + truthX * s0 + truthY * c0,
+                Rotation2d.fromRadians(sh + truthHeading));
+    }
+
     public double truthX() {
         return truthX;
     }
