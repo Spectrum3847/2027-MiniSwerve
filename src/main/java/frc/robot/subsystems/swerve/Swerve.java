@@ -135,12 +135,11 @@ public final class Swerve implements Subsystem {
         thread.setRotationLookahead(SwerveSettings.ROTATION_LOOKAHEAD.get());
         thread.setSetpointGenerator(
                 SwerveSettings.SETPOINT_GENERATOR.get(),
-                Math.min(
-                        SwerveSettings.MAX_DRIVE_ACCELERATION.get(),
-                        0.9 * SwerveConfigs.tractionLimit()),
+                SwerveSettings.MAX_DRIVE_ACCELERATION.get(),
                 SwerveSettings.MAX_STEER_VELOCITY.get(),
                 SwerveSettings.MAX_STEER_ACCELERATION.get());
-        // Traction limit from robotMass and tireFriction (m/s^2); the generator stays under 90%.
+        // Traction limit from robotMass and tireFriction (m/s^2): a reference for tuning the drive
+        // slip current. Nothing is limited by it; the motors get full power.
         Logger.recordOutput("Swerve/TractionLimit", SwerveConfigs.tractionLimit());
         if (io.hasHardware()) {
             thread.start();

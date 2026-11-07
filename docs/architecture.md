@@ -247,8 +247,10 @@ How it fits here:
 The robot's physical description is configuration (Robot Settings), shared by the sim and the real
 robot: `swerve/robotMass` (weigh it ready to play) and `swerve/tireFriction` (tread on carpet).
 They set the traction limit (`Swerve/TractionLimit`: friction x g, less what spins up the drive
-rotors); the setpoint generator never asks for more than 90% of it, whatever `maxDriveAcceleration`
-says. Center-of-gravity height (weight transfer, tipping) can join them later.
+rotors), logged as a reference. Nothing caps acceleration below what the motors can give: the
+generator's `maxDriveAcceleration` defaults to 30 m/s^2, and traction is protected by the drive
+slip current (CTRE's SlipCurrent: the stator and peak torque current where the wheels start to
+slip), to be measured on the robot. Center-of-gravity height (weight transfer, tipping) can join them later.
 
 `SwervePhysicsSim` treats the robot as one rigid body. Each wheel pushes along its direction with
 its motor's torque and grips sideways with tire friction (both limited by friction on carpet, about
@@ -256,7 +258,9 @@ its motor's torque and grips sideways with tire friction (both limited by fricti
 along, a misaligned wheel scrubs and fights the others, and pushing harder than the tires hold makes
 the robot slide, which wheel odometry cannot see. (The first sim moved each wheel on its own and fit
 the robot to them, which hid all of that.) Hard maneuvers now show real odometry drift: the drive
-script averages about 0.14 m. Wheel spin (slip along a wheel) is not modeled, so sim odometry
+script averages about 0.3 m with no acceleration cap and the 80 A slip current: on an 18 kg
+robot each tire grips about 48 N, which is only about 19 A on a Falcon through MK4i L2, so the
+motors can push far past grip. Measuring and setting the real slip current fixes that. Wheel spin (slip along a wheel) is not modeled, so sim odometry
 accuracy is not evidence about the real robot.
 
 Phoenix's simulator cannot disconnect one device, so `SimFaults` (sim only) does it in our code:

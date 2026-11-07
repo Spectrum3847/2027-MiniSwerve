@@ -69,7 +69,7 @@ final class SwerveConfigs {
     /**
      * Most acceleration the tires can give before sliding (m/s^2): friction times g, less the share
      * spent spinning up the drive rotors (their inertia, seen at the wheel). From robotMass and
-     * tireFriction; the setpoint generator stays under 90% of it.
+     * tireFriction. A reference for tuning the slip current; nothing is limited by it.
      */
     static double tractionLimit() {
         double m = SwerveSettings.ROBOT_MASS.get();
