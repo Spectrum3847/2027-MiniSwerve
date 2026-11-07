@@ -25,13 +25,37 @@ import org.wpilib.system.Timer;
  */
 final class SimScript {
     /**
+     * Inputs a step sets each loop, given how far into the step it is ({@code seconds}), so a press
+     * can last as long as a person's: a tap is several loops, a hold many.
+     */
+    interface Inputs {
+        void set(GamepadSim pad, double seconds);
+    }
+
+    /** How long a person's quick tap holds a button down (s): several loops, not one. */
+    static final double TAP_SECONDS = 0.12;
+
+    /** A quick tap at the start of the step: down for {@link #TAP_SECONDS}, then up. */
+    static Inputs tap(Gamepad.Button button) {
+        return (pad, t) -> pad.setButton(button, t < TAP_SECONDS);
+    }
+
+    /** The button held down the whole step. */
+    static Inputs hold(Gamepad.Button button) {
+        return (pad, t) -> pad.setButton(button, true);
+    }
+
+    /**
      * One step of a script.
      *
      * @param faults changes simulated faults when the step starts, or null
-     * @param inputs sets any other controller or Driver Station input every loop of the step
-     *     (buttons, triggers, d-pad, alliance, match time, ...), or null. Buttons and triggers are
-     *     released at the start of each loop, so a step presses only what it names, and a button
-     *     held through a step is one press.
+     * @param inputs sets any other controller input (buttons, triggers, d-pad, right stick Y) or
+     *     Driver Station input (alliance, FMS attached, match time, game data, via {@code
+     *     DriverStationSim}) every loop of the step, or null. Each loop starts from released
+     *     buttons, centred unset sticks, zero triggers and the run's starting Driver Station
+     *     values, so a step sets only what it names and nothing carries into the next step. A
+     *     button held through a step is one press; two steps in a row pressing the same button are
+     *     one long press (put a step between them for two).
      */
     private record Step(
             double seconds,
@@ -42,7 +66,7 @@ final class SimScript {
             RobotMode mode,
             String opMode,
             Consumer<SimFaults> faults,
-            Consumer<GamepadSim> inputs) {
+            Inputs inputs) {
         Step(double seconds, String what, double leftX, double leftY, double rightX) {
             this(seconds, what, leftX, leftY, rightX, RobotMode.TELEOPERATED, "Drive", null, null);
         }
@@ -52,7 +76,7 @@ final class SimScript {
             this(seconds, what, 0, 0, 0, mode, opMode, null, null);
         }
 
-        /** A step with sticks in this mode and OpMode. */
+        /** A step with sticks and faults in this mode and OpMode. */
         Step(
                 double seconds,
                 String what,
@@ -85,8 +109,8 @@ final class SimScript {
                     null);
         }
 
-        /** This teleop step with other inputs set every loop (buttons, triggers, ...). */
-        Step press(Consumer<GamepadSim> set) {
+        /** This step with other inputs set every loop (buttons, triggers, ...). */
+        Step press(Inputs set) {
             return new Step(seconds, what, leftX, leftY, rightX, mode, opMode, faults, set);
         }
     }
@@ -181,19 +205,22 @@ final class SimScript {
         new Step(1.0, "disabled", 0, 0, 0),
         new Step(1.0, "forward", 0, -0.6, 0),
         new Step(0.6, "turn left", 0, 0, -0.5),
-        new Step(0.3, "Back: re-zero field-centric while driving", 0, -0.6, 0)
-                .press(p -> p.setBackButton(true)),
+        new Step(0.3, "Back tapped: re-zero field-centric while driving", 0, -0.6, 0)
+                .press(tap(Gamepad.Button.BACK)),
         new Step(1.5, "forward after the re-zero", 0, -0.6, 0),
         new Step(1.0, "X held, stick pushed: wheels in an X", 0, -0.8, 0)
-                .press(p -> p.setFaceLeftButton(true)),
+                .press(hold(Gamepad.Button.FACE_LEFT)),
         new Step(1.0, "full stick", -0.8, 0, 0),
         new Step(1.0, "right bumper held: slow mode", 0.8, 0, 0)
-                .press(p -> p.setRightBumperButton(true)),
+                .press(hold(Gamepad.Button.RIGHT_BUMPER)),
         new Step(0.5, "stop", 0, 0, 0),
     };
 
     private final Step[] steps;
     private final GamepadSim pad = new GamepadSim(0);
+    private org.wpilib.hardware.hal.AllianceStationID baseAlliance;
+    private boolean baseFms;
+    private double baseMatchTime;
     private double start = Double.NaN;
     private int lastStep = -1;
 
@@ -273,9 +300,19 @@ final class SimScript {
         }
         pad.setLeftTriggerAxis(0);
         pad.setRightTriggerAxis(0);
-        pad.setRightY(0);
+        pad.setRightY(0); // sticks a step does not set are centred
+        if (baseAlliance == null) {
+            // The run's starting Driver Station values: every loop starts from them.
+            baseAlliance = DriverStationSim.getAllianceStationId();
+            baseFms = DriverStationSim.getFmsAttached();
+            baseMatchTime = DriverStationSim.getMatchTime();
+        }
+        DriverStationSim.setAllianceStationId(baseAlliance);
+        DriverStationSim.setFmsAttached(baseFms);
+        DriverStationSim.setMatchTime(baseMatchTime);
+        DriverStationSim.setGameData("");
         if (step.inputs() != null) {
-            step.inputs().accept(pad);
+            step.inputs().set(pad, t - end);
         }
         DriverStationSim.notifyNewData();
         if (faults != null) {
