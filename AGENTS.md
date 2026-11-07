@@ -9,6 +9,15 @@ SystemCore image), and the testbed for the 2027 competition code. Read this file
 **Never use CTRE's swerve API** (`SwerveDrivetrain`, `SwerveModule`, `SwerveRequest`,
 `TunerConstants`, generated swerve). Our swerve is our own, on plain Phoenix 6 Pro devices.
 
+## Finish the match
+
+**The robot always keeps working with whatever still works.** A failed motor, sensor, encoder,
+gyro, camera, config apply or stale signal degrades only the part it belongs to; it never disables
+the drivetrain or a whole mechanism. Detect it, alert, log it, work around it (coast a dead motor,
+drop a bad module from odometry, fall back to another sensor), and keep driving. "Stop everything
+until it is fixed" is wrong here: a robot that sits still loses the match. The only whole-robot
+stops are the ones the Driver Station or the rules make (disabled, e-stop).
+
 ## Build and verify
 
 - Java 25 from the WPILib 2027 install: `export JAVA_HOME=/c/Users/Public/wpilib/<2027 folder>/jdk`.

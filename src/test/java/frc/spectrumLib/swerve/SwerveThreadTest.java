@@ -16,12 +16,14 @@ class SwerveThreadTest {
         double[] velocity = new double[4];
         double[] force = new double[4];
         boolean neutral;
+        ModuleCommands commands;
 
         @Override
         public void waitForSample(SwerveSample out) {}
 
         @Override
-        public void setModules(double[] a, double[] v, double[] sv, double[] f) {
+        public void setModules(double[] a, double[] v, double[] sv, double[] f, ModuleCommands c) {
+            commands = c;
             angle = a.clone();
             velocity = v.clone();
             force = f.clone();
@@ -166,5 +168,61 @@ class SwerveThreadTest {
                 DriveRequest.velocity(0, 0, 5.0, false, 0, true)
                         .withLimits(Double.NaN, Double.NaN, Double.NaN, 10.0));
         assertTrue(Math.abs(io.velocity[0]) <= 0.04 * Math.hypot(H, H) + 1e-6);
+    }
+
+    @Test
+    void degradedAndStaleModulesNeverStopTheOthers() {
+        RecordingIO io = new RecordingIO();
+        SwerveThread t = thread(io);
+        ModuleCommands c =
+                new ModuleCommands(
+                        new boolean[] {false, false, true, true},
+                        new boolean[] {true, false, true, true},
+                        new boolean[4],
+                        new boolean[4]);
+        t.setModuleCommands(c);
+        java.util.Arrays.fill(t.sampleForTest().moduleOk, true);
+        t.sampleForTest().moduleOk[3] = false; // stale reading on a healthy module
+        t.sampleForTest().allGood = false;
+        t.computeTargets(DriveRequest.velocity(2.0, 0, 0, false, 0, true));
+        assertEquals(false, io.neutral);
+        assertEquals(c, io.commands);
+        assertEquals(2.0, io.velocity[2], 1e-9);
+        assertEquals(2.0, io.velocity[3], 1e-9);
+    }
+
+    @Test
+    void aDeadWheelsForceShareGoesToTheOthers() {
+        RecordingIO io = new RecordingIO();
+        SwerveThread t = thread(io);
+        t.setModuleCommands(
+                new ModuleCommands(
+                        new boolean[] {true, true, true, false},
+                        new boolean[] {true, true, true, true},
+                        new boolean[4],
+                        new boolean[4]));
+        double[] fx = {10, 10, 10, 10};
+        double[] fy = {0, 0, 0, 0};
+        t.computeTargets(
+                new DriveRequest(
+                        DriveRequest.Mode.VELOCITY,
+                        1,
+                        0,
+                        0,
+                        false,
+                        0,
+                        true,
+                        fx,
+                        fy,
+                        Double.NaN,
+                        Double.NaN,
+                        Double.NaN,
+                        Double.NaN));
+        double total = 0;
+        for (int i = 0; i < 4; i++) {
+            total += io.force[i];
+        }
+        assertEquals(40.0, total, 1e-6);
+        assertEquals(0.0, io.force[3], 1e-9);
     }
 }

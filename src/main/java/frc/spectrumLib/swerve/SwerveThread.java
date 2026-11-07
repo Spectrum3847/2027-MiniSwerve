@@ -26,6 +26,14 @@ public final class SwerveThread {
     private volatile double maxSteerVelocity = 20.0;
     private final SwerveSetpointGenerator generator;
     private final double[] steerVelocity;
+    private final double[] current;
+    private final boolean[] pushing;
+    private boolean allPushing;
+    private final double[] robotFx;
+    private final double[] robotFy;
+
+    /** How each motor is commanded; replaced (never mutated) by the main thread. */
+    private volatile ModuleCommands commands;
 
     /** Turn rate sent last cycle (rad/s), for the turn-acceleration limit. */
     private double lastOmega;
@@ -35,9 +43,10 @@ public final class SwerveThread {
     private volatile String lastFault = "";
     private volatile long cycles;
     private volatile long staleCycles;
+    private int faultsInRow;
 
-    /** Stale-signal cycles in a row before the thread stops driving (20 ms at 250 Hz). */
-    static final int MAX_STALE_CYCLES = 5;
+    /** Failing cycles in a row the motors hold their last setpoint before going neutral. */
+    static final int MAX_FAULTS_HOLDING = 25;
 
     private final SwerveSample sample;
     private final double[] chassis = new double[3];
@@ -73,6 +82,11 @@ public final class SwerveThread {
         lastTargetAngle = new double[n];
         wheelForce = new double[n];
         steerVelocity = new double[n];
+        current = new double[n];
+        pushing = new boolean[n];
+        robotFx = new double[n];
+        robotFy = new double[n];
+        commands = ModuleCommands.allNormal(n);
         generator = new SwerveSetpointGenerator(mx, my);
     }
 
@@ -86,6 +100,11 @@ public final class SwerveThread {
 
     public void stop() {
         running = false;
+    }
+
+    /** Main thread: how each motor is commanded, from the next cycle on. */
+    public void setModuleCommands(ModuleCommands c) {
+        commands = c;
     }
 
     /** Main thread: what to do from the next cycle on. */
@@ -145,20 +164,28 @@ public final class SwerveThread {
             try {
                 io.waitForSample(sample);
                 staleCycles = sample.allGood ? 0 : staleCycles + 1;
-                // Never steer against frozen readings: after a few stale cycles, go neutral.
-                computeTargets(staleCycles >= MAX_STALE_CYCLES ? DriveRequest.NEUTRAL : request);
+                // Late signals never stop the drivetrain (AGENTS.md "Finish the match"): a module
+                // whose readings are stale is planned from its last target instead.
+                computeTargets(request);
                 System.arraycopy(sample.targetAngle, 0, lastTargetAngle, 0, lastTargetAngle.length);
                 lastTimestamp = sample.timestamp;
                 queue.offer(sample);
                 cycles++;
+                faultsInRow = 0;
             } catch (RuntimeException e) {
                 faults++;
+                faultsInRow++;
                 lastFault = e.toString();
-                // Do not keep the last setpoint, and do not spin if every cycle throws.
-                try {
-                    io.setNeutral();
-                } catch (RuntimeException ignored) {
-                    // Already counted the fault; nothing more to do this cycle.
+                // A bug in our own code, not a device fault. The motors keep their last setpoint,
+                // so a one-off keeps the robot driving. The one exception to "Finish the match":
+                // if no command can be computed for 0.1 s, holding the last one would drive
+                // blind, so go neutral until a cycle succeeds again.
+                if (faultsInRow >= MAX_FAULTS_HOLDING) {
+                    try {
+                        io.setNeutral();
+                    } catch (RuntimeException ignored) {
+                        // Already counted; nothing more to do this cycle.
+                    }
                 }
                 java.util.concurrent.locks.LockSupport.parkNanos((long) (periodSeconds * 1e9));
             }
@@ -181,6 +208,13 @@ public final class SwerveThread {
         double[] velocity = sample.targetVelocity;
         System.arraycopy(lastTargetAngle, 0, angle, 0, n);
         java.util.Arrays.fill(wheelForce, 0.0);
+        // Wheels that can push this cycle: driven at the full rate.
+        ModuleCommands cmd = commands;
+        allPushing = true;
+        for (int i = 0; i < n; i++) {
+            pushing[i] = cmd.drive()[i] && !cmd.driveSlow()[i];
+            allPushing &= pushing[i];
+        }
         java.util.Arrays.fill(steerVelocity, 0.0);
         sample.setpointFraction = 1.0;
         // Robot-frame rotation of the request: cos/sin of -heading (identity if robot-relative).
@@ -249,7 +283,8 @@ public final class SwerveThread {
                             dt,
                             topSpeed,
                             topAccel,
-                            maxSteerVelocity);
+                            maxSteerVelocity,
+                            pushing);
                     sample.setpointFraction = generator.lastFraction();
                     System.arraycopy(generator.angle(), 0, angle, 0, n);
                     System.arraycopy(generator.velocity(), 0, velocity, 0, n);
@@ -257,7 +292,7 @@ public final class SwerveThread {
                 } else {
                     SwerveMath.toSwerveModuleVelocities(
                             chassis[0], chassis[1], chassis[2], mx, my, velocity, angle);
-                    SwerveMath.desaturateWheelVelocities(velocity, topSpeed);
+                    desaturatePushing(velocity, topSpeed);
                 }
             }
         }
@@ -265,20 +300,36 @@ public final class SwerveThread {
             // The generator already turns the short way and cosine-scales against its own plan;
             // doing it again here would scale twice and could flip the target against the steer
             // feedforward.
-            SwerveMath.optimize(velocity, angle, sample.angle);
-            SwerveMath.cosineScale(velocity, angle, sample.angle);
+            // Where each module points: measured, or last target if its reading is stale.
+            for (int i = 0; i < n; i++) {
+                current[i] = sample.moduleOk[i] ? sample.angle[i] : lastTargetAngle[i];
+            }
+            SwerveMath.optimize(velocity, angle, current);
+            SwerveMath.cosineScale(velocity, angle, current);
         }
         double[] fx = r.wheelForceFeedforwardX();
         double[] fy = r.wheelForceFeedforwardY();
         if (r.mode() == DriveRequest.Mode.VELOCITY && fx != null && fy != null) {
+            // Into the robot frame.
+            double totalX = 0, totalY = 0, torque = 0;
             for (int i = 0; i < n; i++) {
-                // Into the robot frame, then onto the wheel's (optimized) direction.
-                double rfx = fx[i] * c + fy[i] * s;
-                double rfy = -fx[i] * s + fy[i] * c;
-                wheelForce[i] = rfx * Math.cos(angle[i]) + rfy * Math.sin(angle[i]);
+                robotFx[i] = fx[i] * c + fy[i] * s;
+                robotFy[i] = -fx[i] * s + fy[i] * c;
+                totalX += robotFx[i];
+                totalY += robotFy[i];
+                torque += mx[i] * robotFy[i] - my[i] * robotFx[i];
+            }
+            if (!allPushing) {
+                // Wheels that cannot push give their share to the ones that can.
+                SwerveMath.distributeWrench(
+                        totalX, totalY, torque, mx, my, pushing, robotFx, robotFy);
+            }
+            for (int i = 0; i < n; i++) {
+                // Onto the wheel's (optimized) direction.
+                wheelForce[i] = robotFx[i] * Math.cos(angle[i]) + robotFy[i] * Math.sin(angle[i]);
             }
         }
-        io.setModules(angle, velocity, steerVelocity, wheelForce);
+        io.setModules(angle, velocity, steerVelocity, wheelForce, commands);
     }
 
     /**
@@ -291,6 +342,22 @@ public final class SwerveThread {
             return configured;
         }
         return Math.max(floor, requested);
+    }
+
+    /** Desaturates using only the wheels that push; a free-rolling wheel may exceed top speed. */
+    private void desaturatePushing(double[] velocity, double max) {
+        double top = 0;
+        for (int i = 0; i < velocity.length; i++) {
+            if (pushing[i]) {
+                top = Math.max(top, Math.abs(velocity[i]));
+            }
+        }
+        if (top > max && top > 1e-9) {
+            double k = max / top;
+            for (int i = 0; i < velocity.length; i++) {
+                velocity[i] *= k;
+            }
+        }
     }
 
     /** The sample being filled; for tests. */

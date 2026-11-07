@@ -98,6 +98,7 @@ public final class SwerveSetpointGenerator {
      * @param maxWheelVelocity top wheel speed (m/s)
      * @param maxDriveAcceleration largest wheel speed change (m/s^2)
      * @param maxSteerVelocity fastest module turn (rad/s)
+     * @param pushing which wheels can push; others are not limited or counted (null: all)
      */
     public void generate(
             double vx,
@@ -106,12 +107,17 @@ public final class SwerveSetpointGenerator {
             double dt,
             double maxWheelVelocity,
             double maxDriveAcceleration,
-            double maxSteerVelocity) {
+            double maxSteerVelocity,
+            boolean[] pushing) {
+        this.pushing = pushing;
         // 1. Desaturate the request as a whole chassis velocity.
         SwerveMath.toSwerveModuleVelocities(vx, vy, omega, mx, my, speed, dir);
+        // Only wheels that push count: a free-rolling wheel may spin past top speed.
         double top = 0;
         for (int i = 0; i < n; i++) {
-            top = Math.max(top, speed[i]);
+            if (pushes(i)) {
+                top = Math.max(top, speed[i]);
+            }
         }
         if (top > maxWheelVelocity && top > 1e-9) {
             double k = maxWheelVelocity / top;
@@ -174,12 +180,22 @@ public final class SwerveSetpointGenerator {
         double cy = pvy + s * (vy - pvy);
         double cw = pw + s * (omega - pw);
         for (int i = 0; i < n; i++) {
+            if (!pushes(i)) {
+                continue; // a passive wheel's speed is not ours to limit
+            }
             // Same quantity as the stored speed, so s = 0 always fits and the check is linear in s.
             if (Math.abs(along(cx, cy, cw, i, lastAngle[i]) - lastVelocity[i]) > maxDelta + 1e-9) {
                 return false;
             }
         }
         return true;
+    }
+
+    private boolean[] pushing;
+
+    /** Whether wheel {@code i} can push this cycle (all, when not told otherwise). */
+    private boolean pushes(int i) {
+        return pushing == null || pushing[i];
     }
 
     /** Module {@code i}'s velocity for chassis (vx, vy, omega), projected onto direction a. */

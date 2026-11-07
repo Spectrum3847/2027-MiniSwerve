@@ -202,4 +202,57 @@ public final class SwerveMath {
         double a = Math.IEEEremainder(radians, 2 * Math.PI);
         return a <= -Math.PI ? a + 2 * Math.PI : a;
     }
+
+    /**
+     * Shares a total push and turn on the robot among the wheels that can push, each taking as
+     * little as possible (minimum-norm): the inverse of summing wheel forces. Used when a wheel
+     * cannot push, so its share of a path follower's force goes to the others.
+     *
+     * @param fx total force along robot x (N)
+     * @param fy total force along robot y (N)
+     * @param torque total torque about the center (N m, CCW)
+     * @param pushing which wheels can push (null: all)
+     * @param outFx receives each wheel's force along x (0 for wheels that cannot push)
+     * @param outFy receives each wheel's force along y
+     * @return false (all outputs 0) if fewer than two wheels can push
+     */
+    public static boolean distributeWrench(
+            double fx,
+            double fy,
+            double torque,
+            double[] mx,
+            double[] my,
+            boolean[] pushing,
+            double[] outFx,
+            double[] outFy) {
+        int n = mx.length;
+        double used = 0, sx = 0, sy = 0, sr = 0;
+        for (int i = 0; i < n; i++) {
+            if (pushing == null || pushing[i]) {
+                used++;
+                sx += mx[i];
+                sy += my[i];
+                sr += mx[i] * mx[i] + my[i] * my[i];
+            }
+        }
+        java.util.Arrays.fill(outFx, 0.0);
+        java.util.Arrays.fill(outFy, 0.0);
+        if (used < 2) {
+            return false;
+        }
+        // Wheel i's force is (lx - lt * y_i, ly + lt * x_i); solve the same 3x3 as
+        // toChassisVelocities for (lx, ly, lt) so the forces add up to (fx, fy, torque).
+        double a00 = used, a02 = -sy, a11 = used, a12 = sx, a22 = sr;
+        double det = a00 * (a11 * a22 - a12 * a12) - a02 * (a02 * a11);
+        double lt = (a00 * a11 * torque - a02 * a11 * fx - a00 * a12 * fy) / det;
+        double lx = (fx - a02 * lt) / a00;
+        double ly = (fy - a12 * lt) / a11;
+        for (int i = 0; i < n; i++) {
+            if (pushing == null || pushing[i]) {
+                outFx[i] = lx - lt * my[i];
+                outFy[i] = ly + lt * mx[i];
+            }
+        }
+        return true;
+    }
 }

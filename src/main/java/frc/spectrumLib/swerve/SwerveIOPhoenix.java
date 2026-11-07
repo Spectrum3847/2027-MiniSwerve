@@ -4,11 +4,8 @@ import com.ctre.phoenix6.BaseStatusSignal;
 import com.ctre.phoenix6.CANBus;
 import com.ctre.phoenix6.StatusSignal;
 import com.ctre.phoenix6.Utils;
-import com.ctre.phoenix6.configs.CANcoderConfiguration;
-import com.ctre.phoenix6.configs.MotorOutputConfigs;
 import com.ctre.phoenix6.configs.Pigeon2Configuration;
-import com.ctre.phoenix6.configs.Slot0Configs;
-import com.ctre.phoenix6.configs.TalonFXConfiguration;
+import com.ctre.phoenix6.controls.CoastOut;
 import com.ctre.phoenix6.controls.MotionMagicExpoTorqueCurrentFOC;
 import com.ctre.phoenix6.controls.MotionMagicExpoVoltage;
 import com.ctre.phoenix6.controls.NeutralOut;
@@ -18,11 +15,7 @@ import com.ctre.phoenix6.controls.VelocityTorqueCurrentFOC;
 import com.ctre.phoenix6.hardware.CANcoder;
 import com.ctre.phoenix6.hardware.Pigeon2;
 import com.ctre.phoenix6.hardware.TalonFX;
-import com.ctre.phoenix6.signals.FeedbackSensorSourceValue;
-import com.ctre.phoenix6.signals.InvertedValue;
-import com.ctre.phoenix6.signals.NeutralModeValue;
-import com.ctre.phoenix6.signals.SensorDirectionValue;
-import frc.spectrumLib.hardware.PhoenixBackground;
+import frc.spectrumLib.hardware.PhoenixDeviceSet;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -35,8 +28,11 @@ import java.util.List;
  * <p>In simulation the same devices run through Phoenix's simulator and {@link SwervePhysicsSim}
  * moves them, so sim exercises the exact control path the robot uses.
  *
- * <p>Index: constructor (configure) | {@link #waitForSample} | {@link #setModules} | {@link
- * #updateHealth}
+ * <p>Device configs are in {@link SwervePhoenixConfigs}; reboot detection and endless config
+ * retries in {@code PhoenixDeviceSet}.
+ *
+ * <p>Index: constructor | configureSignals | {@link #waitForSample} | {@link #setModules} | {@link
+ * #retryFailedConfigs} | {@link #setDriveBrake} | {@link #updateHealth}
  */
 public final class SwerveIOPhoenix implements SwerveIO {
     private final PhoenixSwerveConfig cfg;
@@ -67,20 +63,24 @@ public final class SwerveIOPhoenix implements SwerveIO {
             new PositionVoltage(0).withEnableFOC(true).withUpdateFreqHz(0);
     private final MotionMagicExpoVoltage steerExpoVoltageRequest =
             new MotionMagicExpoVoltage(0).withEnableFOC(true).withUpdateFreqHz(0);
-    private final NeutralOut neutral = new NeutralOut();
+    private final NeutralOut neutral = new NeutralOut().withUpdateFreqHz(0);
+    // Once per call too: Phoenix would otherwise resend it at 100 Hz to a dead motor.
+    private final CoastOut coast = new CoastOut().withUpdateFreqHz(0);
     private final double metersPerWheelRotation;
     private final SwervePhysicsSim sim;
-    private long lastSimNanos;
 
-    /** Each drive motor's boot MotorOutput group, re-applied with only NeutralMode changed. */
-    private final MotorOutputConfigs[] driveMotorOutput;
+    /** Keeps every device configured for the match: reboots noticed, configs retried. */
+    private final Pigeon2Configuration pigeonConfig;
 
-    /** Whether each module's three devices took their config at boot. */
-    private final boolean[] configured;
-
-    private final boolean pigeonConfigured;
     private final boolean timesync;
-    private long nextDeadlineNanos;
+    private final DriveNeutralMode neutralMode;
+
+    private final PhoenixDeviceSet devices = new PhoenixDeviceSet("Swerve");
+
+    private final int[] driveIndex;
+    private final int[] steerIndex;
+    private final int[] encoderIndex;
+    private final int pigeonIndex;
 
     /**
      * Builds and configures every device. Blocking (config applies): call during robot init only.
@@ -101,6 +101,7 @@ public final class SwerveIOPhoenix implements SwerveIO {
         steerVoltageRequest.UseTimesync = timesync;
         steerExpoVoltageRequest.UseTimesync = timesync;
         drive = new TalonFX[n];
+        neutralMode = new DriveNeutralMode(drive);
         steer = new TalonFX[n];
         encoder = new CANcoder[n];
         drivePosition = new StatusSignal<?>[n];
@@ -108,16 +109,17 @@ public final class SwerveIOPhoenix implements SwerveIO {
         steerPosition = new StatusSignal<?>[n];
         steerVelocity = new StatusSignal<?>[n];
         metersPerWheelRotation = 2 * Math.PI * cfg.wheelRadius();
+        slowDivisor = Math.max(1, (int) Math.round(cfg.signalHz() / 10.0));
         pigeon = new Pigeon2(cfg.pigeonId(), bus);
-        configured = new boolean[n];
-        driveMotorOutput = new MotorOutputConfigs[n];
-        driveBrakeApplied = new boolean[n];
-        java.util.Arrays.fill(driveBrakeApplied, true);
-        var pigeonConfig = new Pigeon2Configuration();
+        driveIndex = new int[n];
+        steerIndex = new int[n];
+        encoderIndex = new int[n];
+        pigeonConfig = new Pigeon2Configuration();
         pigeonConfig.MountPose.MountPoseYaw = cfg.pigeonMountPose()[0];
         pigeonConfig.MountPose.MountPosePitch = cfg.pigeonMountPose()[1];
         pigeonConfig.MountPose.MountPoseRoll = cfg.pigeonMountPose()[2];
-        pigeonConfigured = apply(() -> pigeon.getConfigurator().apply(pigeonConfig));
+        pigeonIndex =
+                devices.add("Pigeon", pigeon, () -> pigeon.getConfigurator().apply(pigeonConfig));
 
         List<BaseStatusSignal> fastList = new ArrayList<>();
         List<BaseStatusSignal> slowList = new ArrayList<>();
@@ -126,11 +128,23 @@ public final class SwerveIOPhoenix implements SwerveIO {
             drive[i] = new TalonFX(cfg.driveIds()[i], bus);
             steer[i] = new TalonFX(cfg.steerIds()[i], bus);
             final int m = i;
-            // Configure all three even if one fails, so each device's state is known.
-            boolean encoderOk = apply(() -> encoder[m].getConfigurator().apply(encoderConfig(m)));
-            boolean steerOk = apply(() -> steer[m].getConfigurator().apply(steerConfig(m)));
-            boolean driveOk = apply(() -> drive[m].getConfigurator().apply(driveConfig(m)));
-            configured[i] = encoderOk && steerOk && driveOk;
+            // Each device separately: one failure only degrades its own part, and is retried.
+            encoderIndex[i] =
+                    devices.add(
+                            "Encoder" + i,
+                            encoder[i],
+                            () ->
+                                    encoder[m]
+                                            .getConfigurator()
+                                            .apply(SwervePhoenixConfigs.encoder(cfg, m)));
+            steerIndex[i] =
+                    devices.add(
+                            "Steer" + i,
+                            steer[i],
+                            () ->
+                                    steer[m].getConfigurator()
+                                            .apply(SwervePhoenixConfigs.steer(cfg, m)));
+            driveIndex[i] = devices.add("Drive" + i, drive[i], () -> applyDriveConfig(m));
 
             drivePosition[i] = drive[i].getPosition();
             driveVelocity[i] = drive[i].getVelocity();
@@ -161,18 +175,30 @@ public final class SwerveIOPhoenix implements SwerveIO {
         fastList.add(yawRate);
         fast = fastList.toArray(new BaseStatusSignal[0]);
         slow = slowList.toArray(new BaseStatusSignal[0]);
-        for (int t = 0; t < CONFIG_TRIES; t++) {
-            if (BaseStatusSignal.setUpdateFrequencyForAll(cfg.signalHz(), fast).isOK()) {
-                break;
-            }
+        devices.setSignals(this::configureSignals);
+        devices.configureAtBoot();
+        if (sim != null) {
+            sim.attach(cfg, drive, steer, encoder, pigeon);
         }
+    }
+
+    /**
+     * Sets every signal's update rate and turns the rest off. Not saved on the devices: a device
+     * that reboots (a connector wiggle, a brown-out) comes back with default rates, so this runs
+     * again whenever one resets. Blocking: boot, or the Phoenix background thread.
+     */
+    private com.ctre.phoenix6.StatusCode configureSignals() {
+        var code = BaseStatusSignal.setUpdateFrequencyForAll(cfg.signalHz(), fast);
         // The steer motors' FusedCANcoder feedback reads these frames: keep them on, or
         // optimizeBusUtilization below turns them off and the steer loop runs blind.
         for (int i = 0; i < n; i++) {
-            BaseStatusSignal.setUpdateFrequencyForAll(
-                    cfg.signalHz(), encoder[i].getPosition(), encoder[i].getVelocity());
+            var c =
+                    BaseStatusSignal.setUpdateFrequencyForAll(
+                            cfg.signalHz(), encoder[i].getPosition(), encoder[i].getVelocity());
+            code = code.isOK() ? c : code;
         }
-        BaseStatusSignal.setUpdateFrequencyForAll(10, slow);
+        var c = BaseStatusSignal.setUpdateFrequencyForAll(10, slow);
+        code = code.isOK() ? c : code;
         // Everything else off the bus: only what we read is sent.
         for (int i = 0; i < n; i++) {
             drive[i].optimizeBusUtilization();
@@ -180,99 +206,27 @@ public final class SwerveIOPhoenix implements SwerveIO {
             encoder[i].optimizeBusUtilization();
         }
         pigeon.optimizeBusUtilization();
-        if (sim != null) {
-            sim.attach(cfg, drive, steer, encoder, pigeon);
-        }
+        return code;
     }
-
-    private static final int CONFIG_TRIES = 5;
 
     /** Slow signals per module: 3 currents x2 motors, 2 temps, voltage, 3 faults. */
     private static final int SLOW_PER_MODULE = 10;
 
-    /** Runs a blocking Phoenix call until it returns OK, up to {@link #CONFIG_TRIES} times. */
-    private static boolean apply(java.util.function.Supplier<com.ctre.phoenix6.StatusCode> call) {
-        for (int t = 0; t < CONFIG_TRIES; t++) {
-            if (call.get().isOK()) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private CANcoderConfiguration encoderConfig(int i) {
-        var c = new CANcoderConfiguration();
-        c.MagnetSensor.MagnetOffset = cfg.magnetOffsets()[i];
-        c.MagnetSensor.SensorDirection = SensorDirectionValue.CounterClockwise_Positive;
-        c.MagnetSensor.AbsoluteSensorDiscontinuityPoint = 0.5;
-        return c;
-    }
-
-    private TalonFXConfiguration steerConfig(int i) {
-        var c = new TalonFXConfiguration();
-        c.MotorOutput.Inverted =
-                cfg.steerInverted()
-                        ? InvertedValue.Clockwise_Positive
-                        : InvertedValue.CounterClockwise_Positive;
-        c.MotorOutput.NeutralMode = NeutralModeValue.Brake;
-        c.Feedback.FeedbackRemoteSensorID = cfg.encoderIds()[i];
-        c.Feedback.FeedbackSensorSource = FeedbackSensorSourceValue.FusedCANcoder;
-        c.Feedback.RotorToSensorRatio = cfg.steerRatio();
-        c.Feedback.SensorToMechanismRatio = 1.0;
-        c.ClosedLoopGeneral.ContinuousWrap = true;
-        // Used only when steering with MotionMagicExpo; cruise velocity 0 means "as fast as kV
-        // allows".
-        c.MotionMagic.MotionMagicCruiseVelocity = 0;
-        c.MotionMagic.MotionMagicExpo_kV = cfg.steerExpoKv();
-        c.MotionMagic.MotionMagicExpo_kA = cfg.steerExpoKa();
-        c.CurrentLimits.StatorCurrentLimit = cfg.steerStatorCurrentLimit();
-        c.CurrentLimits.StatorCurrentLimitEnable = true;
-        c.TorqueCurrent.PeakForwardTorqueCurrent = cfg.steerStatorCurrentLimit();
-        c.TorqueCurrent.PeakReverseTorqueCurrent = -cfg.steerStatorCurrentLimit();
-        c.Slot0 = slot0(cfg.steer());
-        return c;
-    }
-
-    private TalonFXConfiguration driveConfig(int i) {
-        var c = new TalonFXConfiguration();
-        driveMotorOutput[i] = c.MotorOutput;
-        c.MotorOutput.Inverted =
-                cfg.driveInverted()[i]
-                        ? InvertedValue.Clockwise_Positive
-                        : InvertedValue.CounterClockwise_Positive;
-        c.MotorOutput.NeutralMode = NeutralModeValue.Brake;
-        // Position and velocity in wheel rotations.
-        c.Feedback.SensorToMechanismRatio = cfg.driveRatio();
-        c.CurrentLimits.StatorCurrentLimit = cfg.driveStatorCurrentLimit();
-        c.CurrentLimits.StatorCurrentLimitEnable = true;
-        c.TorqueCurrent.PeakForwardTorqueCurrent = cfg.driveStatorCurrentLimit();
-        c.TorqueCurrent.PeakReverseTorqueCurrent = -cfg.driveStatorCurrentLimit();
-        c.Slot0 = slot0(cfg.drive());
-        return c;
-    }
-
-    private static Slot0Configs slot0(PhoenixSwerveConfig.Gains g) {
-        var s = new Slot0Configs();
-        s.kP = g.kP();
-        s.kI = g.kI();
-        s.kD = g.kD();
-        s.kS = g.kS();
-        s.kV = g.kV();
-        s.kA = g.kA();
-        return s;
+    /** Applies a drive's whole config with the neutral mode wanted now. */
+    private com.ctre.phoenix6.StatusCode applyDriveConfig(int i) {
+        boolean brake = neutralMode.wantedBrake();
+        return neutralMode.applyFull(i, SwervePhoenixConfigs.drive(cfg, i, brake), brake);
     }
 
     @Override
     public void waitForSample(SwerveSample out) {
         boolean good;
         if (sim != null) {
-            // Desktop: step the physics one period, then read what Phoenix's simulator reports.
-            long now = System.nanoTime();
-            double dt = lastSimNanos == 0 ? 1.0 / cfg.signalHz() : (now - lastSimNanos) * 1e-9;
-            lastSimNanos = now;
-            sim.step(Math.min(dt, 0.02));
+            // Desktop: step the physics one period, read what Phoenix's simulator reports, then
+            // wait out the rest of the period.
+            long start = sim.stepRealTime(cfg.signalHz());
             good = BaseStatusSignal.refreshAll(fast).isOK();
-            sleepUntilNextPeriod(now);
+            sim.waitForNextPeriod(start, cfg.signalHz());
         } else {
             good = BaseStatusSignal.waitForAll(2.0 / cfg.signalHz(), fast).isOK();
         }
@@ -317,84 +271,72 @@ public final class SwerveIOPhoenix implements SwerveIO {
         out.angularVelocityZWorld = Math.toRadians(yawRate.getValueAsDouble());
     }
 
-    /** Keeps the sim loop on a fixed 1/signalHz schedule; parkNanos can wake early on Windows. */
-    private void sleepUntilNextPeriod(long startNanos) {
-        long periodNanos = (long) (1e9 / cfg.signalHz());
-        if (nextDeadlineNanos == 0 || startNanos - nextDeadlineNanos > periodNanos) {
-            nextDeadlineNanos = startNanos; // first cycle, or fell far behind: restart the schedule
-        }
-        nextDeadlineNanos += periodNanos;
-        long remaining;
-        while ((remaining = nextDeadlineNanos - System.nanoTime()) > 0) {
-            java.util.concurrent.locks.LockSupport.parkNanos(remaining);
-        }
-    }
+    /** Cycles between commands to a disconnected motor: 10 Hz instead of the loop rate. */
+    private final int slowDivisor;
+
+    private long cycle;
 
     @Override
     public void setModules(
-            double[] angle, double[] velocity, double[] steerVelocityPlan, double[] wheelForce) {
+            double[] angle,
+            double[] velocity,
+            double[] steerVelocityPlan,
+            double[] wheelForce,
+            ModuleCommands commands) {
         double couple = cfg.coupleRatio() / cfg.driveRatio();
         // Wheel force (N) to drive torque current (A): F * r / (ratio * Kt).
         double ampsPerNewton = cfg.wheelRadius() / (cfg.driveRatio() * cfg.driveKt());
+        // A disconnected motor still gets its command, but only every slowDivisor cycles: it may
+        // be alive and listening, and the rest of the bus should not pay for it every cycle.
+        boolean slowTurn = cycle++ % slowDivisor == 0;
         for (int i = 0; i < n; i++) {
-            double target = angle[i] / (2 * Math.PI);
-            double steerRps = steerVelocityPlan[i] / (2 * Math.PI);
-            // The planned turn rate keeps the steer D term from fighting the motion.
-            if (cfg.steerVoltage()) {
-                steer[i].setControl(
-                        cfg.steerMotionMagicExpo()
-                                ? steerExpoVoltageRequest.withPosition(target)
-                                : steerVoltageRequest.withPosition(target).withVelocity(steerRps));
-            } else {
-                steer[i].setControl(
-                        cfg.steerMotionMagicExpo()
-                                ? steerExpoRequest.withPosition(target)
-                                : steerRequest.withPosition(target).withVelocity(steerRps));
+            if (!commands.steerSlow()[i] || slowTurn) {
+                if (commands.steer()[i]) {
+                    double target = angle[i] / (2 * Math.PI);
+                    double steerRps = steerVelocityPlan[i] / (2 * Math.PI);
+                    // The planned turn rate keeps the steer D term from fighting the motion.
+                    if (cfg.steerVoltage()) {
+                        steer[i].setControl(
+                                cfg.steerMotionMagicExpo()
+                                        ? steerExpoVoltageRequest.withPosition(target)
+                                        : steerVoltageRequest
+                                                .withPosition(target)
+                                                .withVelocity(steerRps));
+                    } else {
+                        steer[i].setControl(
+                                cfg.steerMotionMagicExpo()
+                                        ? steerExpoRequest.withPosition(target)
+                                        : steerRequest.withPosition(target).withVelocity(steerRps));
+                    }
+                } else {
+                    steer[i].setControl(coast);
+                }
             }
-            double wheelRps = velocity[i] / metersPerWheelRotation;
-            // Coupling feedforward from the module's measured turn rate: a commanded rate would
-            // spike whenever the target angle jumps.
-            double measuredSteerRps = steerVelocity[i].getValueAsDouble();
-            drive[i].setControl(
-                    driveRequest
-                            .withVelocity(wheelRps + measuredSteerRps * couple)
-                            .withFeedForward(wheelForce[i] * ampsPerNewton));
+            if (!commands.driveSlow()[i] || slowTurn) {
+                if (commands.drive()[i]) {
+                    double wheelRps = velocity[i] / metersPerWheelRotation;
+                    // Coupling feedforward from the module's measured turn rate: a commanded rate
+                    // would spike whenever the target angle jumps.
+                    double measuredSteerRps = steerVelocity[i].getValueAsDouble();
+                    drive[i].setControl(
+                            driveRequest
+                                    .withVelocity(wheelRps + measuredSteerRps * couple)
+                                    .withFeedForward(wheelForce[i] * ampsPerNewton));
+                } else {
+                    drive[i].setControl(coast);
+                }
+            }
         }
     }
 
-    /** Each drive motor's neutral mode as last applied (true brake). */
-    private final boolean[] driveBrakeApplied;
-
-    /** Bumped on every request; a queued apply from an older request does nothing. */
-    private final java.util.concurrent.atomic.AtomicInteger brakeGeneration =
-            new java.util.concurrent.atomic.AtomicInteger();
+    @Override
+    public void retryFailedConfigs() {
+        devices.poll();
+    }
 
     @Override
     public void setDriveBrake(boolean brake) {
-        int generation = brakeGeneration.incrementAndGet();
-        // A config apply per motor: off the robot loop, on the shared Phoenix background thread.
-        for (int i = 0; i < n; i++) {
-            final int m = i;
-            PhoenixBackground.run(
-                    "Swerve/DriveBrake/" + i,
-                    () -> {
-                        // A newer request (e.g. brake at enable) supersedes this one: skip it
-                        // rather than make the newer one wait behind a retrying apply.
-                        if (brakeGeneration.get() != generation) {
-                            return com.ctre.phoenix6.StatusCode.OK;
-                        }
-                        // The boot MotorOutput group with only NeutralMode changed, so the
-                        // inversion (a hard stop) is never rebuilt here.
-                        var out = driveMotorOutput[m].clone();
-                        out.NeutralMode = brake ? NeutralModeValue.Brake : NeutralModeValue.Coast;
-                        var code = drive[m].getConfigurator().apply(out);
-                        if (code.isOK()) {
-                            driveBrakeApplied[m] = brake;
-                        }
-                        return code;
-                    },
-                    null);
-        }
+        neutralMode.request(brake);
     }
 
     @Override
@@ -410,9 +352,12 @@ public final class SwerveIOPhoenix implements SwerveIO {
         BaseStatusSignal.refreshAll(slow);
         for (int i = 0; i < n; i++) {
             int b = i * SLOW_PER_MODULE;
-            h.driveConnected[i] = drive[i].isConnected();
-            h.steerConnected[i] = steer[i].isConnected();
-            h.encoderConnected[i] = encoder[i].isConnected();
+            h.driveConnected[i] = devices.connected(driveIndex[i]);
+            h.steerConnected[i] = devices.connected(steerIndex[i]);
+            h.encoderConnected[i] = devices.connected(encoderIndex[i]);
+            h.driveConfigured[i] = devices.configured(driveIndex[i]);
+            h.steerConfigured[i] = devices.configured(steerIndex[i]);
+            h.encoderConfigured[i] = devices.configured(encoderIndex[i]);
             h.driveStatorCurrent[i] = slow[b].getValueAsDouble();
             h.steerStatorCurrent[i] = slow[b + 1].getValueAsDouble();
             h.driveSupplyCurrent[i] = slow[b + 2].getValueAsDouble();
@@ -425,14 +370,11 @@ public final class SwerveIOPhoenix implements SwerveIO {
             h.magnetOk[i] = slow[b + 9].getValueAsDouble() == 0;
         }
         h.supplyVoltage = slow[6].getValueAsDouble();
-        h.pigeonConnected = pigeon.isConnected() && pigeonConfigured;
-        System.arraycopy(configured, 0, h.configured, 0, n);
+        h.pigeonConnected = devices.connected(pigeonIndex) && devices.configured(pigeonIndex);
         h.timesync = timesync;
+        h.deviceResets = devices.resets();
+        h.signalsSet = devices.signalsSet();
         // Brake only if every drive motor is in brake.
-        boolean allBrake = true;
-        for (boolean b : driveBrakeApplied) {
-            allBrake &= b;
-        }
-        h.driveBrake = allBrake;
+        h.driveBrake = neutralMode.allBrake();
     }
 }

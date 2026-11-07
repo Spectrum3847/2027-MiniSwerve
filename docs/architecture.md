@@ -124,24 +124,58 @@ roll; SystemCore IMU `MountOrientation` and yaw.
 
 ## Module trust and degraded modes
 
-Every sample records which modules' signals were fresh (`Samples/ModuleOk`); health adds connected,
-configured, CANcoder magnet and fused-sensor faults. `ModuleTrust` combines them, plus "absolute
-angle good at least once since boot". Odometry uses only trusted modules (weighted least squares;
-two are enough), and logs each module's slip (`Swerve/Modules/Slip`) and commanded-minus-measured
-speed (`Swerve/Modules/VelocityError`).
+The rule (AGENTS.md "Finish the match"): a fault degrades only its own module; the drivetrain
+always keeps driving with what still works.
 
-Control still goes neutral if any module is untrusted. Planned degraded modes, to build after
-testing on the robot:
+Each module has a mode (`Swerve/Modules/Mode`), from logged health:
 
-1. **Drive motor down (7 motors).** Coast that drive, keep steering it along its free-rolling
-   direction, and solve kinematics with three driven wheels (any chassis motion is still possible).
-2. **Steer motor down.** Coast its drive. The wheel's angle is fixed, so plan chassis motion that
-   rolls along it where possible and accept scrub otherwise; account for its drag.
-3. **CANcoder down after boot.** The steer motor keeps the angle from its rotor; keep driving,
-   alert, and stop trusting the absolute angle after a reboot.
-4. **Finding a lost steer angle.** Idea to try: drive the other three straight and steer the bad
-   module (or sweep the chassis direction) while watching drive current and slip; the angle with
-   the least drag is where the wheel points.
+| Mode | When | What it does |
+|---|---|---|
+| NORMAL | everything fine | drives and steers |
+| STEER_ONLY | drive motor disconnected or its config not applied | wheel still steered along its rolling direction |
+| COAST | steer motor out, or angle never known since boot | module rolls free; the others carry the robot |
+
+How each motor is commanded (`ModuleCommands`) is a separate decision: **keep commanding, without
+flooding the bus.** A motor that is disconnected (no status frames) may still be alive and
+listening, so if its config is known it keeps getting its real command, at 10 Hz instead of the
+loop rate. A motor only coasts when its command could do harm: a drive whose config never applied
+(invert unknown) or whose wheel angle is unknown.
+
+Recovery is automatic: a device counts as connected again as soon as its status frames arrive
+(Phoenix `isConnected`, read at 10 Hz); a reboot (`hasResetOccurred`) marks its config and the
+signal rates to be redone; failed configs and signal rates retry on `PhoenixBackground` every 0.5 s
+until they succeed; brake/coast is re-requested while the applied state does not match. A CANcoder
+lost after boot keeps the module NORMAL (the steer motor counts from its rotor). Late signals never
+stop the drivetrain: a stale module is planned from its last target.
+
+Wheels that cannot push (STEER_ONLY, COAST, or a drive only reachable at the slow rate) are left
+out of the speed limit, the setpoint generator's acceleration limit and the wheel-force feedforward;
+a path follower's force is redistributed to the wheels that can push (`SwerveMath.distributeWrench`,
+same totals). Each wheel's speed and angle for a requested motion do not depend on the others, so
+the working wheels already get exactly what the motion needs; the robot just has less traction.
+
+The swerve thread holds the last setpoint if one cycle throws (a bug in our code), and goes neutral
+only after 25 failing cycles in a row (0.1 s): the one exception to "Finish the match", because no
+command can be computed and holding the last one would drive blind.
+
+Odometry stays strict: it uses a module only when NORMAL, its CANcoder fused and readable, and that
+sample fresh (weighted least squares; two are enough). Per-module slip and speed error are logged.
+
+A fused-sensor fault (steer rotor and CANcoder disagree) keeps the module driving: the fault does
+not say which one is wrong. Phoenix re-syncs to the CANcoder, which is right after a gear or belt
+skip (it sits on the module shaft). Odometry stops trusting the module until the fault clears.
+
+**Next: which sensor is wrong.** If the CANcoder is the bad one (BadMagnet / magnet health, jumping
+readings, or the module's slip residual says its angle disagrees with the robot's motion while the
+rotor-integrated angle agrees), switch that steer motor to rotor-only feedback with the last good
+angle as its offset (`FeedbackSensorSource = RotorSensor`, `FeedbackRotorOffset`, applied on
+`PhoenixBackground`) and keep pushing. If the rotor is the bad one (skip), stay fused. Decide from
+logged inputs so replay agrees; build and test it on the robot.
+
+Next degraded modes, to build after testing on the robot: plan chassis motion around a fixed
+(steer-out) wheel instead of letting it scrub; account for its drag; and find a lost steer angle by
+driving the other three and watching drive current and slip (the least-drag angle is where the
+wheel points).
 
 ## Drivetrain utilities
 
