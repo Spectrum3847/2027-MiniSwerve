@@ -135,7 +135,7 @@ public final class SwerveMath {
      * some modules: a module with weight 0 (a dead drive motor, an untrusted angle) is left out.
      * Two good modules still determine x, y and rotation.
      *
-     * @param weight per-module weight (1 use, 0 skip), or null for all
+     * @param weight per-module weight, 0 or 1 (1 use, 0 skip), or null for all
      * @param residual receives each module's disagreement with the fit (m), or null
      * @return RMS disagreement of the used modules, or NaN if fewer than two were used
      */
@@ -163,6 +163,9 @@ public final class SwerveMath {
         double sx = 0, sy = 0, sr = 0, bx = 0, by = 0, bw = 0;
         for (int i = 0; i < n; i++) {
             double w = weight == null ? 1 : weight[i];
+            if (w == 0) {
+                continue; // skipped, so a NaN reading from a dead module cannot poison the sums
+            }
             sx += w * mx[i];
             sy += w * my[i];
             sr += w * (mx[i] * mx[i] + my[i] * my[i]);
@@ -187,7 +190,9 @@ public final class SwerveMath {
             if (residual != null) {
                 residual[i] = Math.sqrt(e2);
             }
-            sq += (weight == null ? 1 : weight[i]) * e2;
+            if (weight == null || weight[i] != 0) {
+                sq += (weight == null ? 1 : weight[i]) * e2;
+            }
         }
         return Math.sqrt(sq / used);
     }

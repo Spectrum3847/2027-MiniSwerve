@@ -73,7 +73,6 @@ public final class SwerveSetpointGenerator {
      */
     public void reset(double[] measuredVelocity, double[] measuredAngle) {
         for (int i = 0; i < n; i++) {
-            lastVelocity[i] = measuredVelocity[i];
             lastAngle[i] = measuredAngle[i];
             dx[i] = measuredVelocity[i] * Math.cos(measuredAngle[i]);
             dy[i] = measuredVelocity[i] * Math.sin(measuredAngle[i]);
@@ -82,6 +81,11 @@ public final class SwerveSetpointGenerator {
         pvx = chassis[0];
         pvy = chassis[1];
         pw = chassis[2];
+        // Wheel speeds consistent with the fitted chassis velocity, so the first step is not an
+        // unlimited jump by each wheel's slip residual.
+        for (int i = 0; i < n; i++) {
+            lastVelocity[i] = along(pvx, pvy, pw, i, lastAngle[i]);
+        }
     }
 
     /**
@@ -141,18 +145,22 @@ public final class SwerveSetpointGenerator {
         SwerveMath.toSwerveModuleVelocities(pvx, pvy, pw, mx, my, speed, dir);
         double maxTurn = maxSteerVelocity * dt;
         for (int i = 0; i < n; i++) {
-            double v = speed[i];
             double target = speed[i] > STOPPED ? dir[i] : lastAngle[i];
+            // The short way: within 90 degrees, driving backward if that is closer.
             double err = SwerveMath.angleModulus(target - lastAngle[i]);
             if (Math.abs(err) > Math.PI / 2) {
                 err = SwerveMath.angleModulus(err + Math.PI);
-                v = -v;
             }
             double turn = Math.max(-maxTurn, Math.min(maxTurn, err));
             angle[i] = SwerveMath.angleModulus(lastAngle[i] + turn);
             steerVelocity[i] = turn / dt;
-            // A module still turning toward its direction only pushes along where it points.
-            velocity[i] = v * Math.max(0.0, Math.cos(err - turn));
+            // The wheel pushes only along where it points: the module velocity projected onto
+            // that direction (cosine scaling, signed). fits() measures acceleration the same way.
+            double v = along(pvx, pvy, pw, i, angle[i]);
+            // Turning the wheel also changes its speed along where it points; keep that change
+            // within the acceleration limit too. What is stored is exactly what is sent.
+            velocity[i] =
+                    Math.max(lastVelocity[i] - maxDelta, Math.min(lastVelocity[i] + maxDelta, v));
             lastAngle[i] = angle[i];
             lastVelocity[i] = velocity[i];
         }
@@ -166,16 +174,19 @@ public final class SwerveSetpointGenerator {
         double cy = pvy + s * (vy - pvy);
         double cw = pw + s * (omega - pw);
         for (int i = 0; i < n; i++) {
-            double mvx = cx - cw * my[i];
-            double mvy = cy + cw * mx[i];
-            // Wheel speed along where the module points now (the short way, so it may be < 0).
-            double along = mvx * Math.cos(lastAngle[i]) + mvy * Math.sin(lastAngle[i]);
-            double v = Math.hypot(mvx, mvy) * (along >= 0 ? 1 : -1);
-            if (Math.abs(v - lastVelocity[i]) > maxDelta + 1e-9) {
+            // Same quantity as the stored speed, so s = 0 always fits and the check is linear in s.
+            if (Math.abs(along(cx, cy, cw, i, lastAngle[i]) - lastVelocity[i]) > maxDelta + 1e-9) {
                 return false;
             }
         }
         return true;
+    }
+
+    /** Module {@code i}'s velocity for chassis (vx, vy, omega), projected onto direction a. */
+    private double along(double vx, double vy, double omega, int i, double a) {
+        double mvx = vx - omega * my[i];
+        double mvy = vy + omega * mx[i];
+        return mvx * Math.cos(a) + mvy * Math.sin(a);
     }
 
     /**

@@ -9,8 +9,10 @@ import com.ctre.phoenix6.configs.Pigeon2Configuration;
 import com.ctre.phoenix6.configs.Slot0Configs;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.MotionMagicExpoTorqueCurrentFOC;
+import com.ctre.phoenix6.controls.MotionMagicExpoVoltage;
 import com.ctre.phoenix6.controls.NeutralOut;
 import com.ctre.phoenix6.controls.PositionTorqueCurrentFOC;
+import com.ctre.phoenix6.controls.PositionVoltage;
 import com.ctre.phoenix6.controls.VelocityTorqueCurrentFOC;
 import com.ctre.phoenix6.hardware.CANcoder;
 import com.ctre.phoenix6.hardware.Pigeon2;
@@ -59,6 +61,10 @@ public final class SwerveIOPhoenix implements SwerveIO {
             new PositionTorqueCurrentFOC(0).withUpdateFreqHz(0);
     private final MotionMagicExpoTorqueCurrentFOC steerExpoRequest =
             new MotionMagicExpoTorqueCurrentFOC(0).withUpdateFreqHz(0);
+    private final PositionVoltage steerVoltageRequest =
+            new PositionVoltage(0).withEnableFOC(true).withUpdateFreqHz(0);
+    private final MotionMagicExpoVoltage steerExpoVoltageRequest =
+            new MotionMagicExpoVoltage(0).withEnableFOC(true).withUpdateFreqHz(0);
     private final NeutralOut neutral = new NeutralOut();
     private final double metersPerWheelRotation;
     private final SwervePhysicsSim sim;
@@ -83,10 +89,12 @@ public final class SwerveIOPhoenix implements SwerveIO {
         CANBus bus = new CANBus(cfg.canBus());
         // CANivore (CAN FD) with Pro: Phoenix timesync lines up every device's frames and applies
         // setpoints at the same instant. SystemCore's own bus does not support it.
-        timesync = bus.isNetworkFD();
+        timesync = bus.isNetworkFD() && cfg.allowTimesync();
         driveRequest.UseTimesync = timesync;
         steerRequest.UseTimesync = timesync;
         steerExpoRequest.UseTimesync = timesync;
+        steerVoltageRequest.UseTimesync = timesync;
+        steerExpoVoltageRequest.UseTimesync = timesync;
         drive = new TalonFX[n];
         steer = new TalonFX[n];
         encoder = new CANcoder[n];
@@ -260,14 +268,20 @@ public final class SwerveIOPhoenix implements SwerveIO {
             good = BaseStatusSignal.waitForAll(2.0 / cfg.signalHz(), fast).isOK();
         }
         out.allGood = good;
-        // Capture time: the mean of the signals' own timestamps (time of receipt minus nothing on
-        // a plain bus, the synchronized CANivore time with timesync), not when we got around to
-        // reading them.
+        // Capture time: the mean over fresh signals of their own timestamps (system receive time on
+        // a
+        // plain bus, the synchronized CANivore time with timesync), not when we got around to
+        // reading them. Both are on Phoenix's clock (Utils.getCurrentTimeSeconds).
         double sum = 0;
+        int count = 0;
         for (BaseStatusSignal sig : fast) {
-            sum += sig.getTimestamp().getTime();
+            if (sig.getStatus().isOK()) {
+                var all = sig.getAllTimestamps();
+                sum += (timesync ? all.getCANivoreTimestamp() : all.getSystemTimestamp()).getTime();
+                count++;
+            }
         }
-        out.timestamp = fast.length > 0 ? sum / fast.length : Utils.getCurrentTimeSeconds();
+        out.timestamp = count > 0 ? sum / count : Utils.getCurrentTimeSeconds();
         out.gyroOk = yaw.getStatus().isOK() && yawRate.getStatus().isOK();
         double couple = cfg.coupleRatio() / cfg.driveRatio();
         for (int i = 0; i < n; i++) {
@@ -315,22 +329,26 @@ public final class SwerveIOPhoenix implements SwerveIO {
         double ampsPerNewton = cfg.wheelRadius() / (cfg.driveRatio() * cfg.driveKt());
         for (int i = 0; i < n; i++) {
             double target = angle[i] / (2 * Math.PI);
-            if (cfg.steerMotionMagicExpo()) {
-                steer[i].setControl(steerExpoRequest.withPosition(target));
-            } else {
-                // The planned turn rate keeps the steer D term from fighting the motion.
+            double steerRps = steerVelocityPlan[i] / (2 * Math.PI);
+            // The planned turn rate keeps the steer D term from fighting the motion.
+            if (cfg.steerVoltage()) {
                 steer[i].setControl(
-                        steerRequest
-                                .withPosition(target)
-                                .withVelocity(steerVelocityPlan[i] / (2 * Math.PI)));
+                        cfg.steerMotionMagicExpo()
+                                ? steerExpoVoltageRequest.withPosition(target)
+                                : steerVoltageRequest.withPosition(target).withVelocity(steerRps));
+            } else {
+                steer[i].setControl(
+                        cfg.steerMotionMagicExpo()
+                                ? steerExpoRequest.withPosition(target)
+                                : steerRequest.withPosition(target).withVelocity(steerRps));
             }
             double wheelRps = velocity[i] / metersPerWheelRotation;
             // Coupling feedforward from the module's measured turn rate: a commanded rate would
             // spike whenever the target angle jumps.
-            double steerRps = steerVelocity[i].getValueAsDouble();
+            double measuredSteerRps = steerVelocity[i].getValueAsDouble();
             drive[i].setControl(
                     driveRequest
-                            .withVelocity(wheelRps + steerRps * couple)
+                            .withVelocity(wheelRps + measuredSteerRps * couple)
                             .withFeedForward(wheelForce[i] * ampsPerNewton));
         }
     }
@@ -357,6 +375,7 @@ public final class SwerveIOPhoenix implements SwerveIO {
             h.steerSupplyCurrent[i] = slow[b + 3].getValueAsDouble();
             h.driveDeviceTemp[i] = slow[b + 4].getValueAsDouble();
             h.steerDeviceTemp[i] = slow[b + 5].getValueAsDouble();
+            // Fault signals are Boolean; getValueAsDouble is 1 when the fault is active.
             h.fusedOk[i] =
                     slow[b + 7].getValueAsDouble() == 0 && slow[b + 8].getValueAsDouble() == 0;
             h.magnetOk[i] = slow[b + 9].getValueAsDouble() == 0;

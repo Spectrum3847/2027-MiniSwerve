@@ -5,6 +5,7 @@ import frc.spectrumLib.robotsettings.BooleanSetting;
 import frc.spectrumLib.robotsettings.DoubleSetting;
 import frc.spectrumLib.robotsettings.RobotSettings;
 import frc.spectrumLib.robotsettings.SettingGroup;
+import frc.spectrumLib.robotsettings.StringSetting;
 
 /**
  * The drivetrain's Robot Settings: calibration and gains, in {@code deploy/settings/swerve.json}.
@@ -78,6 +79,24 @@ final class SwerveSettings {
     static final DoubleSetting HEADING_HOLD_RELEASE_DEG =
             G.number("headingHoldReleaseDeg", 10.0, "deg", 1, 90);
 
+    /** Heading hold captures after the yaw rate stays below headingHoldSettleRate this long (s). */
+    static final DoubleSetting HEADING_HOLD_SETTLE_SECONDS =
+            G.number("headingHoldSettleSeconds", 0.25, "s", 0, 2);
+
+    /** Yaw rate below which the robot counts as settled for heading hold (rad/s). */
+    static final DoubleSetting HEADING_HOLD_SETTLE_RATE =
+            G.number("headingHoldSettleRate", 0.1, "rad/s", 0, 2);
+
+    /** Heading hold corrects only above this commanded translation (m/s). */
+    static final DoubleSetting HEADING_HOLD_MIN_TRANSLATION =
+            G.number("headingHoldMinTranslation", 0.2, "m/s", 0, 2);
+
+    /**
+     * Use Phoenix timesync when the bus is a CANivore. Off to compare latency; ignored on a plain
+     * CAN bus.
+     */
+    static final BooleanSetting TIMESYNC = G.bool("timesync", true);
+
     /** Driver top speed and turn rate. */
     static final DoubleSetting MAX_DRIVE_VELOCITY =
             G.number("maxDriveVelocity", 4.0, "m/s", 0.5, 5.0);
@@ -87,9 +106,33 @@ final class SwerveSettings {
 
     static final DoubleSetting DRIVE_KP = G.number("driveKP", 10.0, "A/rps", 0, 100);
     static final DoubleSetting DRIVE_KS = G.number("driveKS", 3.0, "A", 0, 20);
-    static final DoubleSetting STEER_KP = G.number("steerKP", 1000.0, "A/rot", 0, 5000);
-    static final DoubleSetting STEER_KD = G.number("steerKD", 30.0, "A/rps", 0, 500);
-    static final DoubleSetting STEER_KS = G.number("steerKS", 2.0, "A", 0, 20);
+
+    /**
+     * Steer closed-loop output, CTRE's ClosedLoopOutputType names: "Voltage" (PositionVoltage with
+     * FOC; back-EMF damps it, CTRE's default and the most common choice) or "TorqueCurrentFOC".
+     * Each has its own gains below.
+     */
+    static final StringSetting STEER_CLOSED_LOOP_OUTPUT =
+            G.string("steerClosedLoopOutput", "Voltage");
+
+    /** Steer gains for Voltage output: CTRE's generated MK4i defaults. */
+    static final DoubleSetting STEER_VOLTAGE_KP =
+            G.number("steerVoltageKP", 100.0, "V/rot", 0, 500);
+
+    static final DoubleSetting STEER_VOLTAGE_KD = G.number("steerVoltageKD", 0.5, "V/rps", 0, 20);
+    static final DoubleSetting STEER_VOLTAGE_KS = G.number("steerVoltageKS", 0.1, "V", 0, 2);
+    static final DoubleSetting STEER_VOLTAGE_KV = G.number("steerVoltageKV", 2.66, "V/rps", 0, 10);
+
+    /** Steer gains for TorqueCurrentFOC output. */
+    static final DoubleSetting STEER_TORQUE_KP =
+            G.number("steerTorqueKP", 1000.0, "A/rot", 0, 5000);
+
+    static final DoubleSetting STEER_TORQUE_KD = G.number("steerTorqueKD", 30.0, "A/rps", 0, 500);
+    static final DoubleSetting STEER_TORQUE_KS = G.number("steerTorqueKS", 2.0, "A", 0, 20);
+
+    static boolean steerVoltage() {
+        return !"TorqueCurrentFOC".equals(STEER_CLOSED_LOOP_OUTPUT.get());
+    }
 
     /**
      * Steer with MotionMagicExpoTorqueCurrentFOC (a smooth profile: less current and scrub) instead

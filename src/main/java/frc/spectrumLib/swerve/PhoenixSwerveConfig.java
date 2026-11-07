@@ -20,7 +20,7 @@ package frc.spectrumLib.swerve;
  * @param driveStatorCurrentLimit amps; CTRE's SlipCurrent (also the peak torque current)
  * @param steerStatorCurrentLimit amps
  * @param drive drive Slot0 gains, TorqueCurrentFOC units (A per wheel rps, A)
- * @param steer steer Slot0 gains, TorqueCurrentFOC units (A per rotation of error, A)
+ * @param steer steer Slot0 gains, in the units of {@code steerVoltage}'s output type (V or A)
  * @param signalHz update rate of the signals the swerve thread reads
  * @param pigeonMountPose Pigeon 2 MountPoseYaw, MountPosePitch, MountPoseRoll (deg)
  * @param steerMotionMagicExpo steer with MotionMagicExpoTorqueCurrentFOC (smooth profile) instead
@@ -28,6 +28,9 @@ package frc.spectrumLib.swerve;
  * @param steerExpoKv MotionMagicExpo_kV for steer (V per module rps); CTRE uses 0.12 * steerRatio
  * @param steerExpoKa MotionMagicExpo_kA for steer (V per module rps/s); CTRE uses 1.2 / steerRatio
  * @param driveKt drive motor torque constant (N m per A), for wheel force feedforward
+ * @param allowTimesync use Phoenix timesync when the bus is a CANivore (needs Pro devices)
+ * @param steerVoltage steer closed-loop output is Voltage (PositionVoltage with FOC), as CTRE's
+ *     generated swerve defaults to; false is TorqueCurrentFOC
  */
 public record PhoenixSwerveConfig(
         String canBus,
@@ -51,7 +54,9 @@ public record PhoenixSwerveConfig(
         boolean steerMotionMagicExpo,
         double steerExpoKv,
         double steerExpoKa,
-        double driveKt) {
+        double driveKt,
+        boolean allowTimesync,
+        boolean steerVoltage) {
 
     /** Phoenix Slot0 gains: kP, kI, kD, kS, kV, kA. */
     public record Gains(double kP, double kI, double kD, double kS, double kV, double kA) {}

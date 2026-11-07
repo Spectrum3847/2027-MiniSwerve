@@ -60,6 +60,7 @@ public final class HeadingHold {
             double yawRate,
             double dt) {
         double correction = 0;
+        double loggedError = 0;
         if (driverTurning) {
             holding = false;
             settledFor = 0;
@@ -81,9 +82,10 @@ public final class HeadingHold {
                 correction =
                         Math.max(-c.maxCorrection(), Math.min(c.maxCorrection(), c.kP() * err));
             }
-            // Heading error held against (rad).
-            Logger.recordOutput(prefix + "/Error", err);
+            loggedError = err;
         }
+        // Heading error held against (rad); 0 when not holding.
+        Logger.recordOutput(prefix + "/Error", loggedError);
         // Holding a captured heading.
         Logger.recordOutput(prefix + "/Holding", holding);
         // Captured heading (rad).

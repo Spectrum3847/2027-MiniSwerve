@@ -151,7 +151,14 @@ public final class SwervePhysicsSim {
         steerSim[i].setSupplyVoltage(BATTERY_VOLTS);
         // Torque current and the back-EMF limit are in the motor's own frame (measured: Phoenix
         // reports torque current after the invert, but takes rotor values before it).
-        double steerAmps = limit(steerSim[i].getTorqueCurrent(), steerOmega[i] * steerRatio);
+        double steerMotorOmega = steerOmega[i] * steerRatio;
+        // Voltage control: the winding current follows from volts minus back-EMF. Phoenix reports
+        // motor voltage in the chassis frame (before the invert), unlike torque current.
+        double steerAsked =
+                cfg.steerVoltage()
+                        ? (steerSign * steerSim[i].getMotorVoltage() - KE * steerMotorOmega) / R
+                        : steerSim[i].getTorqueCurrent();
+        double steerAmps = limit(steerAsked, steerMotorOmega);
         double steerTorque = KT * steerAmps * steerRatio - steerFriction * steerOmega[i];
         double steerJ = steerInertia + ROTOR_INERTIA * steerRatio * steerRatio;
         steerOmega[i] += steerTorque / steerJ * dt;

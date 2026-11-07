@@ -57,10 +57,10 @@ public final class Swerve implements Subsystem {
             new HeadingHold.Config(
                     SwerveSettings.HEADING_HOLD_KP.get(),
                     SwerveSettings.HEADING_HOLD_MAX_CORRECTION.get(),
-                    0.25,
-                    0.1,
+                    SwerveSettings.HEADING_HOLD_SETTLE_SECONDS.get(),
+                    SwerveSettings.HEADING_HOLD_SETTLE_RATE.get(),
                     Math.toRadians(SwerveSettings.HEADING_HOLD_RELEASE_DEG.get()),
-                    0.2);
+                    SwerveSettings.HEADING_HOLD_MIN_TRANSLATION.get());
     private final double[] velocityError = new double[MODULES];
     private final WantedState<State> state = new WantedState<>("Swerve", State.TELEOP_DRIVE);
     private final SwerveIO io;
@@ -147,13 +147,21 @@ public final class Swerve implements Subsystem {
                 Hardware.STEER_STATOR_LIMIT_AMPS,
                 new PhoenixSwerveConfig.Gains(
                         SwerveSettings.DRIVE_KP.get(), 0, 0, SwerveSettings.DRIVE_KS.get(), 0, 0),
-                new PhoenixSwerveConfig.Gains(
-                        SwerveSettings.STEER_KP.get(),
-                        0,
-                        SwerveSettings.STEER_KD.get(),
-                        SwerveSettings.STEER_KS.get(),
-                        0,
-                        0),
+                SwerveSettings.steerVoltage()
+                        ? new PhoenixSwerveConfig.Gains(
+                                SwerveSettings.STEER_VOLTAGE_KP.get(),
+                                0,
+                                SwerveSettings.STEER_VOLTAGE_KD.get(),
+                                SwerveSettings.STEER_VOLTAGE_KS.get(),
+                                SwerveSettings.STEER_VOLTAGE_KV.get(),
+                                0)
+                        : new PhoenixSwerveConfig.Gains(
+                                SwerveSettings.STEER_TORQUE_KP.get(),
+                                0,
+                                SwerveSettings.STEER_TORQUE_KD.get(),
+                                SwerveSettings.STEER_TORQUE_KS.get(),
+                                0,
+                                0),
                 SwerveSettings.LOOP_HZ.get(),
                 new double[] {
                     ImuSettings.PIGEON_MOUNT_YAW.get(),
@@ -163,7 +171,9 @@ public final class Swerve implements Subsystem {
                 SwerveSettings.STEER_MOTION_MAGIC_EXPO.get(),
                 SwerveSettings.STEER_EXPO_KV.get(),
                 SwerveSettings.STEER_EXPO_KA.get(),
-                Hardware.MK4iL2.DRIVE_KT);
+                Hardware.MK4iL2.DRIVE_KT,
+                SwerveSettings.TIMESYNC.get(),
+                SwerveSettings.steerVoltage());
     }
 
     /** Where the pilot's sticks come from: -1..1 field x, field y, rotation. */
@@ -221,8 +231,7 @@ public final class Swerve implements Subsystem {
                         if (headingHoldEnabled) {
                             omega += hold;
                         }
-                        // Heading hold's correction is being applied (false: shadow only).
-                        Logger.recordOutput("Swerve/HeadingHold/Applied", headingHoldEnabled);
+
                         yield DriveRequest.velocity(
                                 x * Math.cos(fwd) - y * Math.sin(fwd),
                                 x * Math.sin(fwd) + y * Math.cos(fwd),
@@ -260,12 +269,17 @@ public final class Swerve implements Subsystem {
         return trust.allTrusted();
     }
 
-    /** Yaw rate of the newest sample this loop (rad/s), 0 if none arrived. */
+    /** Yaw rate (rad/s): the gyro's when good, else the wheels' estimate. */
     private double lastYawRate() {
-        return inputs.count > 0 ? inputs.samples[inputs.count - 1].angularVelocityZWorld : 0.0;
+        if (inputs.count > 0 && gyroOk() && inputs.samples[inputs.count - 1].gyroOk) {
+            return inputs.samples[inputs.count - 1].angularVelocityZWorld;
+        }
+        return odometry.robotVelocity()[2];
     }
 
     private void logOutputs() {
+        // Heading hold's correction is being applied (false: computed and logged only).
+        Logger.recordOutput("Swerve/HeadingHold/Applied", headingHoldEnabled);
         if (inputs.count > 0) {
             var last = inputs.samples[inputs.count - 1];
             for (int i = 0; i < MODULES; i++) {

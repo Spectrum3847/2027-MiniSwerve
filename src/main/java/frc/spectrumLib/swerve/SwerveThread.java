@@ -207,7 +207,9 @@ public final class SwerveThread {
                             r.useGyro() ? sample.yaw + r.headingOffset() : r.headingOffset();
                     // Aim with the heading the robot will have when the modules get there: the
                     // steer and drive loops lag, and a spinning robot turns meanwhile.
-                    heading += sample.angularVelocityZWorld * rotationLookahead;
+                    if (r.useGyro() && sample.gyroOk) {
+                        heading += sample.angularVelocityZWorld * rotationLookahead;
+                    }
                     c = Math.cos(heading);
                     s = Math.sin(heading);
                     // Field to robot frame: rotate by -heading.
@@ -237,8 +239,13 @@ public final class SwerveThread {
                 }
             }
         }
-        SwerveMath.optimize(velocity, angle, sample.angle);
-        SwerveMath.cosineScale(velocity, angle, sample.angle);
+        if (!(useSetpointGenerator && r.mode() == DriveRequest.Mode.VELOCITY)) {
+            // The generator already turns the short way and cosine-scales against its own plan;
+            // doing it again here would scale twice and could flip the target against the steer
+            // feedforward.
+            SwerveMath.optimize(velocity, angle, sample.angle);
+            SwerveMath.cosineScale(velocity, angle, sample.angle);
+        }
         double[] fx = r.wheelForceFeedforwardX();
         double[] fy = r.wheelForceFeedforwardY();
         if (r.mode() == DriveRequest.Mode.VELOCITY && fx != null && fy != null) {

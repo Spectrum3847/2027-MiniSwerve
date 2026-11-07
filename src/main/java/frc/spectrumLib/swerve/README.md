@@ -21,5 +21,6 @@ Phoenix (`toSwerveModuleVelocities`, `optimize`, `cosineScale`, `TorqueCurrentFO
 | `SwerveInputs` | AdvantageKit inputs: drained samples and health |
 | `SwerveOdometry` | Allocation-free wheel + gyro odometry with a slip signal |
 
-Phoenix sim sign conventions (measured): `getTorqueCurrent()` is in the motor's own (inverted)
-frame; `setRawRotorPosition`/`setRotorVelocity` take the chassis frame, before the invert.
+Phoenix sim sign conventions (measured, and pinned by `SwerveSimStepTest`): `getTorqueCurrent()`
+is in the motor's own (inverted) frame; `getMotorVoltage()`, `setRawRotorPosition` and
+`setRotorVelocity` are in the chassis frame, before the invert.

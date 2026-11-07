@@ -76,4 +76,38 @@ class SwerveSetpointGeneratorTest {
         }
         assertEquals(4.5, g.velocity()[0], 1e-6);
     }
+
+    @Test
+    void forwardThenSidewaysNeverFreezesOrJumps() {
+        var g = stopped();
+        for (int k = 0; k < 250; k++) {
+            g.generate(4.0, 0, 0, DT, 4.5, ACCEL, STEER);
+        }
+        double[] lastV = g.velocity().clone();
+        double minFraction = 1;
+        boolean progressed = false;
+        for (int k = 0; k < 500; k++) {
+            g.generate(0, 4.0, 0, DT, 4.5, ACCEL, STEER);
+            for (int i = 0; i < 4; i++) {
+                assertTrue(Math.abs(g.velocity()[i] - lastV[i]) <= ACCEL * DT + 1e-6);
+                lastV[i] = g.velocity()[i];
+            }
+            minFraction = Math.min(minFraction, g.lastFraction());
+            progressed |= g.lastFraction() > 0;
+        }
+        assertTrue(progressed);
+        for (int i = 0; i < 4; i++) {
+            assertEquals(4.0, Math.abs(g.velocity()[i]), 1e-6);
+            assertEquals(Math.PI / 2, Math.abs(g.angle()[i]), 1e-6);
+        }
+    }
+
+    @Test
+    void stepZeroAlwaysFits() {
+        var g = new SwerveSetpointGenerator(MX, MY);
+        // Moving and turning when reset: s = 0 must still reproduce what is stored.
+        g.reset(new double[] {2.1, 1.9, 2.0, 2.05}, new double[] {0.3, 0.25, 0.32, 0.28});
+        g.generate(0, -3, 6, DT, 4.5, ACCEL, STEER);
+        assertTrue(g.lastFraction() > 0);
+    }
 }

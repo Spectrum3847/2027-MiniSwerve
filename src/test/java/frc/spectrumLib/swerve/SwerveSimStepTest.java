@@ -10,9 +10,14 @@ import org.wpilib.simulation.DriverStationSim;
  * at a speed. Catches sign, invert, coupling and status-frame mistakes that unit math cannot.
  */
 class SwerveSimStepTest {
-    @org.junit.jupiter.params.ParameterizedTest(name = "steerMotionMagicExpo={0}")
-    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
-    void modulesSteerAndDrive(boolean motionMagicExpo) {
+    @org.junit.jupiter.params.ParameterizedTest(name = "steerVoltage={0} motionMagicExpo={1}")
+    @org.junit.jupiter.params.provider.CsvSource({
+        "true,false",
+        "true,true",
+        "false,false",
+        "false,true"
+    })
+    void modulesSteerAndDrive(boolean steerVoltage, boolean motionMagicExpo) {
         HAL.initialize();
         DriverStationSim.setEnabled(true);
         DriverStationSim.setDsAttached(true);
@@ -38,13 +43,17 @@ class SwerveSimStepTest {
                         80,
                         40,
                         new PhoenixSwerveConfig.Gains(10, 0, 0, 3, 0, 0),
-                        new PhoenixSwerveConfig.Gains(1000, 0, 30, 2, 0, 0),
+                        steerVoltage
+                                ? new PhoenixSwerveConfig.Gains(100, 0, 0.5, 0.1, 2.66, 0)
+                                : new PhoenixSwerveConfig.Gains(1000, 0, 30, 2, 0, 0),
                         250,
                         new double[3],
                         motionMagicExpo,
                         0.12 * 150.0 / 7,
                         1.2 / (150.0 / 7),
-                        5.84 / 304);
+                        5.84 / 304,
+                        true,
+                        steerVoltage);
         var io = new SwerveIOPhoenix(cfg, new SwervePhysicsSim(18, 0.004, 0.01, mx, my));
         var sample = new SwerveSample(4);
         double[] angle = {1.0, -1.0, 2.0, -2.5};

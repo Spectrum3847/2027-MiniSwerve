@@ -100,6 +100,8 @@ public final class SwerveOdometry {
         if (Double.isNaN(slip) && !gyroGood) {
             // Nothing trustworthy moved us this sample: hold the pose.
             lastYaw = s.yaw;
+            usedGyro = false;
+            java.util.Arrays.fill(robotVelocity, 0.0);
             return;
         }
         double dTheta;

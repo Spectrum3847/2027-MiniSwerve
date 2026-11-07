@@ -68,8 +68,10 @@ auto builder (Choreo-based paths, straight-line paths) comes later.
 
 ## Swerve
 
-Each module's loops run on the motors at 1 kHz: steer is PositionTorqueCurrentFOC on the fused
-CANcoder (or MotionMagicExpoTorqueCurrentFOC with setting `swerve/steerMotionMagicExpo`), drive is
+Each module's loops run on the motors at 1 kHz: steer is PositionVoltage with FOC on the fused
+CANcoder by default (`swerve/steerClosedLoopOutput`: "Voltage", CTRE's default and the most common
+choice in 2025 team code, or "TorqueCurrentFOC"; either with MotionMagicExpo via
+`swerve/steerMotionMagicExpo`), drive is
 VelocityTorqueCurrentFOC with a torque feedforward from per-wheel forces (CTRE's
 WheelForceFeedforwardX/Y). Setpoints go out once per cycle (UpdateFreqHz 0). The drive slip current
 is both the stator limit and peak torque current, as CTRE's SlipCurrent. Field-relative driving
