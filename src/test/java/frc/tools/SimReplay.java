@@ -57,7 +57,8 @@ public final class SimReplay {
                 MotorModel.KRAKEN_X60_FOC.kT(),
                 false,
                 false,
-                30);
+                30,
+                0);
     }
 
     private static List<double[]> read(Path in) throws IOException {

@@ -398,7 +398,11 @@ public final class SwervePhysicsSim {
         double steerAmps =
                 dead(steerName[i])
                         ? 0
-                        : steerMotor.limit(steerAsked, steerMotorOmega, batteryVolts);
+                        : steerMotor.supplyLimited(
+                                steerMotor.limit(steerAsked, steerMotorOmega, batteryVolts),
+                                steerMotorOmega,
+                                batteryVolts,
+                                cfg.steerSupplyCurrentLimit());
         supplyAmps +=
                 Math.max(0, steerMotor.supplyCurrent(steerAmps, steerMotorOmega, batteryVolts));
         double steerTorque =

@@ -32,6 +32,7 @@ package frc.spectrumLib.swerve;
  * @param steerVoltage steer closed-loop output is Voltage (PositionVoltage with FOC), as CTRE's
  *     generated swerve defaults to; false is TorqueCurrentFOC
  * @param driveSupplyCurrentLimit drive supply (battery-side) current limit (A); 0 for none
+ * @param steerSupplyCurrentLimit steer supply (battery-side) current limit (A); 0 for none
  */
 public record PhoenixSwerveConfig(
         String canBus,
@@ -58,7 +59,8 @@ public record PhoenixSwerveConfig(
         double driveKt,
         boolean allowTimesync,
         boolean steerVoltage,
-        double driveSupplyCurrentLimit) {
+        double driveSupplyCurrentLimit,
+        double steerSupplyCurrentLimit) {
 
     /** Phoenix Slot0 gains: kP, kI, kD, kS, kV, kA. */
     public record Gains(double kP, double kI, double kD, double kS, double kV, double kA) {}

@@ -72,6 +72,15 @@ public final class Hardware {
      */
     public static final double DRIVE_SLIP_CURRENT_AMPS = 80.0;
 
+    /**
+     * Drive motor supply (battery-side) current limit (A): keeps eight motors from browning out the
+     * battery while still allowing full stator current at low speed. HARD STOP.
+     */
+    public static final double DRIVE_SUPPLY_LIMIT_AMPS = 40.0;
+
+    /** Steer motor supply current limit (A). HARD STOP. */
+    public static final double STEER_SUPPLY_LIMIT_AMPS = 20.0;
+
     /** Steer motor stator current limit (A). HARD STOP. */
     public static final double STEER_STATOR_LIMIT_AMPS = 40.0;
 
