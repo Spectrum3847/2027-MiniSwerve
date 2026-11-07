@@ -14,6 +14,8 @@ robot.
   rather than run with no physics.
 - Environment: `SPECTRUM_SIM_FIELD` (`empty`, the default: the field's walls; `none`: open floor),
   `SPECTRUM_SIM_START` (robot start on the field, `x,y,degrees`, default `2,2,0`),
+  `SPECTRUM_SIM_ROBOTS` (other robots, `;`-separated: `parked:x,y,deg`, `shuttle:x1,y1,x2,y2,speed`,
+  `defender:x,y,speed`),
   `SPECTRUM_SIM_SPEED` (a multiple of real time, or `max`; default `max` for a scripted
   run, else real time), `SPECTRUM_SIM_DEVICES=phoenix` (drivetrain on Phoenix's own simulator, on
   the wall clock, not repeatable).

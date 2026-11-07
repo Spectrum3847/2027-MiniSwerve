@@ -342,6 +342,17 @@ wall covers 3.2 m in 1.5 s, but driving along it while also steering 20 deg into
 wall, and bumper friction against that push cancels the drive. That follows from the model; it is
 not yet checked on a real robot.
 
+Other robots (`SPECTRUM_SIM_ROBOTS`, e.g. `defender:9,4,3;parked:6,3.2,0`) are 60 kg boxes with
+0.9 m bumpers that drive toward what their behavior wants, no harder than 1.1 g of traction:
+`parked` holds a spot and slides only when pushed past its tires, `shuttle` drives back and forth,
+`defender` chases our robot and pushes into it. Robot-to-robot contact uses the same bumper impulses
+as walls, with both robots moving. Their poses are logged as `Sim/OtherRobots`.
+
+Contacts are solved over up to two touch points at once (iterated impulses), so a bumper face
+landing nearly flat on a wall shares the hit along the face: before, anything past about 0.07 deg
+off parallel landed on one corner and spun the robot hard. The robot is placed with
+`SPECTRUM_SIM_START`, which must be on the field and clear of the walls.
+
 Also fixed with this: the tire force now opposes the combined slip (along and across the wheel as
 one vector); before, each direction saturated on its own, which made sideways scrub too strong
 whenever a wheel both drove and slid.

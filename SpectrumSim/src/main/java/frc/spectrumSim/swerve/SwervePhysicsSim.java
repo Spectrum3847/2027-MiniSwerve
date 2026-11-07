@@ -3,6 +3,9 @@ package frc.spectrumSim.swerve;
 import frc.spectrumLib.hardware.SimFaults;
 import frc.spectrumLib.swerve.PhoenixSwerveConfig;
 import frc.spectrumSim.MotorModel;
+import frc.spectrumSim.field.Arena;
+import org.wpilib.math.geometry.Pose2d;
+import org.wpilib.math.geometry.Rotation2d;
 
 /**
  * Desktop physics for the drivetrain. The simulated devices ({@link SwerveSimDevices}: our TalonFX
@@ -31,7 +34,8 @@ import frc.spectrumSim.MotorModel;
  * <p>Over 400 lines on purpose: one integration step touches every wheel, the body and the battery
  * together; the tire ({@link Tire}) and weight transfer ({@link WheelLoads}) are already apart.
  *
- * <p>Index: {@link #attach} | {@link #step} | {@link #stepSteer} | truth getters
+ * <p>Index: {@link #attach} | {@link #setArena} | {@link #step} | {@link #collide} | {@link
+ * #stepSteer} | truth getters
  */
 public final class SwervePhysicsSim {
     /** Battery open-circuit voltage (V), a charged battery. */
@@ -99,17 +103,22 @@ public final class SwervePhysicsSim {
     private static final double WHEEL_INERTIA = 0.0005;
 
     /** The field the robot drives on, or null for open floor with no walls. */
-    private frc.spectrumSim.field.Arena arena;
+    private Arena arena;
 
-    private final frc.spectrumSim.field.Arena.Body body = new frc.spectrumSim.field.Arena.Body();
+    private final Arena.Body body = new Arena.Body();
     private volatile int contacts;
+
+    /** Other robots' field poses (x, y, heading each) as of the last step. */
+    private double[] otherSnapshot = new double[0];
+
+    /** True pose (x, y, heading) as of the end of the last step, for the main thread. */
+    private final double[] truthSnapshot = new double[3];
 
     /**
      * Puts the robot on a field: its bumpers ({@code length} by {@code width}, m) hit the arena's
      * walls and elements.
      */
-    public synchronized void setArena(
-            frc.spectrumSim.field.Arena arena, double length, double width) {
+    public synchronized void setArena(Arena arena, double length, double width) {
         this.arena = arena;
         body.length = length;
         body.width = width;
@@ -409,7 +418,12 @@ public final class SwervePhysicsSim {
         truthY += (vx * sh + vy * ch) * dt;
         truthHeading = h + omega * dt;
         if (arena != null) {
-            collide(inertiaEff);
+            collide(inertiaEff, dt);
+        }
+        synchronized (loadSnapshot) {
+            truthSnapshot[0] = truthX;
+            truthSnapshot[1] = truthY;
+            truthSnapshot[2] = truthHeading;
         }
         if (!dead("Pigeon")) {
             devices.senseGyro(truthHeading, omega, batteryVolts);
@@ -421,7 +435,7 @@ public final class SwervePhysicsSim {
      * arena's start pose, pushed out of walls and elements, and the contact impulses taken out of
      * the body's motion.
      */
-    private void collide(double inertia) {
+    private void collide(double inertia, double dt) {
         double c0 = Math.cos(arena.startHeading), s0 = Math.sin(arena.startHeading);
         double heading = arena.startHeading + truthHeading;
         double ch = Math.cos(heading), sh = Math.sin(heading);
@@ -433,8 +447,20 @@ public final class SwervePhysicsSim {
         body.omega = omega;
         body.mass = robotMassKg;
         body.inertia = inertia;
-        int n = arena.resolve(body);
+        int n = arena.step(body, dt);
         contacts = n;
+        synchronized (loadSnapshot) {
+            var others = arena.robots();
+            if (otherSnapshot.length != 3 * others.size()) {
+                otherSnapshot = new double[3 * others.size()];
+            }
+            for (int k = 0; k < others.size(); k++) {
+                var o = others.get(k).body;
+                otherSnapshot[3 * k] = o.x;
+                otherSnapshot[3 * k + 1] = o.y;
+                otherSnapshot[3 * k + 2] = o.heading;
+            }
+        }
         if (n == 0) {
             return;
         }
@@ -539,13 +565,15 @@ public final class SwervePhysicsSim {
      * odometry; robot logic must never read it.
      */
     public void logTruth(double odometryX, double odometryY) {
-        double x = truthX;
-        double y = truthY;
-        // The robot's true pose in the sim (field frame).
+        double x, y, truthH;
+        synchronized (loadSnapshot) {
+            x = truthSnapshot[0];
+            y = truthSnapshot[1];
+            truthH = truthSnapshot[2];
+        }
+        // The robot's true pose in the sim, from where it started (as odometry counts).
         org.littletonrobotics.junction.Logger.recordOutput(
-                "Sim/TruthPose",
-                new org.wpilib.math.geometry.Pose2d(
-                        x, y, org.wpilib.math.geometry.Rotation2d.fromRadians(truthHeading)));
+                "Sim/TruthPose", new Pose2d(x, y, Rotation2d.fromRadians(truthH)));
         // Odometry position error against truth (m).
         org.littletonrobotics.junction.Logger.recordOutput(
                 "Sim/OdometryError", Math.hypot(odometryX - x, odometryY - y));
@@ -558,13 +586,25 @@ public final class SwervePhysicsSim {
             // The robot's true pose on the field (field frame), for AdvantageScope's field view.
             org.littletonrobotics.junction.Logger.recordOutput(
                     "Sim/FieldPose",
-                    new org.wpilib.math.geometry.Pose2d(
+                    new Pose2d(
                             arena.startX + x * c0 - y * s0,
                             arena.startY + x * s0 + y * c0,
-                            org.wpilib.math.geometry.Rotation2d.fromRadians(
-                                    arena.startHeading + truthHeading)));
-            // Walls and field elements the bumpers touched in the last physics step.
+                            Rotation2d.fromRadians(arena.startHeading + truthH)));
+            // Walls, field elements and robots the bumpers touched in the last physics step.
             org.littletonrobotics.junction.Logger.recordOutput("Sim/Contacts", contacts);
+            Pose2d[] others;
+            synchronized (loadSnapshot) {
+                others = new Pose2d[otherSnapshot.length / 3];
+                for (int k = 0; k < others.length; k++) {
+                    others[k] =
+                            new Pose2d(
+                                    otherSnapshot[3 * k],
+                                    otherSnapshot[3 * k + 1],
+                                    Rotation2d.fromRadians(otherSnapshot[3 * k + 2]));
+                }
+            }
+            // The other robots on the field (field frame), for AdvantageScope's field view.
+            org.littletonrobotics.junction.Logger.recordOutput("Sim/OtherRobots", others);
         }
         // Each wheel's load on the floor in the sim, FL FR BL BR (N): weight transfer.
         org.littletonrobotics.junction.Logger.recordOutput("Sim/WheelLoads", loadLog);

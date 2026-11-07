@@ -40,7 +40,8 @@ public final class Arena {
     public final double startY;
     public final double startHeading;
     private final Contact contact = new Contact();
-    private int contacts;
+    private final java.util.ArrayList<SimRobot> robots = new java.util.ArrayList<>();
+    private double time;
 
     public Arena(List<ConvexPolygon> obstacles, double startX, double startY, double startHeading) {
         this.obstacles = obstacles.toArray(new ConvexPolygon[0]);
@@ -79,56 +80,156 @@ public final class Arena {
                 startHeading);
     }
 
+    /** Adds another robot (partner or opponent). Before the sim starts. */
+    public void add(SimRobot robot) {
+        robots.add(robot);
+    }
+
+    /** The other robots on the field. */
+    public List<SimRobot> robots() {
+        return robots;
+    }
+
     /**
-     * Pushes a robot out of every obstacle it overlaps and applies the contact impulses.
+     * One step for everything but the simulated robot: the other robots drive, then every robot is
+     * pushed out of walls and out of each other, the simulated one included.
      *
-     * @param b the robot, in the field frame; changed in place
-     * @return how many obstacles it touched this step
+     * @param ours the simulated robot, in the field frame; changed in place
+     * @return how many contacts the simulated robot had this step
      */
+    public int step(Body ours, double dt) {
+        time += dt;
+        for (SimRobot r : robots) {
+            r.step(ours, time, dt);
+        }
+        for (SimRobot r : robots) {
+            walls(r.body);
+        }
+        for (int a = 0; a < robots.size(); a++) {
+            for (int b = a + 1; b < robots.size(); b++) {
+                bodies(robots.get(a).body, robots.get(b).body);
+            }
+        }
+        int n = walls(ours);
+        for (SimRobot r : robots) {
+            n += bodies(r.body, ours);
+        }
+        return n;
+    }
+
+    /** Pushes a robot out of every wall and field element it overlaps; returns the contacts. */
     public int resolve(Body b) {
-        contacts = 0;
+        return walls(b);
+    }
+
+    private int walls(Body b) {
+        int n = 0;
         b.outline.setBox(b.x, b.y, b.length, b.width, b.heading);
         for (ConvexPolygon o : obstacles) {
             if (!contact.test(o, b.outline)) {
                 continue;
             }
-            contacts++;
-            push(b, contact);
+            n++;
+            push(null, b, contact);
             b.outline.setBox(b.x, b.y, b.length, b.width, b.heading);
         }
-        return contacts;
+        return n;
     }
 
-    /** One contact: positional correction, then normal and friction impulses at the touch point. */
-    private static void push(Body b, Contact c) {
-        double nx = c.normalX, ny = c.normalY;
-        double move = Math.max(0, c.depth - SLOP);
-        b.x += nx * move;
-        b.y += ny * move;
-        double rx = c.pointX - b.x, ry = c.pointY - b.y;
-        // Velocity of the bumper at the touch point.
-        double vx = b.vx - b.omega * ry, vy = b.vy + b.omega * rx;
-        double vn = vx * nx + vy * ny;
-        if (vn >= 0) {
-            return; // already separating
+    /** Two robots' bumpers; returns 1 if they touched. */
+    private int bodies(Body a, Body b) {
+        a.outline.setBox(a.x, a.y, a.length, a.width, a.heading);
+        b.outline.setBox(b.x, b.y, b.length, b.width, b.heading);
+        if (!contact.test(a.outline, b.outline)) {
+            return 0;
         }
-        double rn = rx * ny - ry * nx;
-        // Bounce only on a real hit; pressed against a wall, contact just stops the push.
-        double e = vn < -BOUNCE_SPEED ? RESTITUTION : 0;
-        double j = -(1 + e) * vn / (1 / b.mass + rn * rn / b.inertia);
-        apply(b, j * nx, j * ny, rx, ry);
-        // Friction along the wall, at most FRICTION times the normal impulse.
-        vx = b.vx - b.omega * ry;
-        vy = b.vy + b.omega * rx;
+        push(a, b, contact);
+        return 1;
+    }
+
+    /** Solver passes over a contact's points per step: enough for two points to settle. */
+    private static final int ITERATIONS = 12;
+
+    private final double[] accN = new double[2];
+    private final double[] accT = new double[2];
+    private final double[] bounce = new double[2];
+
+    /**
+     * One contact between {@code a} (null: a fixed wall) and {@code b}, normal from a into b:
+     * positional correction shared by inverse mass, then normal and friction impulses at each touch
+     * point, solved together (sequential impulses; each point's normal impulse never pulls, and its
+     * friction is capped by its own normal impulse).
+     */
+    private void push(Body a, Body b, Contact c) {
+        double nx = c.normalX, ny = c.normalY;
+        double ima = a == null ? 0 : 1 / a.mass, imb = 1 / b.mass;
+        double iia = a == null ? 0 : 1 / a.inertia, iib = 1 / b.inertia;
+        double move = Math.max(0, c.depth - SLOP) / (ima + imb);
+        b.x += nx * move * imb;
+        b.y += ny * move * imb;
+        if (a != null) {
+            a.x -= nx * move * ima;
+            a.y -= ny * move * ima;
+        }
         double tx = -ny, ty = nx;
-        double vt = vx * tx + vy * ty;
-        double rt = rx * ty - ry * tx;
-        double jt = -vt / (1 / b.mass + rt * rt / b.inertia);
-        jt = Math.max(-FRICTION * j, Math.min(FRICTION * j, jt));
-        apply(b, jt * tx, jt * ty, rx, ry);
+        for (int k = 0; k < c.count; k++) {
+            accN[k] = 0;
+            accT[k] = 0;
+            double vn = normalSpeed(a, b, c, k, nx, ny);
+            // Bounce only on a real hit; pressed together, contact just stops the push.
+            bounce[k] = vn < -BOUNCE_SPEED ? -RESTITUTION * vn : 0;
+        }
+        for (int it = 0; it < ITERATIONS; it++) {
+            for (int k = 0; k < c.count; k++) {
+                double rbx = c.pointX[k] - b.x, rby = c.pointY[k] - b.y;
+                double rax = a == null ? 0 : c.pointX[k] - a.x;
+                double ray = a == null ? 0 : c.pointY[k] - a.y;
+                double rbn = rbx * ny - rby * nx, ran = rax * ny - ray * nx;
+                double kn = ima + imb + ran * ran * iia + rbn * rbn * iib;
+                double vn = normalSpeed(a, b, c, k, nx, ny);
+                double next = Math.max(0, accN[k] - (vn - bounce[k]) / kn);
+                double dj = next - accN[k];
+                accN[k] = next;
+                apply(b, dj * nx, dj * ny, rbx, rby);
+                apply(a, -dj * nx, -dj * ny, rax, ray);
+                // Bumper friction along the contact, capped by this point's normal impulse.
+                double vx = relX(a, b, ray, rby), vy = relY(a, b, rax, rbx);
+                double vt = vx * tx + vy * ty;
+                double rbt = rbx * ty - rby * tx, rat = rax * ty - ray * tx;
+                double kt = ima + imb + rat * rat * iia + rbt * rbt * iib;
+                double cap = FRICTION * accN[k];
+                double nextT = Math.max(-cap, Math.min(cap, accT[k] - vt / kt));
+                double djt = nextT - accT[k];
+                accT[k] = nextT;
+                apply(b, djt * tx, djt * ty, rbx, rby);
+                apply(a, -djt * tx, -djt * ty, rax, ray);
+            }
+        }
+    }
+
+    /** Closing speed of b against a at touch point k, along the normal (negative: closing). */
+    private static double normalSpeed(Body a, Body b, Contact c, int k, double nx, double ny) {
+        double rbx = c.pointX[k] - b.x, rby = c.pointY[k] - b.y;
+        double rax = a == null ? 0 : c.pointX[k] - a.x, ray = a == null ? 0 : c.pointY[k] - a.y;
+        return relX(a, b, ray, rby) * nx + relY(a, b, rax, rbx) * ny;
+    }
+
+    /** x velocity of b's bumper point against a's (a null: a fixed wall). */
+    private static double relX(Body a, Body b, double ray, double rby) {
+        double v = b.vx - b.omega * rby;
+        return a == null ? v : v - (a.vx - a.omega * ray);
+    }
+
+    /** y velocity of b's bumper point against a's. */
+    private static double relY(Body a, Body b, double rax, double rbx) {
+        double v = b.vy + b.omega * rbx;
+        return a == null ? v : v - (a.vy + a.omega * rax);
     }
 
     private static void apply(Body b, double jx, double jy, double rx, double ry) {
+        if (b == null) {
+            return;
+        }
         b.vx += jx / b.mass;
         b.vy += jy / b.mass;
         b.omega += (rx * jy - ry * jx) / b.inertia;

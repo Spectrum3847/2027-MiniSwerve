@@ -40,8 +40,9 @@ class ArenaTest {
         var b = robot(0.35, 4, -2, 0); // bumper 0.05 m into the alliance wall, closing at 2 m/s
         assertEquals(1, arena.resolve(b));
         assertTrue(b.x >= 0.4 - 0.003, "pushed out: " + b.x);
-        assertEquals(2 * Arena.RESTITUTION, b.vx, 1e-9); // bounces back at 20%
-        assertEquals(0, b.omega, 1e-9); // flat face: no spin
+        // Bounces back at 20% (the iterated solver lands within a few percent).
+        assertEquals(2 * Arena.RESTITUTION, b.vx, 0.02);
+        assertEquals(0, b.omega, 0.01); // flat face: no spin
     }
 
     @Test
@@ -49,7 +50,7 @@ class ArenaTest {
         var arena = Arena.emptyField(0, 0, 0);
         var b = robot(5, 0.399, 3, -0.01); // pressed lightly against the side wall
         arena.resolve(b);
-        assertEquals(0, b.vy, 1e-9); // resting contact: no bounce
+        assertEquals(0, b.vy, 1e-4); // resting contact: no bounce
         assertTrue(b.vx > 2.99 && b.vx < 3, "friction takes a little: " + b.vx);
     }
 
@@ -60,6 +61,47 @@ class ArenaTest {
         b.heading = Math.toRadians(30); // a corner leads
         arena.resolve(b);
         assertTrue(Math.abs(b.omega) > 0.1, "spin " + b.omega);
+    }
+
+    @Test
+    void aNearlyFlatHitDoesNotSpinTheRobot() {
+        for (double deg : new double[] {0, 0.05, 0.2, 1.0}) {
+            var arena = Arena.emptyField(0, 0, 0);
+            var b = robot(0.39, 4, -2, 0);
+            b.heading = Math.toRadians(deg);
+            arena.resolve(b);
+            assertTrue(Math.abs(b.omega) < 0.2, deg + " deg: spin " + b.omega);
+            assertTrue(b.vx > 0, deg + " deg: bounced " + b.vx);
+        }
+    }
+
+    @Test
+    void aFasterRobotPushesAParkedOneOnlyPastItsTraction() {
+        var arena = Arena.emptyField(0, 0, 0);
+        var parked = new SimRobot(5, 4, 0, 60, 0.9, 0.9, 1.1, 4.5, 10, SimRobot.parked());
+        arena.add(parked);
+        var ours = robot(4.16, 4, 1, 0); // bumpers just touching, rolling into it at 1 m/s
+        for (int k = 0; k < 500; k++) {
+            ours.vx = 1; // ours keeps pushing at 1 m/s whatever it takes
+            ours.x += ours.vx * 0.001; // the swerve physics moves ours in the sim
+            arena.step(ours, 0.001);
+        }
+        assertTrue(parked.body.x > 5.1, "pushed along: " + parked.body.x);
+        assertTrue(ours.x < parked.body.x - 0.8, "bumpers not through each other");
+    }
+
+    @Test
+    void aDefenderDrivesAtUs() {
+        var arena = Arena.emptyField(0, 0, 0);
+        var d = new SimRobot(10, 4, Math.PI, 60, 0.9, 0.9, 1.1, 4.5, 10, SimRobot.defender(3));
+        arena.add(d);
+        var ours = robot(5, 4, 0, 0);
+        for (int k = 0; k < 2000; k++) {
+            ours.x += ours.vx * 0.001; // ours rolls freely: no tires in this test
+            arena.step(ours, 0.001);
+        }
+        assertTrue(d.body.x < 6.1, "reached us: " + d.body.x);
+        assertTrue(ours.x < 5, "and pushed us back: " + ours.x);
     }
 
     @Test
