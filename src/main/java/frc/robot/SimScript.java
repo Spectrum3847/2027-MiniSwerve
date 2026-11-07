@@ -1,12 +1,10 @@
 package frc.robot;
 
-import static frc.spectrumLib.hardware.SimFaults.Fault.UNHEARD;
-import static frc.spectrumLib.hardware.SimFaults.Fault.UNPLUGGED;
-
 import frc.spectrumLib.hardware.SimFaults;
 import java.util.function.Consumer;
 import org.littletonrobotics.junction.Logger;
 import org.wpilib.driverstation.Gamepad;
+import org.wpilib.hardware.hal.AllianceStationID;
 import org.wpilib.hardware.hal.RobotMode;
 import org.wpilib.simulation.DriverStationSim;
 import org.wpilib.simulation.GamepadSim;
@@ -32,8 +30,8 @@ final class SimScript {
         void set(GamepadSim pad, double seconds);
     }
 
-    private static final int UNPLUGGED_PAD = 1;
-    private static final int DS_LOST = 2;
+    static final int UNPLUGGED_PAD = 1;
+    static final int DS_LOST = 2;
 
     /** How long a person's quick tap holds a button down (s): several loops, not one. */
     static final double TAP_SECONDS = 0.12;
@@ -54,13 +52,15 @@ final class SimScript {
      * @param faults changes simulated faults when the step starts, or null
      * @param inputs sets any other controller input (buttons, triggers, d-pad, right stick Y) or
      *     Driver Station input (alliance, FMS attached, match time, game data, via {@code
-     *     DriverStationSim}) every loop of the step, or null. Each loop starts from released
-     *     buttons, centred unset sticks, zero triggers and the run's starting Driver Station
-     *     values, so a step sets only what it names and nothing carries into the next step. A
-     *     button held through a step is one press; two steps in a row pressing the same button are
-     *     one long press (put a step between them for two).
+     *     DriverStationSim}) every loop of the step, or null. It follows the driver's timeline, 30
+     *     ms behind the robot's (SimDriver): sticks, buttons and anything it sets arrive late, like
+     *     a person's; mode, enable, faults, unplug and Driver Station loss do not. Each loop starts
+     *     from released buttons, centred unset sticks, zero triggers and the run's starting Driver
+     *     Station values, so a step sets only what it names and nothing carries into the next step.
+     *     A button held through a step is one press; two steps in a row pressing the same button
+     *     are one long press (put a step between them for two).
      */
-    private record Step(
+    record Step(
             double seconds,
             String what,
             double leftX,
@@ -144,7 +144,10 @@ final class SimScript {
                     events | UNPLUGGED_PAD);
         }
 
-        /** The Driver Station is gone for this step (radio drop): the robot disables. */
+        /**
+         * The Driver Station is gone for this step (radio drop): the robot disables and hears no
+         * controller. (WPILib's sim keeps reporting the Driver Station attached.)
+         */
         Step dsLost() {
             return new Step(
                     seconds,
@@ -160,135 +163,19 @@ final class SimScript {
         }
     }
 
-    private static final Step[] DRIVE = {
-        new Step(1.0, "disabled", 0, 0, 0),
-        new Step(2.0, "forward", 0, -1.0, 0),
-        new Step(1.5, "strafe left", -0.8, 0, 0),
-        new Step(2.0, "forward while spinning", 0, -0.7, -0.8),
-        new Step(1.0, "stop", 0, 0, 0),
-        new Step(1.0, "back and right", 0.5, 0.5, 0),
-        new Step(1.0, "stop", 0, 0, 0),
-    };
-
-    /** Utility OpMode "Wheel radius": spins in place while enabled. */
-    private static final Step[] RADIUS = {
-        new Step(1.0, "disabled", RobotMode.UTILITY, "Wheel radius"),
-        new Step(8.0, "characterize wheel radius", RobotMode.UTILITY, "Wheel radius"),
-        new Step(1.0, "disabled", RobotMode.UTILITY, "Wheel radius"),
-    };
-
-    /**
-     * Auto "Drive forward" with the sticks pushed (ignored), then "Demo" at full stick (capped).
-     */
-    private static final Step[] AUTO = {
-        new Step(1.0, "disabled", RobotMode.AUTONOMOUS, "Drive forward"),
-        // Sticks pushed hard left during auto: they must not move the robot.
-        new Step(
-                3.0, "auto drive forward", -1.0, 0, 0, RobotMode.AUTONOMOUS, "Drive forward", null),
-        new Step(0.5, "disabled", RobotMode.TELEOPERATED, "Demo"),
-        new Step(2.0, "demo forward", 0, -1.0, 0, RobotMode.TELEOPERATED, "Demo", null),
-        new Step(1.5, "demo spin", 0, 0, -1.0, RobotMode.TELEOPERATED, "Demo", null),
-    };
-
-    /**
-     * Drives while devices fail and come back: the robot must keep driving the whole time and every
-     * module must return to NORMAL. Device names as in PhoenixDeviceSet (FL=0 FR=1 BL=2 BR=3).
-     */
-    private static final Step[] FAULTS = {
-        new Step(1.0, "disabled", 0, 0, 0),
-        new Step(1.0, "forward", 0, -0.8, 0),
-        new Step(2.0, "FR drive unplugged", 0, -0.8, 0, f -> f.set("Drive1", UNPLUGGED)),
-        new Step(1.5, "FR drive back; strafe", -0.6, 0, 0, f -> f.clear("Drive1")),
-        new Step(2.0, "BL steer unplugged; drive", 0, 0.6, 0, f -> f.set("Steer2", UNPLUGGED)),
-        new Step(1.5, "BL steer back", 0, 0.6, 0, f -> f.clear("Steer2")),
-        new Step(
-                2.0,
-                "BR CANcoder unplugged; spin",
-                0,
-                -0.5,
-                -0.6,
-                f -> f.set("Encoder3", UNPLUGGED)),
-        new Step(1.0, "BR CANcoder back", 0, 0, 0, f -> f.clear("Encoder3")),
-        new Step(1.5, "FL drive unheard (still obeys)", 0.5, 0, 0, f -> f.set("Drive0", UNHEARD)),
-        new Step(1.0, "FL drive heard again", 0, 0, 0, f -> f.clear("Drive0")),
-        new Step(1.5, "Pigeon unplugged; drive", 0, -0.6, 0.3, f -> f.set("Pigeon", UNPLUGGED)),
-        new Step(1.0, "Pigeon back", 0, 0, 0, f -> f.clear("Pigeon")),
-        new Step(
-                1.5,
-                "FR steer reboots, config fails twice",
-                0,
-                -0.6,
-                0,
-                f -> {
-                    f.failConfigs("Steer1", 2);
-                    f.reboot("Steer1");
-                }),
-        new Step(2.0, "recovered", 0, 0, 0),
-    };
-
-    /**
-     * Field walls (SPECTRUM_SIM_FIELD=empty, start 2, 2): strafes right into the side wall, drives
-     * along it while pushing into it, backs into the alliance wall, and pulls away. The robot must
-     * stop at each wall, slide along it, and keep driving.
-     */
-    private static final Step[] WALLS = {
-        new Step(1.0, "disabled", 0, 0, 0),
-        new Step(2.5, "strafe right into the side wall", 0.8, 0, 0),
-        new Step(2.0, "drive along the wall, pushing into it", 0.3, -0.8, 0),
-        new Step(1.5, "drive along the wall", 0, -0.8, 0),
-        new Step(3.0, "back into the alliance wall", 0, 0.8, 0),
-        new Step(1.5, "pull away", -0.5, -0.5, 0),
-        new Step(0.5, "stop", 0, 0, 0),
-    };
-
-    /**
-     * The pilot's buttons (Pilot): turns 40 deg, then Back (field-centric re-zero) while driving,
-     * which must not move TagEKF's pose; X held with the stick pushed (wheels in an X: the robot
-     * holds still); right bumper held (slow mode: slower). Check Pose/Robot against Sim/FieldPose.
-     */
-    private static final Step[] BUTTONS = {
-        new Step(1.0, "disabled", 0, 0, 0),
-        new Step(1.0, "forward", 0, -0.6, 0),
-        new Step(0.6, "turn left", 0, 0, -0.5),
-        new Step(0.3, "Back tapped: re-zero field-centric while driving", 0, -0.6, 0)
-                .press(tap(Gamepad.Button.BACK)),
-        new Step(1.5, "forward after the re-zero", 0, -0.6, 0),
-        new Step(1.0, "X held, stick pushed: wheels in an X", 0, -0.8, 0)
-                .press(hold(Gamepad.Button.FACE_LEFT)),
-        new Step(1.0, "full stick", -0.8, 0, 0),
-        new Step(1.0, "right bumper held: slow mode", 0.8, 0, 0)
-                .press(hold(Gamepad.Button.RIGHT_BUMPER)),
-        new Step(0.5, "stop", 0, 0, 0),
-    };
-
-    /**
-     * A real driver's inputs and the ways they fail: hands off (stick drift alone must not move the
-     * robot), the controller unplugged mid-drive with the stick still pushed (the robot must stop,
-     * then drive again when it is back), and the Driver Station lost (the robot disables, then
-     * drives again).
-     */
-    private static final Step[] DRIVER = {
-        new Step(1.0, "disabled", 0, 0, 0),
-        new Step(2.0, "hands off: stick drift only", 0, 0, 0),
-        new Step(1.5, "forward", 0, -0.8, 0),
-        new Step(1.5, "controller unplugged, stick still pushed", 0, -0.8, 0).unplugged(),
-        new Step(1.5, "controller back: forward", 0, -0.8, 0),
-        new Step(1.0, "Driver Station lost, stick pushed", 0, -0.8, 0).dsLost(),
-        new Step(1.5, "Driver Station back: forward", 0, -0.8, 0),
-        new Step(0.5, "stop", 0, 0, 0),
-    };
-
     private final Step[] steps;
     private final GamepadSim pad = new GamepadSim(0);
     private final SimDriver driver = new SimDriver();
     private final double[] want = new double[3];
     private double lastLoop = Double.NaN;
 
-    /** What a plugged-in gamepad reports: 6 axes, 26 buttons (bit masks), 1 POV. */
+    /** What a plugged-in gamepad reports as available (bit masks): 6 axes. */
     private static final int AXES = (1 << 6) - 1;
 
+    /** ...and 26 buttons (and 1 POV, set where used). */
     private static final long BUTTONS_MASK = (1L << 26) - 1;
-    private org.wpilib.hardware.hal.AllianceStationID baseAlliance;
+
+    private AllianceStationID baseAlliance;
     private boolean baseFms;
     private double baseMatchTime;
     private double start = Double.NaN;
@@ -300,16 +187,11 @@ final class SimScript {
         if (RunMode.CURRENT != RunMode.Mode.SIM || name == null || name.isBlank()) {
             return null;
         }
-        return switch (name) {
-            case "drive" -> new SimScript(DRIVE, faults);
-            case "radius" -> new SimScript(RADIUS, faults);
-            case "faults" -> new SimScript(FAULTS, faults);
-            case "auto" -> new SimScript(AUTO, faults);
-            case "walls" -> new SimScript(WALLS, faults);
-            case "buttons" -> new SimScript(BUTTONS, faults);
-            case "driver" -> new SimScript(DRIVER, faults);
-            default -> throw new IllegalArgumentException("Unknown MINISWERVE_SIM_SCRIPT: " + name);
-        };
+        SimScript.Step[] steps = SimScripts.byName(name);
+        if (steps == null) {
+            throw new IllegalArgumentException("unknown MINISWERVE_SIM_SCRIPT " + name);
+        }
+        return new SimScript(steps, faults);
     }
 
     private final SimFaults faults;
@@ -403,7 +285,10 @@ final class SimScript {
         }
         // A controller is connected when it reports axes, buttons or POVs (WPILib); unplugged
         // reports none.
-        boolean unplugged = (input.events() & UNPLUGGED_PAD) != 0;
+        // Not hand actions, so on the robot's timeline: a USB unplug, and a radio drop (which stops
+        // controller data too: WPILib's sim keeps the Driver Station attached, so it shows as a
+        // disabled robot with no controller).
+        boolean unplugged = (step.events() & (UNPLUGGED_PAD | DS_LOST)) != 0;
         pad.setAxesAvailable(unplugged ? 0 : AXES);
         pad.setButtonsAvailable(unplugged ? 0 : BUTTONS_MASK);
         pad.setPOVsAvailable(unplugged ? 0 : 1);

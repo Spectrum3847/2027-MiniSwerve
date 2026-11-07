@@ -7,8 +7,8 @@ import java.util.Random;
  * driver's does, not as perfect step changes:
  *
  * <ul>
- *   <li><b>Hands take time:</b> a stick moves toward where the step wants it over about 0.15 s
- *       (time constant {@link #REACH_SECONDS}), and falls back to center the same way.
+ *   <li><b>Hands take time:</b> a stick moves toward where the step wants it, 95% of the way in
+ *       about 0.15 s (time constant {@link #REACH_SECONDS}), and falls back to center the same way.
  *   <li><b>Pushes are imperfect:</b> each step's push is scaled 95 to 100% and turned up to 3 deg
  *       off the axis the step names, picked once per step.
  *   <li><b>Sticks are worn:</b> each axis rests a little off center (up to 3% of travel, fixed per
@@ -20,7 +20,7 @@ import java.util.Random;
  * MINISWERVE_SIM_DRIVER=perfect} turns all of this off (exact sticks, no delay).
  */
 final class SimDriver {
-    /** How long a hand takes to reach where it is going (time constant, s). */
+    /** A hand's time constant (s): about 95% of the way in three of these, 0.15 s. */
     static final double REACH_SECONDS = 0.05;
 
     /** Controller to robot code: Driver Station laptop, radio, robot loop (s). */
