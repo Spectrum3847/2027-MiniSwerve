@@ -190,4 +190,39 @@ class SwerveThreadTest {
         assertEquals(2.0, io.velocity[2], 1e-9);
         assertEquals(2.0, io.velocity[3], 1e-9);
     }
+
+    @Test
+    void aDeadWheelsForceShareGoesToTheOthers() {
+        RecordingIO io = new RecordingIO();
+        SwerveThread t = thread(io);
+        t.setModuleCommands(
+                new ModuleCommands(
+                        new boolean[] {true, true, true, false},
+                        new boolean[] {true, true, true, true},
+                        new boolean[4],
+                        new boolean[4]));
+        double[] fx = {10, 10, 10, 10};
+        double[] fy = {0, 0, 0, 0};
+        t.computeTargets(
+                new DriveRequest(
+                        DriveRequest.Mode.VELOCITY,
+                        1,
+                        0,
+                        0,
+                        false,
+                        0,
+                        true,
+                        fx,
+                        fy,
+                        Double.NaN,
+                        Double.NaN,
+                        Double.NaN,
+                        Double.NaN));
+        double total = 0;
+        for (int i = 0; i < 4; i++) {
+            total += io.force[i];
+        }
+        assertEquals(40.0, total, 1e-6);
+        assertEquals(0.0, io.force[3], 1e-9);
+    }
 }

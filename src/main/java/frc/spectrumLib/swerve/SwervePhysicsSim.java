@@ -105,6 +105,35 @@ public final class SwervePhysicsSim {
         pigeonSim = pigeon.getSimState();
     }
 
+    private long lastStepNanos;
+    private long nextDeadlineNanos;
+
+    /**
+     * Steps the physics by the wall time since the last call (at most 20 ms).
+     *
+     * @return when this step started (ns), for {@link #waitForNextPeriod}
+     */
+    long stepRealTime(double hz) {
+        long now = System.nanoTime();
+        double dt = lastStepNanos == 0 ? 1.0 / hz : (now - lastStepNanos) * 1e-9;
+        lastStepNanos = now;
+        step(Math.min(dt, 0.02));
+        return now;
+    }
+
+    /** Keeps the sim loop on a fixed 1/hz schedule; parkNanos can wake early on Windows. */
+    void waitForNextPeriod(long startNanos, double hz) {
+        long periodNanos = (long) (1e9 / hz);
+        if (nextDeadlineNanos == 0 || startNanos - nextDeadlineNanos > periodNanos) {
+            nextDeadlineNanos = startNanos; // first cycle, or fell far behind: restart the schedule
+        }
+        nextDeadlineNanos += periodNanos;
+        long remaining;
+        while ((remaining = nextDeadlineNanos - System.nanoTime()) > 0) {
+            java.util.concurrent.locks.LockSupport.parkNanos(remaining);
+        }
+    }
+
     /** Advances the physics by {@code dt} seconds and writes the result to the sim devices. */
     @SuppressWarnings("NonAtomicVolatileUpdate") // only the swerve thread writes truth
     void step(double dt) {

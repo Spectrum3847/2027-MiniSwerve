@@ -78,4 +78,18 @@ class ModuleTrustTest {
         assertEquals(true, c.steer()[0]);
         assertEquals(true, c.drive()[2]);
     }
+
+    @Test
+    void aFusedSensorFaultKeepsTheModuleDrivingButOutOfOdometry() {
+        ModuleTrust t = new ModuleTrust("Test/Modules", 4);
+        SwerveHealth h = healthy();
+        t.update(h);
+        h.fusedOk[0] = false; // rotor and CANcoder disagree; we don't know which is wrong
+        t.update(h);
+        assertEquals(ModuleMode.NORMAL, t.modes()[0]);
+        assertEquals(true, t.commands().drive()[0]);
+        SwerveSample s = new SwerveSample(4);
+        Arrays.fill(s.moduleOk, true);
+        assertEquals(0.0, t.weights(s)[0]);
+    }
 }

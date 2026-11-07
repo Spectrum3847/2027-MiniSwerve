@@ -18,6 +18,8 @@ Phoenix (`toSwerveModuleVelocities`, `optimize`, `cosineScale`, `TorqueCurrentFO
 | `SampleQueue` | Preallocated ring handing samples from the thread to the main loop |
 | `DriveRequest` | What the main loop asks the thread for (neutral, velocity, X lock) |
 | `SwerveIO` | Hardware interface; `NONE` for replay |
+| `SwervePhoenixConfigs` | The TalonFX / CANcoder configs the Phoenix IO applies |
+| `DriveNeutralMode` | Drive brake/coast applied in the background; newest request wins |
 | `SwerveIOPhoenix` | TalonFX drive/steer, CANcoder, Pigeon 2; on-motor TorqueCurrentFOC loops |
 | `PhoenixSwerveConfig` | IDs, inverts, ratios, offsets, limits, gains for `SwerveIOPhoenix` |
 | `SwervePhysicsSim` | Desktop physics moving the Phoenix-simulated devices; publishes the true pose |

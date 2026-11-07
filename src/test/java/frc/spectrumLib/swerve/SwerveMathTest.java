@@ -88,4 +88,23 @@ class SwerveMathTest {
                     1e-12);
         }
     }
+
+    @Test
+    void wrenchSharedAmongPushingWheelsStillAddsUp() {
+        double[] fx = new double[4];
+        double[] fy = new double[4];
+        boolean[] pushing = {true, false, true, true};
+        SwerveMath.distributeWrench(40, -10, 6, MX, MY, pushing, fx, fy);
+        double sx = 0, sy = 0, t = 0;
+        for (int i = 0; i < 4; i++) {
+            sx += fx[i];
+            sy += fy[i];
+            t += MX[i] * fy[i] - MY[i] * fx[i];
+        }
+        assertEquals(40, sx, 1e-9);
+        assertEquals(-10, sy, 1e-9);
+        assertEquals(6, t, 1e-9);
+        assertEquals(0, fx[1]);
+        assertEquals(0, fy[1]);
+    }
 }

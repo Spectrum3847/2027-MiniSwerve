@@ -67,6 +67,10 @@ public final class ModuleTrust {
                 absoluteKnown[i] = true;
             }
             boolean steerUsable = h.steerConnected[i] && h.steerConfigured[i] && absoluteKnown[i];
+            // A fused-sensor fault (rotor and CANcoder disagree) does not stop the module: Phoenix
+            // re-syncs to the CANcoder, which is on the module shaft and right after a gear or
+            // belt skip. Only odometry stops trusting the module until it clears. A bad CANcoder
+            // (magnet) with a good rotor is the planned rotor-only fallback.
             boolean driveUsable = h.driveConnected[i] && h.driveConfigured[i];
             ModuleMode m =
                     !steerUsable

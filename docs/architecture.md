@@ -148,8 +148,29 @@ until they succeed; brake/coast is re-requested while the applied state does not
 lost after boot keeps the module NORMAL (the steer motor counts from its rotor). Late signals never
 stop the drivetrain: a stale module is planned from its last target.
 
+Wheels that cannot push (STEER_ONLY, COAST, or a drive only reachable at the slow rate) are left
+out of the speed limit, the setpoint generator's acceleration limit and the wheel-force feedforward;
+a path follower's force is redistributed to the wheels that can push (`SwerveMath.distributeWrench`,
+same totals). Each wheel's speed and angle for a requested motion do not depend on the others, so
+the working wheels already get exactly what the motion needs; the robot just has less traction.
+
+The swerve thread holds the last setpoint if one cycle throws (a bug in our code), and goes neutral
+only after 25 failing cycles in a row (0.1 s): the one exception to "Finish the match", because no
+command can be computed and holding the last one would drive blind.
+
 Odometry stays strict: it uses a module only when NORMAL, its CANcoder fused and readable, and that
 sample fresh (weighted least squares; two are enough). Per-module slip and speed error are logged.
+
+A fused-sensor fault (steer rotor and CANcoder disagree) keeps the module driving: the fault does
+not say which one is wrong. Phoenix re-syncs to the CANcoder, which is right after a gear or belt
+skip (it sits on the module shaft). Odometry stops trusting the module until the fault clears.
+
+**Next: which sensor is wrong.** If the CANcoder is the bad one (BadMagnet / magnet health, jumping
+readings, or the module's slip residual says its angle disagrees with the robot's motion while the
+rotor-integrated angle agrees), switch that steer motor to rotor-only feedback with the last good
+angle as its offset (`FeedbackSensorSource = RotorSensor`, `FeedbackRotorOffset`, applied on
+`PhoenixBackground`) and keep pushing. If the rotor is the bad one (skip), stay fused. Decide from
+logged inputs so replay agrees; build and test it on the robot.
 
 Next degraded modes, to build after testing on the robot: plan chassis motion around a fixed
 (steer-out) wheel instead of letting it scrub; account for its drag; and find a lost steer angle by

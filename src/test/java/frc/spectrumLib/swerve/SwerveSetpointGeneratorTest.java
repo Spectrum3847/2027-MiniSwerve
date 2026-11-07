@@ -29,7 +29,7 @@ class SwerveSetpointGeneratorTest {
             double vx = k < 150 ? 4 : k < 300 ? 0 : -4;
             double vy = k >= 150 && k < 300 ? 3 : 0;
             double w = k >= 150 && k < 300 ? 5 : 0;
-            g.generate(vx, vy, w, DT, 4.5, ACCEL, STEER);
+            g.generate(vx, vy, w, DT, 4.5, ACCEL, STEER, null);
             for (int i = 0; i < 4; i++) {
                 double dv = Math.abs(g.velocity()[i] - lastV[i]);
                 double da = Math.abs(SwerveMath.angleModulus(g.angle()[i] - lastA[i]));
@@ -45,7 +45,7 @@ class SwerveSetpointGeneratorTest {
     void reachesTheRequest() {
         var g = stopped();
         for (int k = 0; k < 250; k++) {
-            g.generate(2.0, 0, 0, DT, 4.5, ACCEL, STEER);
+            g.generate(2.0, 0, 0, DT, 4.5, ACCEL, STEER, null);
         }
         for (int i = 0; i < 4; i++) {
             assertEquals(2.0, g.velocity()[i], 1e-6);
@@ -57,10 +57,10 @@ class SwerveSetpointGeneratorTest {
     void reversingBrakesThroughZeroWithoutTurningTheWheels() {
         var g = stopped();
         for (int k = 0; k < 250; k++) {
-            g.generate(3.0, 0, 0, DT, 4.5, ACCEL, STEER);
+            g.generate(3.0, 0, 0, DT, 4.5, ACCEL, STEER, null);
         }
         for (int k = 0; k < 250; k++) {
-            g.generate(-3.0, 0, 0, DT, 4.5, ACCEL, STEER);
+            g.generate(-3.0, 0, 0, DT, 4.5, ACCEL, STEER, null);
             for (int i = 0; i < 4; i++) {
                 assertEquals(0.0, g.angle()[i], 1e-9, "wheels stay pointed forward");
             }
@@ -72,7 +72,7 @@ class SwerveSetpointGeneratorTest {
     void desaturatesTheWholeChassis() {
         var g = stopped();
         for (int k = 0; k < 500; k++) {
-            g.generate(10.0, 0, 0, DT, 4.5, ACCEL, STEER);
+            g.generate(10.0, 0, 0, DT, 4.5, ACCEL, STEER, null);
         }
         assertEquals(4.5, g.velocity()[0], 1e-6);
     }
@@ -81,13 +81,13 @@ class SwerveSetpointGeneratorTest {
     void forwardThenSidewaysNeverFreezesOrJumps() {
         var g = stopped();
         for (int k = 0; k < 250; k++) {
-            g.generate(4.0, 0, 0, DT, 4.5, ACCEL, STEER);
+            g.generate(4.0, 0, 0, DT, 4.5, ACCEL, STEER, null);
         }
         double[] lastV = g.velocity().clone();
         double minFraction = 1;
         boolean progressed = false;
         for (int k = 0; k < 500; k++) {
-            g.generate(0, 4.0, 0, DT, 4.5, ACCEL, STEER);
+            g.generate(0, 4.0, 0, DT, 4.5, ACCEL, STEER, null);
             for (int i = 0; i < 4; i++) {
                 assertTrue(Math.abs(g.velocity()[i] - lastV[i]) <= ACCEL * DT + 1e-6);
                 lastV[i] = g.velocity()[i];
@@ -107,7 +107,22 @@ class SwerveSetpointGeneratorTest {
         var g = new SwerveSetpointGenerator(MX, MY);
         // Moving and turning when reset: s = 0 must still reproduce what is stored.
         g.reset(new double[] {2.1, 1.9, 2.0, 2.05}, new double[] {0.3, 0.25, 0.32, 0.28});
-        g.generate(0, -3, 6, DT, 4.5, ACCEL, STEER);
+        g.generate(0, -3, 6, DT, 4.5, ACCEL, STEER, null);
         assertTrue(g.lastFraction() > 0);
+    }
+
+    @Test
+    void aWheelThatCannotPushDoesNotCapTheOthers() {
+        var g = stopped();
+        boolean[] pushing = {true, true, true, false};
+        // Spin plus drive: the back-right wheel is fastest; with it passive, the rest reach 4.5.
+        for (int k = 0; k < 1000; k++) {
+            g.generate(3.5, 0, 6.0, DT, 4.5, ACCEL, STEER, pushing);
+        }
+        double topPushing = 0;
+        for (int i = 0; i < 3; i++) {
+            topPushing = Math.max(topPushing, Math.abs(g.velocity()[i]));
+        }
+        assertEquals(4.5, topPushing, 1e-3);
     }
 }
