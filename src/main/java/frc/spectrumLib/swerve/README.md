@@ -9,6 +9,8 @@ Phoenix (`toSwerveModuleVelocities`, `optimize`, `cosineScale`, `TorqueCurrentFO
 | `SwerveSetpointGenerator` | Limits wheel acceleration and steer rate each cycle; gives a real steer-rate feedforward |
 | `ModuleTrust` | Which modules odometry trusts (fresh, connected, configured, magnet OK, fused) |
 | `HeadingHold` | Optional heading hold that lets go after a hit (off by default) |
+| `CoastOnDisable` | Brake while enabled or moving; coast once disabled and still (pushable in the pit) |
+| `WheelRadiusCharacterizer` | Spin-in-place wheel radius measurement (gyro turn vs wheel travel) |
 | `SwerveThread` | The 250 Hz loop: read devices, request to module targets, send, queue the sample |
 | `SwerveSample` | One 250 Hz reading (distance, velocity, angle, yaw) plus the targets sent |
 | `SampleQueue` | Preallocated ring handing samples from the thread to the main loop |

@@ -26,6 +26,10 @@ public final class SwerveThread {
     private volatile double maxSteerVelocity = 20.0;
     private final SwerveSetpointGenerator generator;
     private final double[] steerVelocity;
+
+    /** Turn rate sent last cycle (rad/s), for the turn-acceleration limit. */
+    private double lastOmega;
+
     private volatile boolean running;
     private volatile long faults;
     private volatile String lastFault = "";
@@ -188,11 +192,13 @@ public final class SwerveThread {
                 System.arraycopy(sample.angle, 0, angle, 0, n);
                 java.util.Arrays.fill(velocity, 0.0);
                 generator.reset(sample.velocity, sample.angle);
+                lastOmega = sample.angularVelocityZWorld;
                 io.setNeutral();
                 return;
             }
             case X_LOCK -> {
                 generator.reset(sample.velocity, sample.angle);
+                lastOmega = sample.angularVelocityZWorld;
                 for (int i = 0; i < n; i++) {
                     angle[i] = Math.atan2(my[i], mx[i]);
                     velocity[i] = 0.0;
@@ -218,15 +224,31 @@ public final class SwerveThread {
                     vx = rx;
                     vy = ry;
                 }
-                SwerveMath.discretize(vx, vy, r.omega(), dt, chassis);
+                double omega = r.omega();
+                double maxOmega = r.maxAngularVelocity();
+                if (Double.isFinite(maxOmega)) {
+                    maxOmega = Math.max(0.0, maxOmega);
+                    omega = Math.max(-maxOmega, Math.min(maxOmega, omega));
+                }
+                double maxAlpha = r.maxAngularAcceleration();
+                if (Double.isFinite(maxAlpha)) {
+                    // Ramp the turn rate from last cycle's; a small floor so it can always stop.
+                    double step = Math.max(0.5, maxAlpha) * dt;
+                    omega = Math.max(lastOmega - step, Math.min(lastOmega + step, omega));
+                }
+                lastOmega = omega;
+                SwerveMath.discretize(vx, vy, omega, dt, chassis);
+                // A request may lower this cycle's limits (never raise them).
+                double topSpeed = limit(maxWheelVelocity, r.maxWheelVelocity(), 0.0);
+                double topAccel = limit(maxDriveAcceleration, r.maxDriveAcceleration(), 0.5);
                 if (useSetpointGenerator) {
                     generator.generate(
                             chassis[0],
                             chassis[1],
                             chassis[2],
                             dt,
-                            maxWheelVelocity,
-                            maxDriveAcceleration,
+                            topSpeed,
+                            topAccel,
                             maxSteerVelocity);
                     sample.setpointFraction = generator.lastFraction();
                     System.arraycopy(generator.angle(), 0, angle, 0, n);
@@ -235,7 +257,7 @@ public final class SwerveThread {
                 } else {
                     SwerveMath.toSwerveModuleVelocities(
                             chassis[0], chassis[1], chassis[2], mx, my, velocity, angle);
-                    SwerveMath.desaturateWheelVelocities(velocity, maxWheelVelocity);
+                    SwerveMath.desaturateWheelVelocities(velocity, topSpeed);
                 }
             }
         }
@@ -257,6 +279,18 @@ public final class SwerveThread {
             }
         }
         io.setModules(angle, velocity, steerVelocity, wheelForce);
+    }
+
+    /**
+     * The lower of the configured limit and a request's. NaN or larger is ignored; a request is
+     * clamped to at least {@code floor} (0 for speed; a small acceleration so the robot can still
+     * slow down).
+     */
+    private static double limit(double configured, double requested, double floor) {
+        if (!Double.isFinite(requested) || requested >= configured) {
+            return configured;
+        }
+        return Math.max(floor, requested);
     }
 
     /** The sample being filled; for tests. */

@@ -57,6 +57,7 @@ public final class SwervePhysicsSim {
     private double[] dy;
     private final double[] twist = new double[3];
 
+    private volatile double trueWheelRadius = Double.NaN;
     private volatile double truthX;
     private volatile double truthY;
     private volatile double truthHeading;
@@ -111,7 +112,7 @@ public final class SwervePhysicsSim {
             return;
         }
         int n = steerAngle.length;
-        double r = cfg.wheelRadius();
+        double r = wheelRadius();
         for (int i = 0; i < n; i++) {
             double oldWheel = wheelAngle[i];
             stepModule(i, dt);
@@ -167,7 +168,7 @@ public final class SwervePhysicsSim {
         driveSim[i].setSupplyVoltage(BATTERY_VOLTS);
         double driveMotorOmega = wheelOmega[i] * driveRatio + steerOmega[i] * couple;
         double driveAmps = limit(driveSim[i].getTorqueCurrent(), driveMotorOmega);
-        double r = cfg.wheelRadius();
+        double r = wheelRadius();
         double wheelInertia =
                 robotMassKg / steerAngle.length * r * r + ROTOR_INERTIA * driveRatio * driveRatio;
         double rolling = ROLLING_DRAG * wheelOmega[i];
@@ -191,6 +192,18 @@ public final class SwervePhysicsSim {
         double max = (BATTERY_VOLTS - emf) / R;
         double min = (-BATTERY_VOLTS - emf) / R;
         return Math.max(min, Math.min(max, amps));
+    }
+
+    /**
+     * The real wheel radius in the sim (m). Normally the configured one; set it different to test
+     * calibration, e.g. that the wheel-radius routine finds it.
+     */
+    public void setTrueWheelRadius(double meters) {
+        trueWheelRadius = meters;
+    }
+
+    private double wheelRadius() {
+        return Double.isNaN(trueWheelRadius) ? cfg.wheelRadius() : trueWheelRadius;
     }
 
     /** Puts the true robot at a pose (sim setup). */

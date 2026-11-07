@@ -110,6 +110,8 @@ public final class SwerveInputs implements LoggableInputs {
         t.put("Health/MagnetOk", h.magnetOk);
         // CANivore timesync in use.
         t.put("Health/Timesync", h.timesync);
+        // Drive motors in brake (false: coast), as last applied.
+        t.put("Health/DriveBrake", h.driveBrake);
         // Swerve thread cycles in a row with stale or failed signals.
         t.put("Thread/StaleCycles", staleCycles);
         // Motor currents (A).
@@ -171,6 +173,7 @@ public final class SwerveInputs implements LoggableInputs {
         copy(t.get("Health/FusedOk", h.fusedOk), h.fusedOk);
         copy(t.get("Health/MagnetOk", h.magnetOk), h.magnetOk);
         h.timesync = t.get("Health/Timesync", h.timesync);
+        h.driveBrake = t.get("Health/DriveBrake", h.driveBrake);
         staleCycles = t.get("Thread/StaleCycles", staleCycles);
         copy(t.get("Health/DriveStatorCurrent", h.driveStatorCurrent), h.driveStatorCurrent);
         copy(t.get("Health/SteerStatorCurrent", h.steerStatorCurrent), h.steerStatorCurrent);

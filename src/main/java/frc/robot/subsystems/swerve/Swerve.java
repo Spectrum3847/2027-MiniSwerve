@@ -2,13 +2,11 @@ package frc.robot.subsystems.swerve;
 
 import frc.robot.RunMode;
 import frc.robot.config.Hardware;
-import frc.robot.config.ImuSettings;
 import frc.spectrumLib.framework.RobotLoop;
 import frc.spectrumLib.statemachine.WantedState;
 import frc.spectrumLib.swerve.DriveRequest;
 import frc.spectrumLib.swerve.HeadingHold;
 import frc.spectrumLib.swerve.ModuleTrust;
-import frc.spectrumLib.swerve.PhoenixSwerveConfig;
 import frc.spectrumLib.swerve.SampleQueue;
 import frc.spectrumLib.swerve.SwerveIO;
 import frc.spectrumLib.swerve.SwerveIOPhoenix;
@@ -23,6 +21,7 @@ import org.wpilib.command2.Command;
 import org.wpilib.command2.Subsystem;
 import org.wpilib.driverstation.Alliance;
 import org.wpilib.driverstation.MatchState;
+import org.wpilib.driverstation.RobotState;
 import org.wpilib.math.geometry.Pose2d;
 import org.wpilib.util.Alert.Level;
 
@@ -43,7 +42,9 @@ public final class Swerve implements Subsystem {
         /** Field-relative driving from the pilot's sticks. */
         TELEOP_DRIVE,
         /** Wheels in an X. */
-        X_LOCK
+        X_LOCK,
+        /** Spin in place to measure the wheel radius (utility mode). */
+        WHEEL_RADIUS_CHARACTERIZATION
     }
 
     private static final int MODULES = 4;
@@ -62,6 +63,11 @@ public final class Swerve implements Subsystem {
                     Math.toRadians(SwerveSettings.HEADING_HOLD_RELEASE_DEG.get()),
                     SwerveSettings.HEADING_HOLD_MIN_TRANSLATION.get());
     private final double[] velocityError = new double[MODULES];
+    private final SwerveUtilities utilities;
+    private double limitVelocity = Double.NaN;
+    private double limitAcceleration = Double.NaN;
+    private double limitOmega = Double.NaN;
+    private double limitAlpha = Double.NaN;
     private final WantedState<State> state = new WantedState<>("Swerve", State.TELEOP_DRIVE);
     private final SwerveIO io;
     private final SwerveThread thread;
@@ -94,11 +100,17 @@ public final class Swerve implements Subsystem {
                             ? new SwervePhysicsSim(
                                     SwerveSettings.SIM_MASS.get(), 0.004, 0.01, mx, my)
                             : null;
-            io = new SwerveIOPhoenix(phoenixConfig(), sim);
+            io = new SwerveIOPhoenix(SwerveConfigs.phoenix(MODULES), sim);
+            if (sim != null) {
+                // The sim's wheels are the nominal size; a wrong wheelRadius setting then shows up
+                // as odometry error, and the wheel-radius routine should find the nominal value.
+                sim.setTrueWheelRadius(Hardware.MK4iL2.NOMINAL_WHEEL_RADIUS_METERS);
+            }
         } else {
             sim = null;
             io = SwerveIO.NONE;
         }
+        utilities = new SwerveUtilities(io, mx, my);
         thread =
                 new SwerveThread(
                         io,
@@ -116,64 +128,6 @@ public final class Swerve implements Subsystem {
         if (io.hasHardware()) {
             thread.start();
         }
-    }
-
-    private static PhoenixSwerveConfig phoenixConfig() {
-        int[] drive = new int[MODULES];
-        int[] steer = new int[MODULES];
-        int[] encoder = new int[MODULES];
-        double[] offsets = new double[MODULES];
-        for (Hardware.Module m : Hardware.Module.values()) {
-            int i = m.ordinal();
-            drive[i] = m.driveId;
-            steer[i] = m.steerId;
-            encoder[i] = m.encoderId;
-            offsets[i] = SwerveSettings.MAGNET_OFFSET[i].get();
-        }
-        return new PhoenixSwerveConfig(
-                Hardware.CAN_BUS,
-                Hardware.PIGEON_ID,
-                drive,
-                steer,
-                encoder,
-                offsets,
-                Hardware.driveInverted(),
-                Hardware.STEER_INVERTED,
-                Hardware.MK4iL2.DRIVE_RATIO,
-                Hardware.MK4iL2.STEER_RATIO,
-                Hardware.MK4iL2.COUPLE_RATIO,
-                SwerveSettings.WHEEL_RADIUS.get(),
-                Hardware.DRIVE_SLIP_CURRENT_AMPS,
-                Hardware.STEER_STATOR_LIMIT_AMPS,
-                new PhoenixSwerveConfig.Gains(
-                        SwerveSettings.DRIVE_KP.get(), 0, 0, SwerveSettings.DRIVE_KS.get(), 0, 0),
-                SwerveSettings.steerVoltage()
-                        ? new PhoenixSwerveConfig.Gains(
-                                SwerveSettings.STEER_VOLTAGE_KP.get(),
-                                0,
-                                SwerveSettings.STEER_VOLTAGE_KD.get(),
-                                SwerveSettings.STEER_VOLTAGE_KS.get(),
-                                SwerveSettings.STEER_VOLTAGE_KV.get(),
-                                0)
-                        : new PhoenixSwerveConfig.Gains(
-                                SwerveSettings.STEER_TORQUE_KP.get(),
-                                0,
-                                SwerveSettings.STEER_TORQUE_KD.get(),
-                                SwerveSettings.STEER_TORQUE_KS.get(),
-                                0,
-                                0),
-                SwerveSettings.LOOP_HZ.get(),
-                new double[] {
-                    ImuSettings.PIGEON_MOUNT_YAW.get(),
-                    ImuSettings.PIGEON_MOUNT_PITCH.get(),
-                    ImuSettings.PIGEON_MOUNT_ROLL.get()
-                },
-                SwerveSettings.STEER_MOTION_MAGIC_EXPO.get(),
-                SwerveSettings.STEER_EXPO_KV.get(),
-                SwerveSettings.STEER_EXPO_KA.get(),
-                Hardware.MK4iL2.DRIVE_KT,
-                SwerveSettings.TIMESYNC.get(),
-                SwerveSettings.steerVoltage());
     }
 
     /** Where the pilot's sticks come from: -1..1 field x, field y, rotation. */
@@ -201,6 +155,11 @@ public final class Swerve implements Subsystem {
             var sample = inputs.samples[s];
             odometry.update(sample, gyroOk() && sample.gyroOk, trust.weights(sample));
         }
+        utilities.update(
+                inputs,
+                RobotState.isEnabled(),
+                state.current() == State.WHEEL_RADIUS_CHARACTERIZATION,
+                RobotLoop.periodSeconds());
         logOutputs();
     }
 
@@ -211,6 +170,10 @@ public final class Swerve implements Subsystem {
                 switch (wanted) {
                     case IDLE -> DriveRequest.NEUTRAL;
                     case X_LOCK -> DriveRequest.X_LOCK;
+                    // Robot-relative spin; the setpoint generator ramps it up and down.
+                    case WHEEL_RADIUS_CHARACTERIZATION ->
+                            DriveRequest.velocity(
+                                    0, 0, SwerveSettings.WHEEL_RADIUS_SPIN.get(), false, 0, true);
                     case TELEOP_DRIVE -> {
                         // Sticks are in the driver's frame; turn them into the field frame.
                         double fwd = operatorForwardDirection();
@@ -246,6 +209,21 @@ public final class Swerve implements Subsystem {
             // Never drive on a module we cannot read.
             request = DriveRequest.NEUTRAL;
         }
+        if (Double.isFinite(limitVelocity)
+                || Double.isFinite(limitAcceleration)
+                || Double.isFinite(limitOmega)
+                || Double.isFinite(limitAlpha)) {
+            request = request.withLimits(limitVelocity, limitAcceleration, limitOmega, limitAlpha);
+        }
+        // This cycle's lowered limits: wheel speed (m/s), wheel acceleration (m/s^2), turn rate
+        // (rad/s), turn acceleration (rad/s^2); NaN means configured. E.g. from a raised mechanism.
+        Logger.recordOutput(
+                "Swerve/Request/Limits",
+                new double[] {limitVelocity, limitAcceleration, limitOmega, limitAlpha});
+        limitVelocity = Double.NaN;
+        limitAcceleration = Double.NaN;
+        limitOmega = Double.NaN;
+        limitAlpha = Double.NaN;
         thread.setRequest(request);
         state.setCurrent(devicesOk ? wanted : State.IDLE);
         // The request sent to the swerve thread: vx, vy (m/s), omega (rad/s).
@@ -328,6 +306,57 @@ public final class Swerve implements Subsystem {
                     "Sim/OdometryError",
                     Math.hypot(odometry.x() - sim.truthX(), odometry.y() - sim.truthY()));
         }
+    }
+
+    /**
+     * Lowers the top speed, acceleration, turn rate and turn acceleration for this cycle only (NaN
+     * keeps the configured value); call every loop while needed, e.g. while an elevator is raised.
+     * The lowest of several calls in one loop wins. Calls made in a command's execute (after this
+     * subsystem's update) apply from the next loop. Speed is clamped at 0; acceleration at 0.5
+     * m/s^2 so the robot can still slow down.
+     *
+     * @param maxWheelVelocity m/s
+     * @param maxDriveAcceleration m/s^2
+     * @param maxAngularVelocity turn rate, rad/s (clamped at 0)
+     * @param maxAngularAcceleration turn acceleration, rad/s^2 (clamped at 0.5 so it can stop)
+     */
+    public void limitDrive(
+            double maxWheelVelocity,
+            double maxDriveAcceleration,
+            double maxAngularVelocity,
+            double maxAngularAcceleration) {
+        limitVelocity = lower(limitVelocity, maxWheelVelocity);
+        limitAcceleration = lower(limitAcceleration, maxDriveAcceleration);
+        limitOmega = lower(limitOmega, maxAngularVelocity);
+        limitAlpha = lower(limitAlpha, maxAngularAcceleration);
+    }
+
+    private static double lower(double a, double b) {
+        if (!Double.isFinite(a)) {
+            return b;
+        }
+        return Double.isFinite(b) ? Math.min(a, b) : a;
+    }
+
+    /**
+     * Spins in place while scheduled and logs the measured wheel radius
+     * (Swerve/WheelRadius/Estimate); prints it when done. Run in utility mode on carpet, then copy
+     * the value into setting swerve/wheelRadius.
+     */
+    public Command characterizeWheelRadius() {
+        String name = "wheelRadius";
+        return startEnd(
+                        () -> state.request(State.WHEEL_RADIUS_CHARACTERIZATION, name),
+                        () -> {
+                            state.release(name);
+                            System.out.println(
+                                    "Swerve wheel radius estimate: "
+                                            + utilities.wheelRadiusEstimate()
+                                            + " m (setting swerve/wheelRadius is "
+                                            + SwerveSettings.WHEEL_RADIUS.get()
+                                            + ")");
+                        })
+                .withName("Swerve.CharacterizeWheelRadius");
     }
 
     /** Ask for a state; see {@link WantedState#request}. */

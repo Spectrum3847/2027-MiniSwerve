@@ -142,3 +142,68 @@ testing on the robot:
 4. **Finding a lost steer angle.** Idea to try: drive the other three straight and steer the bad
    module (or sweep the chassis direction) while watching drive current and slip; the angle with
    the least drag is where the wheel points.
+
+## Drivetrain utilities
+
+- **Brake/coast** (`swerve/coastOnDisable`, `coastDelaySeconds`): brake while enabled and while the
+  robot is still moving after a disable; coast after 0.5 s disabled and still, so it can be pushed.
+  The config apply runs on `PhoenixBackground`. Logged: `Swerve/DriveBrakeWanted` and
+  `Swerve/Health/DriveBrake` (applied).
+- **Per-cycle limits**: `Swerve.limitDrive(maxWheelVelocity, maxDriveAcceleration,
+  maxAngularVelocity, maxAngularAcceleration)`, called every loop while needed (e.g. an elevator
+  raised), lowers top speed, wheel acceleration, turn rate and turn acceleration for that cycle
+  only; it can never raise them. Logged:
+  `Swerve/Request/Limits`.
+- **Wheel radius**: in utility mode hold Start; the robot spins in place (`wheelRadiusSpin`) and
+  logs `Swerve/WheelRadius/Estimate` once spinning steadily (after 1 s), printing it when
+  released. Copy it into `swerve/wheelRadius`. Run it two or three times on carpet and average.
+  The desktop sim reproduces a wrong setting's true radius to within about 1% (its timing is not
+  real-time); the math is exact on synthetic data.
+- **Stick shaping**: radial deadband (`pilot/stickDeadband`) and squaring on the left stick's
+  magnitude, so diagonals keep their direction.
+
+## Planned: calibration drive with a tag rig
+
+A known test rig: two AprilTags a known distance apart at a known height. One recorded session
+of driving at, away from and across the tags, plus spins with the tags in view, should calibrate
+nearly everything at once, offline from the log (replay makes it repeatable). Built with the
+TagEKF and vision work; the rig geometry is a Robot Setting so the solver uses it as truth.
+
+| From the drive | Calibrates | Current home |
+|---|---|---|
+| Spin in place, tags in view | Wheel radius (vision turn and gyro turn vs wheel travel) | `swerve/wheelRadius` |
+| Spin in place | Gyro yaw scale and drift, vs vision heading | `imu` settings (new) |
+| Spin and drive, each camera on the tags | Camera mount poses (position, yaw/pitch/roll) | camera settings (new); TagEKF `MountEstimator` |
+| Accelerate and brake toward the tags | Camera time offset (latency), vs odometry motion | camera settings (new) |
+| Straight drives and strafes | Effective track and wheelbase; CANcoder offset trim (does "straight" go straight) | `swerve/track`, magnet offsets |
+| Speed ramps | Drive kS / kV / kA (commanded vs measured wheel speed and current) | swerve gains |
+| Whole session | Odometry slip noise and EKF noise values | TagEKF settings |
+| Fast spins, drive while spinning | `rotationLookahead`, steer gains, setpoint generator limits | swerve settings |
+
+The tag rig distance and height check the cameras' range scale independently of the field, so a
+scaled or miscalibrated camera shows up before it reaches the EKF.
+
+Output: a tool reads the log and writes proposed values into `deploy/settings/*.json` for review
+(the same pull-back-to-git path as Robot Settings), never applied silently.
+
+## Planned: battery identity (NFC tags)
+
+From [SpectrumBatteryLogger](https://github.com/Spectrum3847/SpectrumBatteryLogger): every battery
+carries an NFC sticker, and a PN532 reader on USB (CH340, `/dev/ttyUSB0`) sits against it when the
+battery is installed, so every log records which battery the robot ran on. Proven so far on a
+laptop and a Pi 4 (300/300 reads, about 30 ms each, tag present at power-up read first time, name
+read from the tag's NDEF text record). Still open, and the test robots are where to prove them:
+the SystemCore image itself, read range through the battery wrap near metal, reads with the
+drivetrain running, and battery swaps while disabled.
+
+How it fits here:
+
+- The reader runs on its own daemon thread (serial I/O never on the main loop or swerve thread):
+  once at boot, then every 2 s while disabled. The main loop logs the result.
+- Battery UID and tag name are AdvantageKit **inputs** (`Battery/TagUID`, `Battery/TagName`), not
+  outputs, so replay and anything that reacts to the battery (an alert for a battery flagged as
+  weak, per-battery current limits) see the same value.
+- Per-battery history comes from the logs: voltage sag under load, energy used per match, and with
+  the swerve's supply currents, internal resistance per battery over the season.
+- Code moves into `frc.spectrumLib` (reader driver plus a `BatteryTag` input source) and adds
+  `com.fazecast:jSerialComm`. The UID-to-name map is a deploy file.

@@ -25,6 +25,12 @@ public interface SwerveIO {
     /** Swerve thread: all motors neutral. */
     void setNeutral();
 
+    /**
+     * Main thread: drive motors brake (true) or coast at neutral. Applying it is a blocking config
+     * call, so implementations do it on their own thread; call only on a change.
+     */
+    default void setDriveBrake(boolean brake) {}
+
     /** Main thread, slow rate: currents, temperatures, connection. */
     void updateHealth(SwerveHealth out);
 

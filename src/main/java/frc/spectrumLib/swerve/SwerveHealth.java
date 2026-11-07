@@ -25,6 +25,9 @@ public final class SwerveHealth {
     /** The bus is a CANivore (CAN FD) and controls and signals use Phoenix timesync. */
     public boolean timesync;
 
+    /** The drive motors are in brake (false: coast), as last applied. */
+    public boolean driveBrake = true;
+
     /** Amps. */
     public final double[] driveStatorCurrent;
 

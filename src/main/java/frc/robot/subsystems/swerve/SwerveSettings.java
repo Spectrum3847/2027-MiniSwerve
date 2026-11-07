@@ -97,6 +97,19 @@ final class SwerveSettings {
      */
     static final BooleanSetting TIMESYNC = G.bool("timesync", true);
 
+    /**
+     * Coast the drive motors once the robot has been disabled and still for coastDelaySeconds, so
+     * it can be pushed; brake while enabled and while still moving. HARD STOP (brake/coast).
+     */
+    static final BooleanSetting COAST_ON_DISABLE = G.bool("coastOnDisable", true);
+
+    /** Seconds disabled and still before coasting. */
+    static final DoubleSetting COAST_DELAY_SECONDS = G.number("coastDelaySeconds", 0.5, "s", 0, 10);
+
+    /** Spin rate for the wheel-radius measurement (rad/s). */
+    static final DoubleSetting WHEEL_RADIUS_SPIN =
+            G.number("wheelRadiusSpin", 1.5, "rad/s", 0.3, 4);
+
     /** Driver top speed and turn rate. */
     static final DoubleSetting MAX_DRIVE_VELOCITY =
             G.number("maxDriveVelocity", 4.0, "m/s", 0.5, 5.0);
