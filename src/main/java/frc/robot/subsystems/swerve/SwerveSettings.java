@@ -208,4 +208,15 @@ final class SwerveSettings {
      * it tips and use the angle).
      */
     static final DoubleSetting COG_HEIGHT_INCHES = G.number("cogHeightInches", 6.0, "in", 1, 40);
+
+    /**
+     * Bumper outline, front to back, bumpers on (in). Sets where the sim robot hits walls and other
+     * robots. Placeholder until measured.
+     */
+    static final DoubleSetting BUMPER_LENGTH_INCHES =
+            G.number("bumperLengthInches", 22.0, "in", 10, 40);
+
+    /** Bumper outline, side to side, bumpers on (in). Placeholder until measured. */
+    static final DoubleSetting BUMPER_WIDTH_INCHES =
+            G.number("bumperWidthInches", 22.0, "in", 10, 40);
 }

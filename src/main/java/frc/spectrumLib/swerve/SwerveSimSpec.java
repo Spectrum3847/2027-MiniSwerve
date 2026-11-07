@@ -13,6 +13,8 @@ package frc.spectrumLib.swerve;
  * @param my module y positions (m)
  * @param trueWheelRadius the sim's real wheel radius (m); NaN for the configured one
  * @param cogHeight center of gravity above the floor (m), for weight transfer
+ * @param bumperLength bumper outline front to back (m), for collisions
+ * @param bumperWidth bumper outline side to side (m)
  */
 public record SwerveSimSpec(
         String driveMotor,
@@ -24,4 +26,6 @@ public record SwerveSimSpec(
         double[] mx,
         double[] my,
         double trueWheelRadius,
-        double cogHeight) {}
+        double cogHeight,
+        double bumperLength,
+        double bumperWidth) {}

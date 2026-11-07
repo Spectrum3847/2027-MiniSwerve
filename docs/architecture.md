@@ -322,6 +322,41 @@ Against FM q32 (`simReplay -Pparams="cog=..."`), raising the center of gravity f
 wheel-acceleration p90 from 0.82 to 0.92 g (real 1.08) and slows sprints slightly; match data is too
 mixed with contact to fit the height, so measure it.
 
+## Field walls and bumper contact
+
+The sim robot drives on an FRC field (SpectrumSim `field/`): the four walls, 16.54 x 8.07 m, as
+fixed outlines, and the robot's bumpers (Robot Settings `swerve/bumperLengthInches`,
+`swerve/bumperWidthInches`, 22 in placeholders) as a box. Each 1 ms step, after the robot moves, the
+bumpers are pushed back out of any wall and the contact impulse comes off the robot's motion: a
+small bounce on a real hit (20% of the closing speed, none for resting contact), and bumper-on-wall
+friction (0.4) while sliding. The tires keep pushing, so a robot driven into a wall stops and
+spins or scrubs its wheels, as on a field. `SPECTRUM_SIM_FIELD=none` gives open floor;
+`SPECTRUM_SIM_START=x,y,deg` places the robot (default 2, 2, 0, clear of the walls for the scripted
+drives). The true pose on the field is logged as `Sim/FieldPose` for AdvantageScope's field view,
+contacts as `Sim/Contacts`.
+
+`MINISWERVE_SIM_SCRIPT=walls` strafes into the side wall, drives along it, and backs into the
+alliance wall: the bumpers stop 0.278 m out (half the bumper, less 2 mm of slop). Driving along the
+wall covers 3.2 m in 1.5 s, but driving along it while also steering 20 deg into it covers only
+0.4 m in 2 s: wheels angled into the wall scrub sideways, that scrub pushes the robot into the
+wall, and bumper friction against that push cancels the drive. That follows from the model; it is
+not yet checked on a real robot.
+
+Other robots (`SPECTRUM_SIM_ROBOTS`, e.g. `defender:9,4,3;parked:6,3.2,0`) are 60 kg boxes with
+0.9 m bumpers that drive toward what their behavior wants, no harder than 1.1 g of traction:
+`parked` holds a spot and slides only when pushed past its tires, `shuttle` drives back and forth,
+`defender` chases our robot and pushes into it. Robot-to-robot contact uses the same bumper impulses
+as walls, with both robots moving. Their poses are logged as `Sim/OtherRobots`.
+
+Contacts are solved over up to two touch points at once (iterated impulses), so a bumper face
+landing nearly flat on a wall shares the hit along the face: before, anything past about 0.07 deg
+off parallel landed on one corner and spun the robot hard. The robot is placed with
+`SPECTRUM_SIM_START`, which must be on the field and clear of the walls.
+
+Also fixed with this: the tire force now opposes the combined slip (along and across the wheel as
+one vector); before, each direction saturated on its own, which made sideways scrub too strong
+whenever a wheel both drove and slid.
+
 ## Repeatable sim
 
 Phoenix's simulator runs each motor's control loop on the wall clock, so two runs of the same
