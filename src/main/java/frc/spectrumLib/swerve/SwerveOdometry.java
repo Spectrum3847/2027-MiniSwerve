@@ -22,6 +22,8 @@ public final class SwerveOdometry {
     private final double[] residual;
     private int modulesUsed;
     private final double[] robotVelocity = new double[3];
+    private final double[] vxm;
+    private final double[] vym;
 
     private double x;
     private double y;
@@ -29,7 +31,6 @@ public final class SwerveOdometry {
     private double yawOffset; // heading = yaw + yawOffset
     private boolean primed;
     private double lastYaw;
-    private double lastTimestamp;
     private double slip;
     private boolean usedGyro;
 
@@ -42,6 +43,8 @@ public final class SwerveOdometry {
         lastDistance = new double[n];
         lastAngle = new double[n];
         residual = new double[n];
+        vxm = new double[n];
+        vym = new double[n];
     }
 
     /** Puts the robot at a pose; the next sample's yaw becomes this heading. */
@@ -109,12 +112,15 @@ public final class SwerveOdometry {
             // comes back.
             yawOffset += twist[2] - SwerveMath.angleModulus(s.yaw - lastYaw);
         }
-        double sampleDt = s.timestamp - lastTimestamp;
-        lastTimestamp = s.timestamp;
-        if (sampleDt > 1e-4) {
-            robotVelocity[0] = twist[0] / sampleDt;
-            robotVelocity[1] = twist[1] / sampleDt;
-            robotVelocity[2] = dTheta / sampleDt;
+        // Measured chassis velocity straight from the wheels' measured speeds (no differencing of
+        // timestamps, which jitter), with the gyro's yaw rate when it is good.
+        for (int i = 0; i < n; i++) {
+            vxm[i] = s.velocity[i] * Math.cos(s.angle[i]);
+            vym[i] = s.velocity[i] * Math.sin(s.angle[i]);
+        }
+        SwerveMath.toChassisVelocities(vxm, vym, mx, my, weight, robotVelocity, null);
+        if (gyroGood) {
+            robotVelocity[2] = s.angularVelocityZWorld;
         }
         lastYaw = s.yaw;
         // Integrate the robot-frame twist along an arc (Pose2d.exp), then rotate into the field.
