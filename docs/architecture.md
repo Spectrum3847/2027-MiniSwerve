@@ -307,6 +307,21 @@ Known from the fault scenario: with the Pigeon out, heading comes from the wheel
 odometry drifts (about 0.2 m over a 1.5 s outage while turning) and keeps that heading error when
 the gyro returns. The SystemCore/USB gyro as a second heading source, and the TagEKF, are the fix.
 
+## Weight transfer
+
+Each wheel's load follows the robot's acceleration (`WheelLoads` in SpectrumSim): speeding up
+loads the back wheels, turning loads the outside ones, and each tire grips in proportion to its
+load. Height comes from Robot Setting `swerve/cogHeightInches` (6 in placeholder: measure it). A
+wheel whose load would go below zero is lifted (`Sim/WheelLifted`); loads are logged as
+`Sim/WheelLoads` (N). The chassis is rigid and quasi-static: it does not tilt, so a lifted wheel
+means the robot is starting to tip but the tip itself is not modeled yet. In the drive script one
+corner goes light for a moment on hard diagonal starts and stops (three wheels carry it), as real
+robots do.
+
+Against FM q32 (`simReplay -Pparams="cog=..."`), raising the center of gravity from 0 to 0.25 m moves
+wheel-acceleration p90 from 0.82 to 0.92 g (real 1.08) and slows sprints slightly; match data is too
+mixed with contact to fit the height, so measure it.
+
 ## Repeatable sim
 
 Phoenix's simulator runs each motor's control loop on the wall clock, so two runs of the same

@@ -26,6 +26,7 @@ import org.wpilib.driverstation.Alliance;
 import org.wpilib.driverstation.MatchState;
 import org.wpilib.driverstation.RobotState;
 import org.wpilib.math.geometry.Pose2d;
+import org.wpilib.math.util.Units;
 import org.wpilib.util.Alert.Level;
 
 /**
@@ -130,7 +131,9 @@ public final class Swerve implements Subsystem {
                                             my,
                                             // Nominal-size sim wheels: a wrong wheelRadius setting
                                             // shows up as odometry error.
-                                            Hardware.MK4iL2.NOMINAL_WHEEL_RADIUS_METERS),
+                                            Hardware.MK4iL2.NOMINAL_WHEEL_RADIUS_METERS,
+                                            Units.inchesToMeters(
+                                                    SwerveSettings.COG_HEIGHT_INCHES.get())),
                                     simFaults)
                             : null;
             io =

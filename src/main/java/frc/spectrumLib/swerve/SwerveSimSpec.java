@@ -12,6 +12,7 @@ package frc.spectrumLib.swerve;
  * @param mx module x positions (m)
  * @param my module y positions (m)
  * @param trueWheelRadius the sim's real wheel radius (m); NaN for the configured one
+ * @param cogHeight center of gravity above the floor (m), for weight transfer
  */
 public record SwerveSimSpec(
         String driveMotor,
@@ -22,4 +23,5 @@ public record SwerveSimSpec(
         double steerFriction,
         double[] mx,
         double[] my,
-        double trueWheelRadius) {}
+        double trueWheelRadius,
+        double cogHeight) {}
