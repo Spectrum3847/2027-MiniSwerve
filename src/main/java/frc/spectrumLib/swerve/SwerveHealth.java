@@ -10,8 +10,11 @@ public final class SwerveHealth {
     public final boolean[] encoderConnected;
     public boolean pigeonConnected;
 
-    /** Each module's drive, steer and CANcoder took their config at boot. */
-    public final boolean[] configured;
+    /** Each device took its config (at boot, or on a later background retry). */
+    public final boolean[] driveConfigured;
+
+    public final boolean[] steerConfigured;
+    public final boolean[] encoderConfigured;
 
     /**
      * Each steer motor is fusing its CANcoder: no FusedSensorOutOfSync or RemoteSensorDataInvalid
@@ -24,6 +27,12 @@ public final class SwerveHealth {
 
     /** The bus is a CANivore (CAN FD) and controls and signals use Phoenix timesync. */
     public boolean timesync;
+
+    /** Device reboots detected since boot (any drivetrain device). */
+    public long deviceResets;
+
+    /** Signal update rates are set on every device (false right after a reboot, until redone). */
+    public boolean signalsSet = true;
 
     /** The drive motors are in brake (false: coast), as last applied. */
     public boolean driveBrake = true;
@@ -47,7 +56,9 @@ public final class SwerveHealth {
         driveConnected = new boolean[modules];
         steerConnected = new boolean[modules];
         encoderConnected = new boolean[modules];
-        configured = new boolean[modules];
+        driveConfigured = new boolean[modules];
+        steerConfigured = new boolean[modules];
+        encoderConfigured = new boolean[modules];
         fusedOk = new boolean[modules];
         magnetOk = new boolean[modules];
         driveStatorCurrent = new double[modules];

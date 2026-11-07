@@ -102,14 +102,20 @@ public final class SwerveInputs implements LoggableInputs {
         t.put("Health/SteerConnected", h.steerConnected);
         t.put("Health/EncoderConnected", h.encoderConnected);
         t.put("Health/PigeonConnected", h.pigeonConnected);
-        // Each module's devices took their config at boot.
-        t.put("Health/Configured", h.configured);
+        // Each device took its config (boot or a later retry).
+        t.put("Health/DriveConfigured", h.driveConfigured);
+        t.put("Health/SteerConfigured", h.steerConfigured);
+        t.put("Health/EncoderConfigured", h.encoderConfigured);
         // Steer motors fusing their CANcoder (no fused-sensor faults).
         t.put("Health/FusedOk", h.fusedOk);
         // CANcoder magnets readable.
         t.put("Health/MagnetOk", h.magnetOk);
         // CANivore timesync in use.
         t.put("Health/Timesync", h.timesync);
+        // Drivetrain device reboots detected since boot.
+        t.put("Health/DeviceResets", h.deviceResets);
+        // Signal rates set on every device (false after a reboot until redone).
+        t.put("Health/SignalsSet", h.signalsSet);
         // Drive motors in brake (false: coast), as last applied.
         t.put("Health/DriveBrake", h.driveBrake);
         // Swerve thread cycles in a row with stale or failed signals.
@@ -169,11 +175,15 @@ public final class SwerveInputs implements LoggableInputs {
         copy(t.get("Health/SteerConnected", h.steerConnected), h.steerConnected);
         copy(t.get("Health/EncoderConnected", h.encoderConnected), h.encoderConnected);
         h.pigeonConnected = t.get("Health/PigeonConnected", h.pigeonConnected);
-        copy(t.get("Health/Configured", h.configured), h.configured);
+        copy(t.get("Health/DriveConfigured", h.driveConfigured), h.driveConfigured);
+        copy(t.get("Health/SteerConfigured", h.steerConfigured), h.steerConfigured);
+        copy(t.get("Health/EncoderConfigured", h.encoderConfigured), h.encoderConfigured);
         copy(t.get("Health/FusedOk", h.fusedOk), h.fusedOk);
         copy(t.get("Health/MagnetOk", h.magnetOk), h.magnetOk);
         h.timesync = t.get("Health/Timesync", h.timesync);
         h.driveBrake = t.get("Health/DriveBrake", h.driveBrake);
+        h.deviceResets = t.get("Health/DeviceResets", h.deviceResets);
+        h.signalsSet = t.get("Health/SignalsSet", h.signalsSet);
         staleCycles = t.get("Thread/StaleCycles", staleCycles);
         copy(t.get("Health/DriveStatorCurrent", h.driveStatorCurrent), h.driveStatorCurrent);
         copy(t.get("Health/SteerStatorCurrent", h.steerStatorCurrent), h.steerStatorCurrent);

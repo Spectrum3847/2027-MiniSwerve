@@ -124,24 +124,37 @@ roll; SystemCore IMU `MountOrientation` and yaw.
 
 ## Module trust and degraded modes
 
-Every sample records which modules' signals were fresh (`Samples/ModuleOk`); health adds connected,
-configured, CANcoder magnet and fused-sensor faults. `ModuleTrust` combines them, plus "absolute
-angle good at least once since boot". Odometry uses only trusted modules (weighted least squares;
-two are enough), and logs each module's slip (`Swerve/Modules/Slip`) and commanded-minus-measured
-speed (`Swerve/Modules/VelocityError`).
+The rule (AGENTS.md "Finish the match"): a fault degrades only its own module; the drivetrain
+always keeps driving with what still works.
 
-Control still goes neutral if any module is untrusted. Planned degraded modes, to build after
-testing on the robot:
+Each module has a mode (`Swerve/Modules/Mode`), from logged health:
 
-1. **Drive motor down (7 motors).** Coast that drive, keep steering it along its free-rolling
-   direction, and solve kinematics with three driven wheels (any chassis motion is still possible).
-2. **Steer motor down.** Coast its drive. The wheel's angle is fixed, so plan chassis motion that
-   rolls along it where possible and accept scrub otherwise; account for its drag.
-3. **CANcoder down after boot.** The steer motor keeps the angle from its rotor; keep driving,
-   alert, and stop trusting the absolute angle after a reboot.
-4. **Finding a lost steer angle.** Idea to try: drive the other three straight and steer the bad
-   module (or sweep the chassis direction) while watching drive current and slip; the angle with
-   the least drag is where the wheel points.
+| Mode | When | What it does |
+|---|---|---|
+| NORMAL | everything fine | drives and steers |
+| STEER_ONLY | drive motor disconnected or its config not applied | wheel still steered along its rolling direction |
+| COAST | steer motor out, or angle never known since boot | module rolls free; the others carry the robot |
+
+How each motor is commanded (`ModuleCommands`) is a separate decision: **keep commanding, without
+flooding the bus.** A motor that is disconnected (no status frames) may still be alive and
+listening, so if its config is known it keeps getting its real command, at 10 Hz instead of the
+loop rate. A motor only coasts when its command could do harm: a drive whose config never applied
+(invert unknown) or whose wheel angle is unknown.
+
+Recovery is automatic: a device counts as connected again as soon as its status frames arrive
+(Phoenix `isConnected`, read at 10 Hz); a reboot (`hasResetOccurred`) marks its config and the
+signal rates to be redone; failed configs and signal rates retry on `PhoenixBackground` every 0.5 s
+until they succeed; brake/coast is re-requested while the applied state does not match. A CANcoder
+lost after boot keeps the module NORMAL (the steer motor counts from its rotor). Late signals never
+stop the drivetrain: a stale module is planned from its last target.
+
+Odometry stays strict: it uses a module only when NORMAL, its CANcoder fused and readable, and that
+sample fresh (weighted least squares; two are enough). Per-module slip and speed error are logged.
+
+Next degraded modes, to build after testing on the robot: plan chassis motion around a fixed
+(steer-out) wheel instead of letting it scrub; account for its drag; and find a lost steer angle by
+driving the other three and watching drive current and slip (the least-drag angle is where the
+wheel points).
 
 ## Drivetrain utilities
 

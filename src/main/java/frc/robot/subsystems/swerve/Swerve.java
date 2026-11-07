@@ -78,6 +78,9 @@ public final class Swerve implements Subsystem {
     private final double maxDriveVelocity;
     private final double maxAngularVelocity;
     private final Alert disconnectedAlert = new Alert("", Level.HIGH);
+    private static final String[] MODULE_NAMES = {"FL", "FR", "BL", "BR"};
+    private String lastDegraded = "";
+    private int sentModesVersion = -1;
     private final Alert threadFaultAlert = new Alert("", Level.HIGH);
     private final Alert gyroAlert =
             new Alert("Swerve: Pigeon down, heading from wheels only", Level.HIGH);
@@ -151,6 +154,14 @@ public final class Swerve implements Subsystem {
         }
         Logger.processInputs("Swerve", inputs);
         trust.update(inputs.health);
+        if (trust.version() != sentModesVersion) {
+            sentModesVersion = trust.version();
+            thread.setModuleCommands(trust.commands());
+        }
+        if (io.hasHardware() && RobotLoop.everySeconds(0.5)) {
+            // Keep retrying: a device that rebooted or missed its config comes back on its own.
+            io.retryFailedConfigs();
+        }
         for (int s = 0; s < inputs.count; s++) {
             var sample = inputs.samples[s];
             odometry.update(sample, gyroOk() && sample.gyroOk, trust.weights(sample));
@@ -204,11 +215,6 @@ public final class Swerve implements Subsystem {
                                 gyroOk());
                     }
                 };
-        boolean devicesOk = allConnected();
-        if (!devicesOk) {
-            // Never drive on a module we cannot read.
-            request = DriveRequest.NEUTRAL;
-        }
         if (Double.isFinite(limitVelocity)
                 || Double.isFinite(limitAcceleration)
                 || Double.isFinite(limitOmega)
@@ -225,7 +231,8 @@ public final class Swerve implements Subsystem {
         limitOmega = Double.NaN;
         limitAlpha = Double.NaN;
         thread.setRequest(request);
-        state.setCurrent(devicesOk ? wanted : State.IDLE);
+        // Module faults never stop the drivetrain: each module degrades on its own (ModuleTrust).
+        state.setCurrent(wanted);
         // The request sent to the swerve thread: vx, vy (m/s), omega (rad/s).
         Logger.recordOutput("Swerve/Request/Mode", request.mode());
         Logger.recordOutput(
@@ -236,15 +243,6 @@ public final class Swerve implements Subsystem {
     /** The Pigeon is connected and configured (logged input). */
     private boolean gyroOk() {
         return inputs.health.pigeonConnected;
-    }
-
-    /**
-     * Every module is trusted: connected, configured, magnet readable, CANcoder fused (logged
-     * inputs only, so replay decides the same way). False until the first health read, so the robot
-     * never drives on devices it has not checked.
-     */
-    private boolean allConnected() {
-        return trust.allTrusted();
     }
 
     /** Yaw rate (rad/s): the gyro's when good, else the wheels' estimate. */
@@ -284,10 +282,12 @@ public final class Swerve implements Subsystem {
         Logger.recordOutput("Swerve/Odometry/Slip", odometry.slip());
         // Heading came from the gyro (false: from the wheels).
         Logger.recordOutput("Swerve/Odometry/UsedGyro", odometry.usedGyro());
-        boolean connected = allConnected();
-        disconnectedAlert.setText(
-                "Swerve: a drive, steer or CANcoder is disconnected or failed to configure");
-        disconnectedAlert.set(!connected);
+        String degraded = trust.degradedSummary(MODULE_NAMES);
+        if (!degraded.equals(lastDegraded)) {
+            lastDegraded = degraded;
+            disconnectedAlert.setText("Swerve degraded, still driving: " + degraded);
+        }
+        disconnectedAlert.set(!degraded.isEmpty());
         if (inputs.threadFaults > 0 && !threadFaultAlert.get()) {
             threadFaultAlert.setText("Swerve thread faults: " + inputs.lastThreadFault);
         }

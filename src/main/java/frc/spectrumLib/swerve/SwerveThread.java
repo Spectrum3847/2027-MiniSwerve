@@ -26,6 +26,10 @@ public final class SwerveThread {
     private volatile double maxSteerVelocity = 20.0;
     private final SwerveSetpointGenerator generator;
     private final double[] steerVelocity;
+    private final double[] current;
+
+    /** How each motor is commanded; replaced (never mutated) by the main thread. */
+    private volatile ModuleCommands commands;
 
     /** Turn rate sent last cycle (rad/s), for the turn-acceleration limit. */
     private double lastOmega;
@@ -35,9 +39,6 @@ public final class SwerveThread {
     private volatile String lastFault = "";
     private volatile long cycles;
     private volatile long staleCycles;
-
-    /** Stale-signal cycles in a row before the thread stops driving (20 ms at 250 Hz). */
-    static final int MAX_STALE_CYCLES = 5;
 
     private final SwerveSample sample;
     private final double[] chassis = new double[3];
@@ -73,6 +74,8 @@ public final class SwerveThread {
         lastTargetAngle = new double[n];
         wheelForce = new double[n];
         steerVelocity = new double[n];
+        current = new double[n];
+        commands = ModuleCommands.allNormal(n);
         generator = new SwerveSetpointGenerator(mx, my);
     }
 
@@ -86,6 +89,11 @@ public final class SwerveThread {
 
     public void stop() {
         running = false;
+    }
+
+    /** Main thread: how each motor is commanded, from the next cycle on. */
+    public void setModuleCommands(ModuleCommands c) {
+        commands = c;
     }
 
     /** Main thread: what to do from the next cycle on. */
@@ -145,8 +153,9 @@ public final class SwerveThread {
             try {
                 io.waitForSample(sample);
                 staleCycles = sample.allGood ? 0 : staleCycles + 1;
-                // Never steer against frozen readings: after a few stale cycles, go neutral.
-                computeTargets(staleCycles >= MAX_STALE_CYCLES ? DriveRequest.NEUTRAL : request);
+                // Late signals never stop the drivetrain (AGENTS.md "Finish the match"): a module
+                // whose readings are stale is planned from its last target instead.
+                computeTargets(request);
                 System.arraycopy(sample.targetAngle, 0, lastTargetAngle, 0, lastTargetAngle.length);
                 lastTimestamp = sample.timestamp;
                 queue.offer(sample);
@@ -265,8 +274,12 @@ public final class SwerveThread {
             // The generator already turns the short way and cosine-scales against its own plan;
             // doing it again here would scale twice and could flip the target against the steer
             // feedforward.
-            SwerveMath.optimize(velocity, angle, sample.angle);
-            SwerveMath.cosineScale(velocity, angle, sample.angle);
+            // Where each module points: measured, or last target if its reading is stale.
+            for (int i = 0; i < n; i++) {
+                current[i] = sample.moduleOk[i] ? sample.angle[i] : lastTargetAngle[i];
+            }
+            SwerveMath.optimize(velocity, angle, current);
+            SwerveMath.cosineScale(velocity, angle, current);
         }
         double[] fx = r.wheelForceFeedforwardX();
         double[] fy = r.wheelForceFeedforwardY();
@@ -278,7 +291,7 @@ public final class SwerveThread {
                 wheelForce[i] = rfx * Math.cos(angle[i]) + rfy * Math.sin(angle[i]);
             }
         }
-        io.setModules(angle, velocity, steerVelocity, wheelForce);
+        io.setModules(angle, velocity, steerVelocity, wheelForce, commands);
     }
 
     /**

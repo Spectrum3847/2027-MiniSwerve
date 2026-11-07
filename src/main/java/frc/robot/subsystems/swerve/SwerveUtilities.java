@@ -23,6 +23,7 @@ final class SwerveUtilities {
     private boolean brakeRequested = true;
 
     private double characterizingFor;
+    private double sinceBrakeRequest;
     private boolean radiusStarted;
 
     /** Seconds of spinning before the wheel-radius measurement starts. */
@@ -47,10 +48,15 @@ final class SwerveUtilities {
             }
         }
         boolean brake = !coastOnDisable || coast.brake(enabled, fastest, dt);
-        if (brake != brakeRequested) {
+        sinceBrakeRequest += dt;
+        // Request on a change, and again (about once a second) while the applied state does not
+        // match: an apply can fail, and a rebooted drive motor comes back in its boot mode.
+        boolean mismatch = inputs.health.driveBrake != brake;
+        if (brake != brakeRequested || (mismatch && sinceBrakeRequest >= 1.0)) {
             // A config apply: SwerveIO does it on its own thread.
             io.setDriveBrake(brake);
             brakeRequested = brake;
+            sinceBrakeRequest = 0;
         }
         // Drive motors should brake (false: coast); Health/DriveBrake is what was applied.
         Logger.recordOutput("Swerve/DriveBrakeWanted", brake);

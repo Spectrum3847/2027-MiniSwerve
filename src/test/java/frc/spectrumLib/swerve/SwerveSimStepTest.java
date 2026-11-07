@@ -61,11 +61,82 @@ class SwerveSimStepTest {
         for (int k = 0; k < 250; k++) {
             DriverStationSim.notifyNewData();
             io.waitForSample(sample);
-            io.setModules(angle, velocity, new double[4], new double[4]);
+            io.setModules(
+                    angle, velocity, new double[4], new double[4], ModuleCommands.allNormal(4));
         }
         for (int i = 0; i < 4; i++) {
             assertEquals(angle[i], sample.angle[i], 0.02, "module " + i + " angle");
             assertEquals(1.0, sample.velocity[i], 0.1, "module " + i + " velocity");
+        }
+    }
+
+    @org.junit.jupiter.api.Test
+    void degradedModulesCoastWhileTheRestStillSteerAndDrive() {
+        HAL.initialize();
+        DriverStationSim.setEnabled(true);
+        DriverStationSim.setDsAttached(true);
+        DriverStationSim.notifyNewData();
+        double h = 0.1778;
+        double driveRatio = (50.0 / 14) * (17.0 / 27) * (45.0 / 15);
+        var cfg =
+                new PhoenixSwerveConfig(
+                        "",
+                        1,
+                        new int[] {21, 22, 23, 24},
+                        new int[] {31, 32, 33, 34},
+                        new int[] {21, 22, 23, 24},
+                        new double[4],
+                        new boolean[] {false, true, false, true},
+                        true,
+                        driveRatio,
+                        150.0 / 7,
+                        50.0 / 14,
+                        0.0508,
+                        80,
+                        40,
+                        new PhoenixSwerveConfig.Gains(10, 0, 0, 3, 0, 0),
+                        new PhoenixSwerveConfig.Gains(100, 0, 0.5, 0.1, 2.66, 0),
+                        250,
+                        new double[3],
+                        false,
+                        0.12 * 150.0 / 7,
+                        1.2 / (150.0 / 7),
+                        5.84 / 304,
+                        true,
+                        true);
+        var io =
+                new SwerveIOPhoenix(
+                        cfg,
+                        new SwervePhysicsSim(
+                                18,
+                                0.004,
+                                0.01,
+                                new double[] {h, h, -h, -h},
+                                new double[] {h, -h, h, -h}));
+        var sample = new SwerveSample(4);
+        double[] angle = {1.0, 1.0, 1.0, 1.0};
+        double[] velocity = {1.0, 1.0, 1.0, 1.0};
+        // Module 0: drive coasting, still steered. Module 1: both coasting. Modules 2-3 healthy.
+        ModuleCommands modes =
+                new ModuleCommands(
+                        new boolean[] {false, false, true, true},
+                        new boolean[] {true, false, true, true},
+                        new boolean[4],
+                        new boolean[4]);
+        for (int k = 0; k < 250; k++) {
+            DriverStationSim.notifyNewData();
+            io.waitForSample(sample);
+            io.setModules(angle, velocity, new double[4], new double[4], modes);
+        }
+        // Steer-only module still turns to its angle; its drive is coasting (not driven to 1 m/s).
+        assertEquals(1.0, sample.angle[0], 0.02);
+        assertEquals(0.0, sample.velocity[0], 0.05);
+        // Coasting module does nothing.
+        assertEquals(0.0, sample.angle[1], 0.02);
+        // Healthy modules are unaffected.
+        for (int i = 2; i < 4; i++) {
+            assertEquals(1.0, sample.angle[i], 0.02);
+            assertEquals(1.0, sample.velocity[i], 0.1);
         }
     }
 }
