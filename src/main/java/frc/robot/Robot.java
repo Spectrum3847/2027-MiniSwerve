@@ -1,5 +1,7 @@
 package frc.robot;
 
+import frc.robot.pilot.Pilot;
+import frc.robot.subsystems.swerve.Swerve;
 import frc.spectrumLib.framework.RobotLoop;
 import frc.spectrumLib.framework.SpectrumRobot;
 import frc.spectrumLib.robotsettings.NetworkTablesTransport;
@@ -23,8 +25,9 @@ import org.wpilib.util.Alert.Level;
  * <ol>
  *   <li>{@link RobotLoop#next()} - loop counter
  *   <li>{@link RobotSettings#periodic()} - apply live tuning, log values (inputs)
- *   <li>subsystem inputs - read the logged inputs every decision uses
+ *   <li>{@link Swerve#updateInputs()} - drain 250 Hz samples, log, odometry
  *   <li>{@link CommandScheduler#run()} - wanted-state requests and commands
+ *   <li>{@link Swerve#applyWantedState()} - wanted state to the swerve thread
  *   <li>alerts and telemetry
  * </ol>
  */
@@ -33,6 +36,8 @@ public class Robot extends SpectrumRobot {
     private static final Path LOCAL_SETTINGS = Path.of("/home/systemcore/settings");
 
     private final Alert mainThreadPriorityAlert = new Alert("", Level.MEDIUM);
+    private final Swerve swerve;
+    private final SimScript simScript = SimScript.fromEnvironment();
 
     public Robot() {
         super(RunMode.MAIN_LOOP_PERIOD_SECONDS);
@@ -45,6 +50,9 @@ public class Robot extends SpectrumRobot {
                 RunMode.CURRENT == RunMode.Mode.REAL ? LOCAL_SETTINGS : null,
                 new NetworkTablesTransport(RobotSettings.NT_PREFIX));
         // Subsystems are built here, after settings and before the RT priority below.
+        swerve = new Swerve();
+        // The pilot only binds controls; the bindings keep it alive.
+        new Pilot(swerve);
         if (RunMode.CURRENT == RunMode.Mode.REAL) {
             setMainThreadPriority(RunMode.MAIN_THREAD_RT_PRIORITY);
         }
@@ -53,8 +61,13 @@ public class Robot extends SpectrumRobot {
     @Override
     public void robotPeriodic() {
         RobotLoop.next();
+        if (simScript != null) {
+            simScript.periodic();
+        }
         RobotSettings.periodic();
+        swerve.updateInputs();
         CommandScheduler.getInstance().run();
+        swerve.applyWantedState();
         Alert.periodic();
         Telemetry.periodic();
     }

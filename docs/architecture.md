@@ -7,7 +7,7 @@ How MiniSwerve's code fits together. Status marks: **built**, **next**, **planne
 | Thread | Rate | Owns | Status |
 |---|---|---|---|
 | Main | 100 Hz, RT priority 1 | settings, logging, wanted states, commands | built |
-| Swerve | 250 Hz, RT | module control, odometry samples, vision ingest | next |
+| Swerve | 250 Hz, RT | module setpoints, device reads, sample queue (vision ingest planned) | built |
 | Settings writer | on demand | saving Robot Settings to disk | built |
 
 The swerve thread never logs. It writes samples into preallocated ring buffers; the main loop
@@ -28,16 +28,16 @@ drains them into logged inputs, and replay feeds the same inputs back.
 frc.robot                 this robot only
   Robot, Main, RunMode, LoggingSetup
   config/                 Hardware (CAN IDs, ratios: hard stops)
-  subsystems/<name>/      one folder per subsystem              (next)
-  pilot/                  driver controller bindings            (next)
+  subsystems/swerve/      drivetrain wanted states              (built)
+  pilot/                  driver controller bindings            (built)
 frc.spectrumLib           reusable; moves to its own repo later
   framework/              SpectrumRobot, RobotLoop
   robotsettings/          Robot Settings (layered JSON, live tuning, saving)
   telemetry/              Telemetry facade, Alert, DashboardReceiver
-  swerve/                 custom swerve on Phoenix 6 Pro          (next)
+  swerve/                 custom swerve on Phoenix 6 Pro          (built)
+  statemachine/           WantedState                             (built)
   localization/           TagEKF, odometry guard                  (planned)
   vision/                 our camera frame structs + reader       (planned)
-  statemachine/           wanted-state base                       (planned)
 ```
 
 ## Robot Settings
@@ -65,3 +65,15 @@ bearing, range, corners, margin) instead of PhotonLib's results. The struct defi
 
 Auto selection and test mode use WPILib 2027 OpModes. Autos ask subsystems for wanted states; the
 auto builder (Choreo-based paths, straight-line paths) comes later.
+
+## Swerve
+
+Each module's loops run on the motors at 1 kHz: steer is PositionTorqueCurrentFOC on the fused
+CANcoder, drive is VelocityTorqueCurrentFOC. The 250 Hz thread reads latency-compensated signals,
+turns the latest `DriveRequest` into module targets with that fresh reading (field-relative
+rotation by the live gyro, discretize, desaturate, optimize, cosine scale, MK4i coupling
+compensation) and queues the sample. In sim, `SwervePhysicsSim` moves the same Phoenix devices.
+
+Sim check: `MINISWERVE_SIM_SCRIPT=drive ./gradlew run -PnoSimGui`, then
+`python tools/swerve_summary.py logs/<log>.wpilog`. On 2026-11-07: 249 Hz, no dropped samples,
+odometry 3 cm mean / 6 cm max from truth over ~16 m; replay reproduces odometry within 1e-7 m.
