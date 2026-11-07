@@ -83,7 +83,7 @@ public final class SimReplay {
         double massKg = args.length > 2 ? Double.parseDouble(args[2]) : 60.0;
         double friction = args.length > 3 ? Double.parseDouble(args[3]) : 1.1;
         double steerInertia = args.length > 4 ? Double.parseDouble(args[4]) : 0.01;
-        double steerFriction = args.length > 5 ? Double.parseDouble(args[5]) : 0.01;
+        double steerFriction = args.length > 5 ? Double.parseDouble(args[5]) : 0.3;
         HAL.initialize();
         DriverStationSim.setDsAttached(true);
         DriverStationSim.setEnabled(true);

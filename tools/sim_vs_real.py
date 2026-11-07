@@ -49,6 +49,17 @@ def axis_err(a, b):
     return min(e, math.pi - e)
 
 
+def smooth(xs, n=5):
+    """Moving average over n samples (50 ms at 100 Hz)."""
+    out, acc = [], 0.0
+    for i, x in enumerate(xs):
+        acc += x
+        if i >= n:
+            acc -= xs[i - n]
+        out.append(acc / min(i + 1, n))
+    return out
+
+
 def pct(xs, p):
     xs = sorted(xs)
     return xs[min(len(xs) - 1, int(p / 100 * len(xs)))] if xs else float("nan")
@@ -156,8 +167,10 @@ def main(real_path, sim_path):
          1000 * statistics.median(rises["sim"] or [float("nan")]), "%.0f")
     print("%-34s %10d %10d" % ("sprints scored", len(rises["real"]), len(rises["sim"])))
 
-    ar = [math.hypot(x, y) for x, y in zip(real["ax"], real["ay"])]
-    asim = [math.hypot(x, y) for x, y in zip(sim["sax"], sim["say"])]
+    # Both smoothed the same way (50 ms moving average): the Pigeon filters its accelerometer,
+    # and the sim's is a raw velocity difference, so unsmoothed medians are not comparable.
+    ar = [math.hypot(x, y) for x, y in zip(smooth(real["ax"]), smooth(real["ay"]))]
+    asim = [math.hypot(x, y) for x, y in zip(smooth(sim["sax"]), smooth(sim["say"]))]
     for p in (50, 90, 99):
         line("accel p%d (g)" % p, pct(ar, p), pct(asim, p))
 
