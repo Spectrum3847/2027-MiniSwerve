@@ -60,6 +60,11 @@ public class Robot extends SpectrumRobot {
                 RunMode.CURRENT == RunMode.Mode.SIM
                         ? DesktopSim.load(System.getenv("MINISWERVE_SIM_SCRIPT") != null)
                         : null;
+        if (RunMode.CURRENT == RunMode.Mode.SIM && desktopSim == null) {
+            // Without SpectrumSim the robot would run with no physics and look broken.
+            throw new IllegalStateException(
+                    "SpectrumSim is not on the classpath: run the sim with ./gradlew run");
+        }
         LoggingSetup.start(this);
         RobotSettings.start(
                 Filesystem.getDeployDirectory().toPath().resolve("settings"),

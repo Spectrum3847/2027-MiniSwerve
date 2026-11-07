@@ -23,7 +23,13 @@ public interface DesktopSim {
      * @return the sim, or null when SpectrumSim is not on the classpath
      */
     static DesktopSim load(boolean scripted) {
-        DesktopSim sim = ServiceLoader.load(DesktopSim.class).findFirst().orElse(null);
+        DesktopSim sim;
+        try {
+            sim = ServiceLoader.load(DesktopSim.class).findFirst().orElse(null);
+        } catch (java.util.ServiceConfigurationError e) {
+            throw new IllegalStateException(
+                    "SpectrumSim is on the classpath but would not load", e);
+        }
         if (sim != null) {
             sim.init(scripted);
         }

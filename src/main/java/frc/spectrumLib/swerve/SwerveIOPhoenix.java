@@ -13,6 +13,7 @@ import frc.spectrumLib.hardware.PhoenixDeviceSet;
 import frc.spectrumLib.hardware.SimFaults;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.LongConsumer;
 
 /**
  * Our swerve on plain Phoenix 6 Pro devices (no CTRE swerve API). Each module's control runs on the
@@ -51,7 +52,7 @@ public final class SwerveIOPhoenix implements SwerveIO {
     private final double metersPerWheelRotation;
 
     /** Desktop sim only: waits out the rest of a period after a read, from its start (ns). */
-    private volatile java.util.function.LongConsumer simPacer;
+    private volatile LongConsumer simPacer;
 
     private final SwerveRequests requests;
     private final double[] measuredSteerRps;
@@ -204,7 +205,7 @@ public final class SwerveIOPhoenix implements SwerveIO {
      * Desktop sim on Phoenix's simulator: read signals without waiting for new frames, then let
      * {@code pacer} wait out the period (given the read's start, ns). Null on the robot.
      */
-    public void setSimPacer(java.util.function.LongConsumer pacer) {
+    public void setSimPacer(LongConsumer pacer) {
         simPacer = pacer;
     }
 
@@ -220,7 +221,7 @@ public final class SwerveIOPhoenix implements SwerveIO {
     @Override
     public void waitForSample(SwerveSample out) {
         boolean good;
-        java.util.function.LongConsumer pacer = simPacer;
+        LongConsumer pacer = simPacer;
         if (pacer != null) {
             // Desktop: the physics runs on its own thread; read what Phoenix's simulator reports,
             // then wait out the rest of the period.

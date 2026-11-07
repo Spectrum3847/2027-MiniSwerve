@@ -133,7 +133,10 @@ public final class Swerve implements Subsystem {
                                             Hardware.MK4iL2.NOMINAL_WHEEL_RADIUS_METERS),
                                     simFaults)
                             : null;
-            io = sim != null ? sim.io() : new SwerveIOPhoenix(SwerveConfigs.phoenix(MODULES), null);
+            io =
+                    sim != null
+                            ? sim.io()
+                            : new SwerveIOPhoenix(SwerveConfigs.phoenix(MODULES), simFaults);
         } else {
             sim = null;
             io = SwerveIO.NONE;

@@ -151,13 +151,9 @@ wpi.sim.addDriverstation()
 application.mainClass = ROBOT_MAIN_CLASS
 
 // Desktop runs (sim and replay) get SpectrumSim; the deploy jar does not.
+// (VS Code's "Simulate Robot Code" builds its own classpath without it: use ./gradlew run.)
 tasks.named('run') {
     classpath += sourceSets.sim.output
-}
-tasks.matching { it.name == 'simulateJava' }.configureEach {
-    if (it.hasProperty('classpath')) {
-        classpath += sourceSets.sim.output
-    }
 }
 
 // The robot jar plus each library's jar (WPILib 2027 alpha-8 dropped the fat jar).

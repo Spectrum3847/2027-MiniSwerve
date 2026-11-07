@@ -9,6 +9,8 @@ robot.
   `ServiceLoader` (`src/main/resources/META-INF/services`). The deploy jar has none of it.
 - In this repo it is the Gradle source set `sim` (`build.gradle`); its tests run with the robot's.
   It is its own folder so it can move to its own repo once its interfaces settle.
+- Run the sim with `./gradlew run` (it puts SpectrumSim on the classpath). VS Code's "Simulate
+  Robot Code" does not yet; the robot stops at boot saying so rather than run with no physics.
 - Environment: `SPECTRUM_SIM_SPEED` (a multiple of real time, or `max`; default `max` for a scripted
   run, else real time), `SPECTRUM_SIM_DEVICES=phoenix` (drivetrain on Phoenix's own simulator, on
   the wall clock, not repeatable).
