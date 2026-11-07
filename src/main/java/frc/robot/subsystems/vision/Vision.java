@@ -121,7 +121,8 @@ public final class Vision {
                 if (lastSequence[i] >= 0 && f.sequence > lastSequence[i] + 1) {
                     dropped[i] += f.sequence - lastSequence[i] - 1;
                 }
-                lastSequence[i] = f.sequence;
+                // Only forward: a frame arriving out of order must not count as a gap later.
+                lastSequence[i] = Math.max(lastSequence[i], f.sequence);
                 lastFrameSeconds[i] = now;
                 decoded[i]++;
             }

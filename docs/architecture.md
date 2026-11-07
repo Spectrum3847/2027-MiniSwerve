@@ -396,6 +396,25 @@ Known from the fault scenario: with the Pigeon out, heading comes from the wheel
 odometry drifts (about 0.2 m over a 1.5 s outage while turning) and keeps that heading error when
 the gyro returns. The SystemCore/USB gyro as a second heading source, and the TagEKF, are the fix.
 
+## Timing and power from real logs
+
+Fitted from FM's 13 TXMAN1 matches on SystemCore (enabled 155 s each):
+
+| What | Real | In the sim |
+|---|---|---|
+| CAN sample spacing at 250 Hz | 2 to 8 ms: 3 ms 21%, 4 ms 50%, 5 ms 23%, 6+ ms 4.5% (457,911 samples) | Drawn from that histogram (`SwerveIOSim`); the sim's own run matches it within 1 point per bin |
+| Failed reads (stale frames) | 350 of 420,060 | Same rate, as `allGood` false |
+| Camera capture to robot | median 15.7 ms, p90 21.5 ms (Orin, 33,396 frames) | Drawn from that histogram (`CameraSim`) |
+| Battery open-circuit voltage | falls 0.6 to 1.6 V over a match, about 0.8 V per Ah drawn | 0.8 V per Ah drawn, on top of the 0.012 ohm sag |
+| Main loop | median 1.4 ms, p99 3.1 ms; about 2.5 loops a match over 10 ms (max 114 ms) | Not modeled: too rare to matter, and it would need the sim clock to hold the loop |
+
+Fixed with this: sim samples were all stamped with AdvantageKit's loop-start time (what
+`Timer.getTimestamp()` returns in the main loop), so every sample in a loop shared one time. They
+are now stamped when read, on the robot clock the cameras use; sim odometry error on the drive
+script fell from 29 to 9 cm median.
+
+`python tools/fit_timing.py <logs>` reruns these fits.
+
 ## Weight transfer
 
 Each wheel's load follows the robot's acceleration (`WheelLoads` in SpectrumSim): speeding up

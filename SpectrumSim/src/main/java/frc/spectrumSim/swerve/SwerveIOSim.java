@@ -14,7 +14,7 @@ import frc.spectrumLib.swerve.SwerveSample;
 import frc.spectrumSim.SimClock;
 import frc.spectrumSim.TalonFXModel;
 import org.wpilib.driverstation.RobotState;
-import org.wpilib.system.Timer;
+import org.wpilib.system.RobotController;
 
 /**
  * The drivetrain in the desktop sim, repeatable: each motor is a {@link TalonFXModel} given the
@@ -42,6 +42,41 @@ public final class SwerveIOSim implements SwerveIO {
     private final TalonFXModel[] steer;
     private final SwerveRequests requests;
     private final long ticksPerPeriod;
+
+    /**
+     * Spacing between samples on a real SystemCore CAN bus at 250 Hz (ms, and share): FM's 13
+     * TXMAN1 matches, 457,911 samples, rounded to whole ms (mean 4.1 ms, about 243 Hz).
+     */
+    private static final int[] SPACING_MS = {2, 3, 4, 5, 6, 7, 8};
+
+    private static final double[] SPACING_SHARE = {
+        0.0068, 0.2138, 0.5037, 0.2307, 0.0298, 0.0103, 0.0047
+    };
+
+    private static final double SPACING_TOTAL = 0.9998;
+
+    /** Share of reads that fail (stale frames), from the same matches. */
+    private static final double FAILED_READ = 350.0 / 420060;
+
+    /** Seeded: sample timing repeats run to run. */
+    private final java.util.Random canRandom = new java.util.Random(250);
+
+    /** Ticks until the next sample: the measured spacing, scaled to this loop's rate. */
+    private long nextSpacing() {
+        double u = canRandom.nextDouble();
+        double total = SPACING_TOTAL;
+        double sum = 0;
+        int ms = 4;
+        for (int i = 0; i < SPACING_MS.length; i++) {
+            sum += SPACING_SHARE[i] / total;
+            if (u < sum) {
+                ms = SPACING_MS[i];
+                break;
+            }
+        }
+        return Math.max(1, Math.round(ms * ticksPerPeriod / 4.0));
+    }
+
     private final double metersPerWheelRotation;
 
     /** Device names as PhoenixDeviceSet names them: Drive0, Steer0, Encoder0, ..., Pigeon. */
@@ -122,17 +157,27 @@ public final class SwerveIOSim implements SwerveIO {
 
     @Override
     public void waitForSample(SwerveSample out) {
+        // A read now and then misses its frames, as Phoenix's waitForAll times out (FM's 13 TXMAN1
+        // matches failed 350 of 420,060): it waits out the timeout (two periods) and returns the
+        // readings it had, stale.
+        boolean failed = canRandom.nextDouble() < FAILED_READ;
+        long wait = nextSpacing() + (failed ? 2 * ticksPerPeriod : 0);
         if (clock != null) {
-            tick = clock.awaitTick(tick + ticksPerPeriod);
-            out.timestamp = Timer.getTimestamp();
+            tick = clock.awaitTick(tick + wait);
+            // When it was read, on the robot clock the cameras use. (Timer.getTimestamp is
+            // AdvantageKit's loop start: every sample in a loop would share it.)
+            out.timestamp = RobotController.getMonotonicTime() * 1e-9;
         } else {
-            for (long k = 0; k < ticksPerPeriod; k++) {
+            for (long k = 0; k < wait; k++) {
                 physicsStep(SimClock.TICK_SECONDS);
             }
-            selfTime += ticksPerPeriod * SimClock.TICK_SECONDS;
+            selfTime += wait * SimClock.TICK_SECONDS;
             out.timestamp = selfTime;
         }
-        out.allGood = true;
+        out.allGood = !failed;
+        if (failed) {
+            return; // stale: the readings stay as they were
+        }
         double couple = cfg.coupleRatio() / cfg.driveRatio();
         for (int i = 0; i < n; i++) {
             if (unheard(names[i]) || unheard(names[n + i])) {
