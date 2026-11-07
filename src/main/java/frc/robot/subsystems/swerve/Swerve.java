@@ -2,6 +2,7 @@ package frc.robot.subsystems.swerve;
 
 import frc.robot.RunMode;
 import frc.robot.config.Hardware;
+import frc.robot.config.ImuSettings;
 import frc.spectrumLib.framework.RobotLoop;
 import frc.spectrumLib.statemachine.WantedState;
 import frc.spectrumLib.swerve.DriveRequest;
@@ -132,7 +133,12 @@ public final class Swerve implements Subsystem {
                         SwerveSettings.STEER_KS.get(),
                         0,
                         0),
-                1.0 / RunMode.SWERVE_LOOP_PERIOD_SECONDS);
+                1.0 / RunMode.SWERVE_LOOP_PERIOD_SECONDS,
+                new double[] {
+                    ImuSettings.PIGEON_MOUNT_YAW.get(),
+                    ImuSettings.PIGEON_MOUNT_PITCH.get(),
+                    ImuSettings.PIGEON_MOUNT_ROLL.get()
+                });
     }
 
     /** Where the pilot's sticks come from: -1..1 field x, field y, rotation. */

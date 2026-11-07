@@ -22,6 +22,7 @@ package frc.spectrumLib.swerve;
  * @param drive drive Slot0 gains, TorqueCurrentFOC units (A per wheel rps, A)
  * @param steer steer Slot0 gains, TorqueCurrentFOC units (A per rotation of error, A)
  * @param signalHz update rate of the signals the swerve thread reads
+ * @param pigeonMountPose Pigeon 2 MountPoseYaw, MountPosePitch, MountPoseRoll (deg)
  */
 public record PhoenixSwerveConfig(
         String canBus,
@@ -40,7 +41,8 @@ public record PhoenixSwerveConfig(
         double steerStatorCurrentLimit,
         Gains drive,
         Gains steer,
-        double signalHz) {
+        double signalHz,
+        double[] pigeonMountPose) {
 
     /** Phoenix Slot0 gains: kP, kI, kD, kS, kV, kA. */
     public record Gains(double kP, double kI, double kD, double kS, double kV, double kA) {}

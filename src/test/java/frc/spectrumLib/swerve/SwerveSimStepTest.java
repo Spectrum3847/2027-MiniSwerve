@@ -39,7 +39,8 @@ class SwerveSimStepTest {
                         40,
                         new PhoenixSwerveConfig.Gains(10, 0, 0, 3, 0, 0),
                         new PhoenixSwerveConfig.Gains(1000, 0, 30, 2, 0, 0),
-                        250);
+                        250,
+                        new double[3]);
         var io = new SwerveIOPhoenix(cfg, new SwervePhysicsSim(18, 0.004, 0.01, mx, my));
         var sample = new SwerveSample(4);
         double[] angle = {1.0, -1.0, 2.0, -2.5};

@@ -83,7 +83,11 @@ public final class SwerveIOPhoenix implements SwerveIO {
         metersPerWheelRotation = 2 * Math.PI * cfg.wheelRadius();
         pigeon = new Pigeon2(cfg.pigeonId(), bus);
         configured = new boolean[n];
-        pigeonConfigured = apply(() -> pigeon.getConfigurator().apply(new Pigeon2Configuration()));
+        var pigeonConfig = new Pigeon2Configuration();
+        pigeonConfig.MountPose.MountPoseYaw = cfg.pigeonMountPose()[0];
+        pigeonConfig.MountPose.MountPosePitch = cfg.pigeonMountPose()[1];
+        pigeonConfig.MountPose.MountPoseRoll = cfg.pigeonMountPose()[2];
+        pigeonConfigured = apply(() -> pigeon.getConfigurator().apply(pigeonConfig));
 
         List<BaseStatusSignal> fastList = new ArrayList<>();
         List<BaseStatusSignal> slowList = new ArrayList<>();

@@ -86,3 +86,16 @@ the Pigeon down, field-relative uses the odometry (wheel) heading.
 Open on the robot: CAN bus load at 250 Hz on SystemCore's bus (8 Talons + 4 CANcoders + Pigeon;
 may need 200 Hz or a CANivore), whether Phoenix's clock matches WPILib's on SystemCore, and the
 four CANcoder magnet offsets. MK4i inverts, ratios and coupling are fixed facts (see `Hardware`).
+
+## Heading sources
+
+The robot has several rotation sources. Each will be its own logged source, compared every loop,
+with the best healthy one driving field-relative control and odometry:
+
+1. Pigeon 2 (CAN) - primary. **Built.**
+2. SystemCore IMU (`OnboardIMU`); this robot imitates it with a USB gyro. **Planned.**
+3. Vision heading from the TagEKF. **Planned** (with the EKF).
+4. Wheel odometry. **Built** as the fallback when the Pigeon is down.
+
+Mount orientation for each is a Robot Setting (`config/ImuSettings`): Pigeon MountPose yaw, pitch,
+roll; SystemCore IMU `MountOrientation` and yaw.
