@@ -1,0 +1,67 @@
+package frc.spectrumLib.swerve;
+
+/**
+ * One 250 Hz reading of the whole drivetrain, plus what the thread commanded from it. Field names
+ * follow WPILib's {@code SwerveModulePosition} (distance, angle) and Phoenix's Pigeon 2 signals
+ * (yaw, angularVelocityZWorld).
+ *
+ * <p>Mutable and reused: the swerve thread fills one, {@link SampleQueue} copies it, the main loop
+ * copies it again into logged inputs. Nothing here allocates after construction.
+ */
+public final class SwerveSample {
+    /**
+     * When the thread read the sample, seconds, on Phoenix's clock ({@code
+     * Utils.getCurrentTimeSeconds}). Matches WPILib's clock in sim; check it on SystemCore before
+     * pairing samples with camera timestamps.
+     */
+    public double timestamp;
+
+    /** Wheel travel per module (m), with steer coupling removed. */
+    public final double[] distance;
+
+    /** Wheel speed per module (m/s). */
+    public final double[] velocity;
+
+    /** Module direction (rad, CCW positive, 0 = robot forward). */
+    public final double[] angle;
+
+    /** Gyro yaw (rad, CCW positive, continuous: not wrapped). */
+    public double yaw;
+
+    /** Gyro yaw rate (rad/s). */
+    public double angularVelocityZWorld;
+
+    /** Every device's signals in this sample were fresh and OK. */
+    public boolean allGood;
+
+    /** Commanded module direction this cycle (rad). */
+    public final double[] targetAngle;
+
+    /** Commanded wheel speed this cycle (m/s), after optimize and cosine scale. */
+    public final double[] targetVelocity;
+
+    public SwerveSample(int modules) {
+        distance = new double[modules];
+        velocity = new double[modules];
+        angle = new double[modules];
+        targetAngle = new double[modules];
+        targetVelocity = new double[modules];
+    }
+
+    public int modules() {
+        return distance.length;
+    }
+
+    /** Copies every field of {@code from} into this sample. */
+    public void copyFrom(SwerveSample from) {
+        timestamp = from.timestamp;
+        yaw = from.yaw;
+        angularVelocityZWorld = from.angularVelocityZWorld;
+        allGood = from.allGood;
+        System.arraycopy(from.distance, 0, distance, 0, distance.length);
+        System.arraycopy(from.velocity, 0, velocity, 0, velocity.length);
+        System.arraycopy(from.angle, 0, angle, 0, angle.length);
+        System.arraycopy(from.targetAngle, 0, targetAngle, 0, targetAngle.length);
+        System.arraycopy(from.targetVelocity, 0, targetVelocity, 0, targetVelocity.length);
+    }
+}

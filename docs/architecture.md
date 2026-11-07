@@ -7,7 +7,7 @@ How MiniSwerve's code fits together. Status marks: **built**, **next**, **planne
 | Thread | Rate | Owns | Status |
 |---|---|---|---|
 | Main | 100 Hz, RT priority 1 | settings, logging, wanted states, commands | built |
-| Swerve | 250 Hz, RT | module control, odometry samples, vision ingest | next |
+| Swerve | 250 Hz (setting `swerve/loopHz`), RT | module setpoints, device reads, sample queue (vision ingest planned) | built |
 | Settings writer | on demand | saving Robot Settings to disk | built |
 
 The swerve thread never logs. It writes samples into preallocated ring buffers; the main loop
@@ -28,16 +28,16 @@ drains them into logged inputs, and replay feeds the same inputs back.
 frc.robot                 this robot only
   Robot, Main, RunMode, LoggingSetup
   config/                 Hardware (CAN IDs, ratios: hard stops)
-  subsystems/<name>/      one folder per subsystem              (next)
-  pilot/                  driver controller bindings            (next)
+  subsystems/swerve/      drivetrain wanted states              (built)
+  pilot/                  driver controller bindings            (built)
 frc.spectrumLib           reusable; moves to its own repo later
   framework/              SpectrumRobot, RobotLoop
   robotsettings/          Robot Settings (layered JSON, live tuning, saving)
   telemetry/              Telemetry facade, Alert, DashboardReceiver
-  swerve/                 custom swerve on Phoenix 6 Pro          (next)
+  swerve/                 custom swerve on Phoenix 6 Pro          (built)
+  statemachine/           WantedState                             (built)
   localization/           TagEKF, odometry guard                  (planned)
   vision/                 our camera frame structs + reader       (planned)
-  statemachine/           wanted-state base                       (planned)
 ```
 
 ## Robot Settings
@@ -65,3 +65,41 @@ bearing, range, corners, margin) instead of PhotonLib's results. The struct defi
 
 Auto selection and test mode use WPILib 2027 OpModes. Autos ask subsystems for wanted states; the
 auto builder (Choreo-based paths, straight-line paths) comes later.
+
+## Swerve
+
+Each module's loops run on the motors at 1 kHz: steer is PositionTorqueCurrentFOC on the fused
+CANcoder (or MotionMagicExpoTorqueCurrentFOC with setting `swerve/steerMotionMagicExpo`), drive is
+VelocityTorqueCurrentFOC with a torque feedforward from per-wheel forces (CTRE's
+WheelForceFeedforwardX/Y). Setpoints go out once per cycle (UpdateFreqHz 0). The drive slip current
+is both the stator limit and peak torque current, as CTRE's SlipCurrent. Field-relative driving
+follows the alliance (operator forward: 0 blue, pi red); Back seeds field-centric. The 250 Hz thread reads latency-compensated signals,
+turns the latest `DriveRequest` into module targets with that fresh reading (field-relative
+rotation by the live gyro, discretize, desaturate, optimize, cosine scale, MK4i coupling
+compensation, wheel force feedforward) and queues the sample. In sim, `SwervePhysicsSim` moves the same Phoenix devices.
+
+Sim check: `MINISWERVE_SIM_SCRIPT=drive ./gradlew run -PnoSimGui`, then
+`python tools/swerve_summary.py logs/<log>.wpilog`. On 2026-11-07: 249 Hz, no dropped samples,
+odometry 3 cm mean / 5 cm max from truth over ~16 m; replay reproduces odometry, request and
+state exactly.
+
+Safety: the robot drives only when every module's devices are connected and took their config
+(logged health); the thread goes neutral after 5 stale-signal cycles (20 ms) and on any fault; with
+the Pigeon down, field-relative uses the odometry (wheel) heading.
+
+Open on the robot: CAN bus load at 250 Hz on SystemCore's bus (8 Talons + 4 CANcoders + Pigeon;
+may need 200 Hz or a CANivore), whether Phoenix's clock matches WPILib's on SystemCore, and the
+four CANcoder magnet offsets. MK4i inverts, ratios and coupling are fixed facts (see `Hardware`).
+
+## Heading sources
+
+The robot has several rotation sources. Each will be its own logged source, compared every loop,
+with the best healthy one driving field-relative control and odometry:
+
+1. Pigeon 2 (CAN) - primary. **Built.**
+2. SystemCore IMU (`OnboardIMU`); this robot imitates it with a USB gyro. **Planned.**
+3. Vision heading from the TagEKF. **Planned** (with the EKF).
+4. Wheel odometry. **Built** as the fallback when the Pigeon is down.
+
+Mount orientation for each is a Robot Setting (`config/ImuSettings`): Pigeon MountPose yaw, pitch,
+roll; SystemCore IMU `MountOrientation` and yaw.

@@ -33,8 +33,6 @@ final class LoggingSetup {
         Logger.recordMetadata("BootId", UUID.randomUUID().toString());
         Logger.recordMetadata("RunMode", RunMode.CURRENT.name());
         Logger.recordMetadata("MainLoopSeconds", Double.toString(RunMode.MAIN_LOOP_PERIOD_SECONDS));
-        Logger.recordMetadata(
-                "SwerveLoopSeconds", Double.toString(RunMode.SWERVE_LOOP_PERIOD_SECONDS));
         Logger.recordMetadata("TuningMode", Boolean.toString(RunMode.TUNING_MODE));
         Logger.recordMetadata("BuildDate", BuildConstants.BUILD_DATE);
         Logger.recordMetadata("GitSHA", BuildConstants.GIT_SHA);

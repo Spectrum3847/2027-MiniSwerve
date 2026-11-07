@@ -6,4 +6,7 @@
 | `Robot` | Boot order and the main loop order; owns subsystems as fields |
 | `RunMode` | REAL / SIM / REPLAY, loop periods, RT priority, tuning mode |
 | `LoggingSetup` | AdvantageKit metadata and receivers |
-| `config/Hardware` | CAN IDs, bus, gear ratios: hard stops |
+| `SimScript` | Scripted sim driving (`MINISWERVE_SIM_SCRIPT=drive`) |
+| `config/Hardware` | CAN IDs, bus, gear ratios, inverts, current limits: hard stops |
+| `subsystems/swerve/` | The drivetrain |
+| `pilot/` | Driver controller |

@@ -30,9 +30,6 @@ public final class RunMode {
     /** Main robot loop: 100 Hz. Code reads {@code RobotLoop.periodSeconds()}, not this. */
     public static final double MAIN_LOOP_PERIOD_SECONDS = 0.01;
 
-    /** Swerve control and odometry thread: 250 Hz. */
-    public static final double SWERVE_LOOP_PERIOD_SECONDS = 0.004;
-
     /**
      * Real-time priority of the main thread on the robot, 0 for none. 1 is the lowest real-time
      * level, which sits below Phoenix's CAN threads (2-3). FM measured it fixes late loops on
