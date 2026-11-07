@@ -54,8 +54,19 @@ class SwerveSimStepTest {
                         1.2 / (150.0 / 7),
                         5.84 / 304,
                         true,
-                        steerVoltage);
-        var io = new SwerveIOPhoenix(cfg, new SwervePhysicsSim(18, 1.1, 0.004, 0.01, mx, my), null);
+                        steerVoltage,
+                        0);
+        var physics =
+                new SwervePhysicsSim(
+                        MotorModel.FALCON_500_FOC,
+                        MotorModel.FALCON_500_FOC,
+                        18,
+                        1.1,
+                        0.004,
+                        0.01,
+                        mx,
+                        my);
+        var io = new SwerveIOPhoenix(cfg, physics, null);
         var sample = new SwerveSample(4);
         // 1. Robot still: every module steers to its own angle.
         double[] angle = {1.0, -1.0, 2.0, -2.5};
@@ -81,6 +92,7 @@ class SwerveSimStepTest {
             assertEquals(1.0, sample.angle[i], 0.02, "module " + i + " angle");
             assertEquals(1.0, sample.velocity[i], 0.1, "module " + i + " velocity");
         }
+        physics.stop();
     }
 
     @org.junit.jupiter.api.Test
@@ -116,18 +128,19 @@ class SwerveSimStepTest {
                         1.2 / (150.0 / 7),
                         5.84 / 304,
                         true,
-                        true);
-        var io =
-                new SwerveIOPhoenix(
-                        cfg,
-                        new SwervePhysicsSim(
-                                18,
-                                1.1,
-                                0.004,
-                                0.01,
-                                new double[] {h, h, -h, -h},
-                                new double[] {h, -h, h, -h}),
-                        null);
+                        true,
+                        0);
+        var physics =
+                new SwervePhysicsSim(
+                        MotorModel.FALCON_500_FOC,
+                        MotorModel.FALCON_500_FOC,
+                        18,
+                        1.1,
+                        0.004,
+                        0.01,
+                        new double[] {h, h, -h, -h},
+                        new double[] {h, -h, h, -h});
+        var io = new SwerveIOPhoenix(cfg, physics, null);
         var sample = new SwerveSample(4);
         double[] angle = {1.0, 1.0, 1.0, 1.0};
         double[] velocity = {1.0, 1.0, 1.0, 1.0};
@@ -153,5 +166,6 @@ class SwerveSimStepTest {
             assertEquals(1.0, sample.angle[i], 0.02);
             assertTrue(sample.velocity[i] > 0.5, "module " + i + " drives");
         }
+        physics.stop();
     }
 }

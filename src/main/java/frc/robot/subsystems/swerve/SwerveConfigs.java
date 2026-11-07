@@ -64,7 +64,8 @@ final class SwerveConfigs {
                 SwerveSettings.STEER_EXPO_KA.get(),
                 Hardware.MK4iL2.DRIVE_KT,
                 SwerveSettings.TIMESYNC.get(),
-                SwerveSettings.steerVoltage());
+                SwerveSettings.steerVoltage(),
+                0);
     }
 
     /**

@@ -75,6 +75,10 @@ public final class SwerveIOPhoenix implements SwerveIO {
 
     private final boolean timesync;
     private final DriveNeutralMode neutralMode;
+
+    /** Physics rate in sim (Hz): as fast as a motor's own control loop. */
+    private static final double PHYSICS_HZ = 1000;
+
     private final SimFaults faults;
 
     /** Device names (as in PhoenixDeviceSet), built once: no strings per cycle. */
@@ -198,6 +202,9 @@ public final class SwerveIOPhoenix implements SwerveIO {
         devices.configureAtBoot();
         if (sim != null) {
             sim.attach(cfg, drive, steer, encoder, pigeon);
+            // Physics on its own 1 kHz thread, so the simulated motors' 1 kHz loops see fresh
+            // positions as real ones do (stepping at 250 Hz with this thread made them lag).
+            sim.start(PHYSICS_HZ);
         }
     }
 
@@ -214,9 +221,9 @@ public final class SwerveIOPhoenix implements SwerveIO {
     public void waitForSample(SwerveSample out) {
         boolean good;
         if (sim != null) {
-            // Desktop: step the physics one period, read what Phoenix's simulator reports, then
-            // wait out the rest of the period.
-            long start = sim.stepRealTime(cfg.signalHz());
+            // Desktop: the physics runs on its own thread; read what Phoenix's simulator reports,
+            // then wait out the rest of the period.
+            long start = System.nanoTime();
             good = BaseStatusSignal.refreshAll(fast).isOK();
             sim.waitForNextPeriod(start, cfg.signalHz());
         } else {

@@ -262,3 +262,26 @@ tasks.register('printClasspath') {
         }
     }
 }
+
+// Replays a real robot's module commands through the physics sim (tools/sim_vs_real.py):
+//   ./gradlew simReplay -Pin=build/simreal/q32.csv -Pout=build/simreal/q32_sim.csv [-Pmass=60 -Pfriction=1.1]
+tasks.register('simReplay', JavaExec) {
+    group = 'Spectrum'
+    description = 'Replay real module commands through the physics sim'
+    dependsOn 'testClasses', 'extractReleaseNative'
+    mainClass = 'frc.tools.SimReplay'
+    classpath = sourceSets.test.runtimeClasspath
+    def nativeDir = file("$buildDir/jni/release")
+    jvmArgs = [
+        "-Djava.library.path=${nativeDir}"
+    ]
+    environment 'PATH', "${nativeDir}${File.pathSeparator}${System.getenv('PATH')}"
+    args = [
+        project.findProperty('in') ?: 'build/simreal/in.csv',
+        project.findProperty('out') ?: 'build/simreal/out_sim.csv',
+        project.findProperty('mass') ?: '60',
+        project.findProperty('friction') ?: '1.1',
+        project.findProperty('steerInertia') ?: '0.01',
+        project.findProperty('steerFriction') ?: '0.01'
+    ]
+}
