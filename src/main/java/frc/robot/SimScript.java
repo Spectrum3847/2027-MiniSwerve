@@ -6,6 +6,7 @@ import static frc.spectrumLib.hardware.SimFaults.Fault.UNPLUGGED;
 import frc.spectrumLib.hardware.SimFaults;
 import java.util.function.Consumer;
 import org.littletonrobotics.junction.Logger;
+import org.wpilib.driverstation.Gamepad;
 import org.wpilib.hardware.hal.RobotMode;
 import org.wpilib.simulation.DriverStationSim;
 import org.wpilib.simulation.GamepadSim;
@@ -18,10 +19,20 @@ import org.wpilib.system.Timer;
  *
  * <p>Run with {@code MINISWERVE_SIM_SCRIPT=drive ./gradlew run -PnoSimGui} ({@code radius} for the
  * wheel-radius utility, {@code auto} for the drive-forward auto then demo driving, {@code walls}
- * for driving into the field walls, {@code faults} to unplug and reboot devices mid-drive); it
- * exits when done. Then compare {@code Swerve/Odometry/Pose} with {@code Sim/TruthPose} in the log.
+ * for driving into the field walls, {@code buttons} for the pilot's buttons, {@code faults} to
+ * unplug and reboot devices mid-drive); it exits when done. Then compare {@code
+ * Swerve/Odometry/Pose} with {@code Sim/TruthPose} in the log.
  */
 final class SimScript {
+    /**
+     * One step of a script.
+     *
+     * @param faults changes simulated faults when the step starts, or null
+     * @param inputs sets any other controller or Driver Station input every loop of the step
+     *     (buttons, triggers, d-pad, alliance, match time, ...), or null. Buttons and triggers are
+     *     released at the start of each loop, so a step presses only what it names, and a button
+     *     held through a step is one press.
+     */
     private record Step(
             double seconds,
             String what,
@@ -30,14 +41,28 @@ final class SimScript {
             double rightX,
             RobotMode mode,
             String opMode,
-            Consumer<SimFaults> faults) {
+            Consumer<SimFaults> faults,
+            Consumer<GamepadSim> inputs) {
         Step(double seconds, String what, double leftX, double leftY, double rightX) {
-            this(seconds, what, leftX, leftY, rightX, RobotMode.TELEOPERATED, "Drive", null);
+            this(seconds, what, leftX, leftY, rightX, RobotMode.TELEOPERATED, "Drive", null, null);
         }
 
         /** A step with no sticks in this mode and OpMode (the Driver Station's selection). */
         Step(double seconds, String what, RobotMode mode, String opMode) {
-            this(seconds, what, 0, 0, 0, mode, opMode, null);
+            this(seconds, what, 0, 0, 0, mode, opMode, null, null);
+        }
+
+        /** A step with sticks in this mode and OpMode. */
+        Step(
+                double seconds,
+                String what,
+                double leftX,
+                double leftY,
+                double rightX,
+                RobotMode mode,
+                String opMode,
+                Consumer<SimFaults> faults) {
+            this(seconds, what, leftX, leftY, rightX, mode, opMode, faults, null);
         }
 
         /** A teleop step that changes simulated faults when it starts. */
@@ -48,7 +73,21 @@ final class SimScript {
                 double leftY,
                 double rightX,
                 Consumer<SimFaults> faults) {
-            this(seconds, what, leftX, leftY, rightX, RobotMode.TELEOPERATED, "Drive", faults);
+            this(
+                    seconds,
+                    what,
+                    leftX,
+                    leftY,
+                    rightX,
+                    RobotMode.TELEOPERATED,
+                    "Drive",
+                    faults,
+                    null);
+        }
+
+        /** This teleop step with other inputs set every loop (buttons, triggers, ...). */
+        Step press(Consumer<GamepadSim> set) {
+            return new Step(seconds, what, leftX, leftY, rightX, mode, opMode, faults, set);
         }
     }
 
@@ -133,6 +172,26 @@ final class SimScript {
         new Step(0.5, "stop", 0, 0, 0),
     };
 
+    /**
+     * The pilot's buttons (Pilot): turns 40 deg, then Back (field-centric re-zero) while driving,
+     * which must not move TagEKF's pose; X held with the stick pushed (wheels in an X: the robot
+     * holds still); right bumper held (slow mode: slower). Check Pose/Robot against Sim/FieldPose.
+     */
+    private static final Step[] BUTTONS = {
+        new Step(1.0, "disabled", 0, 0, 0),
+        new Step(1.0, "forward", 0, -0.6, 0),
+        new Step(0.6, "turn left", 0, 0, -0.5),
+        new Step(0.3, "Back: re-zero field-centric while driving", 0, -0.6, 0)
+                .press(p -> p.setBackButton(true)),
+        new Step(1.5, "forward after the re-zero", 0, -0.6, 0),
+        new Step(1.0, "X held, stick pushed: wheels in an X", 0, -0.8, 0)
+                .press(p -> p.setFaceLeftButton(true)),
+        new Step(1.0, "full stick", -0.8, 0, 0),
+        new Step(1.0, "right bumper held: slow mode", 0.8, 0, 0)
+                .press(p -> p.setRightBumperButton(true)),
+        new Step(0.5, "stop", 0, 0, 0),
+    };
+
     private final Step[] steps;
     private final GamepadSim pad = new GamepadSim(0);
     private double start = Double.NaN;
@@ -150,6 +209,7 @@ final class SimScript {
             case "faults" -> new SimScript(FAULTS, faults);
             case "auto" -> new SimScript(AUTO, faults);
             case "walls" -> new SimScript(WALLS, faults);
+            case "buttons" -> new SimScript(BUTTONS, faults);
             default -> throw new IllegalArgumentException("Unknown MINISWERVE_SIM_SCRIPT: " + name);
         };
     }
@@ -207,6 +267,16 @@ final class SimScript {
         pad.setLeftX(step.leftX());
         pad.setLeftY(step.leftY());
         pad.setRightX(step.rightX());
+        // Everything else starts released each loop; the step presses what it names.
+        for (Gamepad.Button b : Gamepad.Button.values()) {
+            pad.setButton(b, false);
+        }
+        pad.setLeftTriggerAxis(0);
+        pad.setRightTriggerAxis(0);
+        pad.setRightY(0);
+        if (step.inputs() != null) {
+            step.inputs().accept(pad);
+        }
         DriverStationSim.notifyNewData();
         if (faults != null) {
             // Simulated device faults active now ("device: fault").
