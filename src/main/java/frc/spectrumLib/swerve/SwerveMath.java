@@ -127,19 +127,50 @@ public final class SwerveMath {
      */
     public static double toChassisVelocities(
             double[] dx, double[] dy, double[] mx, double[] my, double[] out) {
+        return toChassisVelocities(dx, dy, mx, my, null, out, null);
+    }
+
+    /**
+     * {@link #toChassisVelocities(double[], double[], double[], double[], double[])} using only
+     * some modules: a module with weight 0 (a dead drive motor, an untrusted angle) is left out.
+     * Two good modules still determine x, y and rotation.
+     *
+     * @param weight per-module weight (1 use, 0 skip), or null for all
+     * @param residual receives each module's disagreement with the fit (m), or null
+     * @return RMS disagreement of the used modules, or NaN if fewer than two were used
+     */
+    public static double toChassisVelocities(
+            double[] dx,
+            double[] dy,
+            double[] mx,
+            double[] my,
+            double[] weight,
+            double[] out,
+            double[] residual) {
         int n = mx.length;
+        double used = 0;
+        for (int i = 0; i < n; i++) {
+            used += weight == null ? 1 : weight[i];
+        }
+        if (used < 2) {
+            out[0] = 0;
+            out[1] = 0;
+            out[2] = 0;
+            return Double.NaN;
+        }
         // Normal equations for rows [1, 0, -y], [0, 1, x]; positions are centered, so for a
         // symmetric robot the sums vanish, but solving the 3x3 keeps any layout correct.
         double sx = 0, sy = 0, sr = 0, bx = 0, by = 0, bw = 0;
         for (int i = 0; i < n; i++) {
-            sx += mx[i];
-            sy += my[i];
-            sr += mx[i] * mx[i] + my[i] * my[i];
-            bx += dx[i];
-            by += dy[i];
-            bw += -my[i] * dx[i] + mx[i] * dy[i];
+            double w = weight == null ? 1 : weight[i];
+            sx += w * mx[i];
+            sy += w * my[i];
+            sr += w * (mx[i] * mx[i] + my[i] * my[i]);
+            bx += w * dx[i];
+            by += w * dy[i];
+            bw += w * (-my[i] * dx[i] + mx[i] * dy[i]);
         }
-        double a00 = n, a02 = -sy, a11 = n, a12 = sx, a22 = sr;
+        double a00 = used, a02 = -sy, a11 = used, a12 = sx, a22 = sr;
         // Solve [[a00,0,a02],[0,a11,a12],[a02,a12,a22]] * v = [bx,by,bw] by elimination.
         double det = a00 * (a11 * a22 - a12 * a12) - a02 * (a02 * a11);
         double w = (a00 * a11 * bw - a02 * a11 * bx - a00 * a12 * by) / det;
@@ -152,9 +183,13 @@ public final class SwerveMath {
         for (int i = 0; i < n; i++) {
             double ex = dx[i] - (vx - w * my[i]);
             double ey = dy[i] - (vy + w * mx[i]);
-            sq += ex * ex + ey * ey;
+            double e2 = ex * ex + ey * ey;
+            if (residual != null) {
+                residual[i] = Math.sqrt(e2);
+            }
+            sq += (weight == null ? 1 : weight[i]) * e2;
         }
-        return Math.sqrt(sq / n);
+        return Math.sqrt(sq / used);
     }
 
     /** WPILib's {@code MathUtil.angleModulus}: an angle wrapped to (-pi, pi]. */

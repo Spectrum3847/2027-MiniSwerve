@@ -52,7 +52,7 @@ class SwerveSimStepTest {
         for (int k = 0; k < 250; k++) {
             DriverStationSim.notifyNewData();
             io.waitForSample(sample);
-            io.setModules(angle, velocity, new double[4]);
+            io.setModules(angle, velocity, new double[4], new double[4]);
         }
         for (int i = 0; i < 4; i++) {
             assertEquals(angle[i], sample.angle[i], 0.02, "module " + i + " angle");

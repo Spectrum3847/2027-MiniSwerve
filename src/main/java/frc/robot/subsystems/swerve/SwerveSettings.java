@@ -42,6 +42,42 @@ final class SwerveSettings {
     static final DoubleSetting MAX_WHEEL_VELOCITY =
             G.number("maxWheelVelocity", 4.5, "m/s", 0.5, 5.0);
 
+    /** Limit acceleration and steer rate with the setpoint generator (smoother, truer odometry). */
+    static final BooleanSetting SETPOINT_GENERATOR = G.bool("setpointGenerator", true);
+
+    /** Largest wheel speed change the setpoint generator allows (m/s^2). */
+    static final DoubleSetting MAX_DRIVE_ACCELERATION =
+            G.number("maxDriveAcceleration", 10.0, "m/s^2", 1, 30);
+
+    /** Fastest module turn the setpoint generator plans (rad/s); MK4i free speed is about 29. */
+    static final DoubleSetting MAX_STEER_VELOCITY =
+            G.number("maxSteerVelocity", 20.0, "rad/s", 2, 30);
+
+    /**
+     * Field-relative lookahead (s): aim with heading + yaw rate * this, so driving while spinning
+     * goes straight despite module lag. Tune on the robot by driving straight while spinning.
+     */
+    static final DoubleSetting ROTATION_LOOKAHEAD =
+            G.number("rotationLookahead", 0.04, "s", 0.0, 0.15);
+
+    /**
+     * Hold heading while the driver is not turning (see HeadingHold: captures after the robot
+     * settles, only corrects while driving, lets go after a hit). Off: drivers have disliked
+     * heading hold that steers back after contact; try this one on the robot.
+     */
+    static final BooleanSetting HEADING_HOLD = G.bool("headingHold", false);
+
+    /** Heading hold gain (rad/s per rad of error). */
+    static final DoubleSetting HEADING_HOLD_KP = G.number("headingHoldKP", 3.0, "1/s", 0, 20);
+
+    /** Heading hold's largest correction (rad/s): enough to trim drift, not to steer. */
+    static final DoubleSetting HEADING_HOLD_MAX_CORRECTION =
+            G.number("headingHoldMaxCorrection", 1.0, "rad/s", 0, 5);
+
+    /** Error past which heading hold accepts the new heading instead of correcting (deg). */
+    static final DoubleSetting HEADING_HOLD_RELEASE_DEG =
+            G.number("headingHoldReleaseDeg", 10.0, "deg", 1, 90);
+
     /** Driver top speed and turn rate. */
     static final DoubleSetting MAX_DRIVE_VELOCITY =
             G.number("maxDriveVelocity", 4.0, "m/s", 0.5, 5.0);

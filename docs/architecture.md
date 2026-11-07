@@ -103,3 +103,40 @@ with the best healthy one driving field-relative control and odometry:
 
 Mount orientation for each is a Robot Setting (`config/ImuSettings`): Pigeon MountPose yaw, pitch,
 roll; SystemCore IMU `MountOrientation` and yaw.
+
+## Swerve control details
+
+- **Setpoint generator** (`swerve/setpointGenerator`, on): each cycle moves the chassis setpoint
+  toward the request as far as every wheel's acceleration allows (`maxDriveAcceleration`), and
+  turns modules at most `maxSteerVelocity`. That turn rate goes to the steer motors as a velocity
+  feedforward.
+- **Rotation lookahead** (`swerve/rotationLookahead`, 0.04 s): field-relative requests are aimed
+  with heading + yaw rate x lookahead, so driving while spinning goes straight. Sim: sideways drift
+  over the spin-and-drive step fell from 0.61 m to 0.07 m. Tune on the robot.
+- **Heading hold** (`swerve/headingHold`, off): captures a heading only after the robot settles,
+  corrects only while translating, at most `headingHoldMaxCorrection`, and accepts a new heading
+  when the error jumps past `headingHoldReleaseDeg` (a hit) instead of steering back.
+- **CANivore timesync**: when the bus is CAN FD (a CANivore), controls and signals use Phoenix
+  timesync automatically (`Swerve/Health/Timesync`). Sample timestamps are the mean of the signals'
+  own timestamps on every bus.
+
+## Module trust and degraded modes
+
+Every sample records which modules' signals were fresh (`Samples/ModuleOk`); health adds connected,
+configured, CANcoder magnet and fused-sensor faults. `ModuleTrust` combines them, plus "absolute
+angle good at least once since boot". Odometry uses only trusted modules (weighted least squares;
+two are enough), and logs each module's slip (`Swerve/Modules/Slip`) and commanded-minus-measured
+speed (`Swerve/Modules/VelocityError`).
+
+Control still goes neutral if any module is untrusted. Planned degraded modes, to build after
+testing on the robot:
+
+1. **Drive motor down (7 motors).** Coast that drive, keep steering it along its free-rolling
+   direction, and solve kinematics with three driven wheels (any chassis motion is still possible).
+2. **Steer motor down.** Coast its drive. The wheel's angle is fixed, so plan chassis motion that
+   rolls along it where possible and accept scrub otherwise; account for its drag.
+3. **CANcoder down after boot.** The steer motor keeps the angle from its rotor; keep driving,
+   alert, and stop trusting the absolute angle after a reboot.
+4. **Finding a lost steer angle.** Idea to try: drive the other three straight and steer the bad
+   module (or sweep the chassis direction) while watching drive current and slip; the angle with
+   the least drag is where the wheel points.

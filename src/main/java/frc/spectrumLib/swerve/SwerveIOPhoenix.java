@@ -68,6 +68,7 @@ public final class SwerveIOPhoenix implements SwerveIO {
     private final boolean[] configured;
 
     private final boolean pigeonConfigured;
+    private final boolean timesync;
     private long nextDeadlineNanos;
 
     /**
@@ -80,6 +81,12 @@ public final class SwerveIOPhoenix implements SwerveIO {
         this.sim = sim;
         n = cfg.modules();
         CANBus bus = new CANBus(cfg.canBus());
+        // CANivore (CAN FD) with Pro: Phoenix timesync lines up every device's frames and applies
+        // setpoints at the same instant. SystemCore's own bus does not support it.
+        timesync = bus.isNetworkFD();
+        driveRequest.UseTimesync = timesync;
+        steerRequest.UseTimesync = timesync;
+        steerExpoRequest.UseTimesync = timesync;
         drive = new TalonFX[n];
         steer = new TalonFX[n];
         encoder = new CANcoder[n];
@@ -127,7 +134,10 @@ public final class SwerveIOPhoenix implements SwerveIO {
                             steer[i].getSupplyCurrent(),
                             drive[i].getDeviceTemp(),
                             steer[i].getDeviceTemp(),
-                            drive[i].getSupplyVoltage()));
+                            drive[i].getSupplyVoltage(),
+                            steer[i].getFault_FusedSensorOutOfSync(),
+                            steer[i].getFault_RemoteSensorDataInvalid(),
+                            encoder[i].getFault_BadMagnet()));
         }
         yaw = pigeon.getYaw();
         yawRate = pigeon.getAngularVelocityZWorld();
@@ -160,6 +170,9 @@ public final class SwerveIOPhoenix implements SwerveIO {
     }
 
     private static final int CONFIG_TRIES = 5;
+
+    /** Slow signals per module: 3 currents x2 motors, 2 temps, voltage, 3 faults. */
+    private static final int SLOW_PER_MODULE = 10;
 
     /** Runs a blocking Phoenix call until it returns OK, up to {@link #CONFIG_TRIES} times. */
     private static boolean apply(java.util.function.Supplier<com.ctre.phoenix6.StatusCode> call) {
@@ -246,8 +259,16 @@ public final class SwerveIOPhoenix implements SwerveIO {
         } else {
             good = BaseStatusSignal.waitForAll(2.0 / cfg.signalHz(), fast).isOK();
         }
-        out.timestamp = Utils.getCurrentTimeSeconds();
         out.allGood = good;
+        // Capture time: the mean of the signals' own timestamps (time of receipt minus nothing on
+        // a plain bus, the synchronized CANivore time with timesync), not when we got around to
+        // reading them.
+        double sum = 0;
+        for (BaseStatusSignal sig : fast) {
+            sum += sig.getTimestamp().getTime();
+        }
+        out.timestamp = fast.length > 0 ? sum / fast.length : Utils.getCurrentTimeSeconds();
+        out.gyroOk = yaw.getStatus().isOK() && yawRate.getStatus().isOK();
         double couple = cfg.coupleRatio() / cfg.driveRatio();
         for (int i = 0; i < n; i++) {
             double steerRot =
@@ -263,6 +284,11 @@ public final class SwerveIOPhoenix implements SwerveIO {
                                     - steerVelocity[i].getValueAsDouble() * couple)
                             * metersPerWheelRotation;
             out.angle[i] = SwerveMath.angleModulus(steerRot * 2 * Math.PI);
+            out.moduleOk[i] =
+                    drivePosition[i].getStatus().isOK()
+                            && driveVelocity[i].getStatus().isOK()
+                            && steerPosition[i].getStatus().isOK()
+                            && steerVelocity[i].getStatus().isOK();
         }
         out.yaw = Math.toRadians(BaseStatusSignal.getLatencyCompensatedValueAsDouble(yaw, yawRate));
         out.angularVelocityZWorld = Math.toRadians(yawRate.getValueAsDouble());
@@ -282,7 +308,8 @@ public final class SwerveIOPhoenix implements SwerveIO {
     }
 
     @Override
-    public void setModules(double[] angle, double[] velocity, double[] wheelForce) {
+    public void setModules(
+            double[] angle, double[] velocity, double[] steerVelocityPlan, double[] wheelForce) {
         double couple = cfg.coupleRatio() / cfg.driveRatio();
         // Wheel force (N) to drive torque current (A): F * r / (ratio * Kt).
         double ampsPerNewton = cfg.wheelRadius() / (cfg.driveRatio() * cfg.driveKt());
@@ -291,7 +318,11 @@ public final class SwerveIOPhoenix implements SwerveIO {
             if (cfg.steerMotionMagicExpo()) {
                 steer[i].setControl(steerExpoRequest.withPosition(target));
             } else {
-                steer[i].setControl(steerRequest.withPosition(target));
+                // The planned turn rate keeps the steer D term from fighting the motion.
+                steer[i].setControl(
+                        steerRequest
+                                .withPosition(target)
+                                .withVelocity(steerVelocityPlan[i] / (2 * Math.PI)));
             }
             double wheelRps = velocity[i] / metersPerWheelRotation;
             // Coupling feedforward from the module's measured turn rate: a commanded rate would
@@ -316,7 +347,7 @@ public final class SwerveIOPhoenix implements SwerveIO {
     public void updateHealth(SwerveHealth h) {
         BaseStatusSignal.refreshAll(slow);
         for (int i = 0; i < n; i++) {
-            int b = i * 7;
+            int b = i * SLOW_PER_MODULE;
             h.driveConnected[i] = drive[i].isConnected();
             h.steerConnected[i] = steer[i].isConnected();
             h.encoderConnected[i] = encoder[i].isConnected();
@@ -326,9 +357,13 @@ public final class SwerveIOPhoenix implements SwerveIO {
             h.steerSupplyCurrent[i] = slow[b + 3].getValueAsDouble();
             h.driveDeviceTemp[i] = slow[b + 4].getValueAsDouble();
             h.steerDeviceTemp[i] = slow[b + 5].getValueAsDouble();
+            h.fusedOk[i] =
+                    slow[b + 7].getValueAsDouble() == 0 && slow[b + 8].getValueAsDouble() == 0;
+            h.magnetOk[i] = slow[b + 9].getValueAsDouble() == 0;
         }
         h.supplyVoltage = slow[6].getValueAsDouble();
         h.pigeonConnected = pigeon.isConnected() && pigeonConfigured;
         System.arraycopy(configured, 0, h.configured, 0, n);
+        h.timesync = timesync;
     }
 }

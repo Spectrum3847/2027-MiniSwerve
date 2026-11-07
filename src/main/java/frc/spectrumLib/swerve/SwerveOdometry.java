@@ -19,6 +19,8 @@ public final class SwerveOdometry {
     private final double[] lastDistance;
     private final double[] lastAngle;
     private final double[] twist = new double[3];
+    private final double[] residual;
+    private int modulesUsed;
 
     private double x;
     private double y;
@@ -37,6 +39,7 @@ public final class SwerveOdometry {
         dy = new double[n];
         lastDistance = new double[n];
         lastAngle = new double[n];
+        residual = new double[n];
     }
 
     /** Puts the robot at a pose; the next sample's yaw becomes this heading. */
@@ -51,12 +54,19 @@ public final class SwerveOdometry {
         }
     }
 
+    /** Advances the pose by one sample using every module. */
+    public void update(SwerveSample s, boolean gyroGood) {
+        update(s, gyroGood, null);
+    }
+
     /**
      * Advances the pose by one sample.
      *
      * @param gyroGood use the sample's yaw for heading (Pigeon connected and the sample all-good)
+     * @param weight per-module weight, 1 use and 0 leave out (dead drive, untrusted angle); null
+     *     for all. With fewer than two usable modules, translation holds and only heading moves.
      */
-    public void update(SwerveSample s, boolean gyroGood) {
+    public void update(SwerveSample s, boolean gyroGood, double[] weight) {
         int n = mx.length;
         if (!primed) {
             System.arraycopy(s.distance, 0, lastDistance, 0, n);
@@ -77,7 +87,16 @@ public final class SwerveOdometry {
             lastDistance[i] = s.distance[i];
             lastAngle[i] = s.angle[i];
         }
-        slip = SwerveMath.toChassisVelocities(dx, dy, mx, my, twist);
+        slip = SwerveMath.toChassisVelocities(dx, dy, mx, my, weight, twist, residual);
+        modulesUsed = 0;
+        for (int i = 0; i < n; i++) {
+            modulesUsed += weight == null || weight[i] > 0 ? 1 : 0;
+        }
+        if (Double.isNaN(slip) && !gyroGood) {
+            // Nothing trustworthy moved us this sample: hold the pose.
+            lastYaw = s.yaw;
+            return;
+        }
         double dTheta;
         usedGyro = gyroGood;
         if (gyroGood) {
@@ -130,6 +149,19 @@ public final class SwerveOdometry {
     /** RMS module disagreement over the last sample (m): slip, or a bad module. */
     public double slip() {
         return slip;
+    }
+
+    /**
+     * Each module's disagreement with the fitted motion over the last sample (m): a module that
+     * keeps disagreeing is slipping or bad. Includes modules left out of the fit.
+     */
+    public double[] moduleSlip() {
+        return residual;
+    }
+
+    /** Modules used in the last sample's fit. */
+    public int modulesUsed() {
+        return modulesUsed;
     }
 
     /** Whether the last sample's heading came from the gyro. */

@@ -13,6 +13,18 @@ public final class SwerveHealth {
     /** Each module's drive, steer and CANcoder took their config at boot. */
     public final boolean[] configured;
 
+    /**
+     * Each steer motor is fusing its CANcoder: no FusedSensorOutOfSync or RemoteSensorDataInvalid
+     * fault. False means the absolute angle is no longer trusted.
+     */
+    public final boolean[] fusedOk;
+
+    /** Each CANcoder's magnet is readable (no BadMagnet fault). */
+    public final boolean[] magnetOk;
+
+    /** The bus is a CANivore (CAN FD) and controls and signals use Phoenix timesync. */
+    public boolean timesync;
+
     /** Amps. */
     public final double[] driveStatorCurrent;
 
@@ -33,6 +45,8 @@ public final class SwerveHealth {
         steerConnected = new boolean[modules];
         encoderConnected = new boolean[modules];
         configured = new boolean[modules];
+        fusedOk = new boolean[modules];
+        magnetOk = new boolean[modules];
         driveStatorCurrent = new double[modules];
         steerStatorCurrent = new double[modules];
         driveSupplyCurrent = new double[modules];
