@@ -10,9 +10,10 @@ package frc.spectrumLib.swerve;
  */
 public final class SwerveSample {
     /**
-     * When the readings were captured, seconds, on Phoenix's clock (the mean of the signals' own
-     * timestamps: CANivore-synchronized with timesync, otherwise time of receipt). Matches WPILib's
-     * clock in sim; check it on SystemCore before pairing samples with camera timestamps.
+     * When the readings were captured, seconds, on the robot's clock (RobotController's monotonic
+     * time, the camera frames' clock): the mean of the signals' own Phoenix timestamps
+     * (CANivore-synchronized with timesync, otherwise time of receipt), shifted by the Phoenix-to-
+     * robot clock offset measured as they were read. Not yet checked on SystemCore.
      */
     public double timestamp;
 

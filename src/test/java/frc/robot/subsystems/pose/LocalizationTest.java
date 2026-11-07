@@ -27,10 +27,41 @@ class LocalizationTest {
     }
 
     @Test
+    void tagsTooCloseOrMisidentifiedAreNotTrusted() {
+        var mount = new Transform3d(0.25, 0, 0.3, new Rotation3d());
+        // Two tags 0.3 m apart: too short a baseline to trust the heading.
+        var close = seen(4, 3, 0, mount, new Translation3d(7, 3, 1), new Translation3d(7, 3.3, 1));
+        assertEquals("tags closer than 1 m", Localization.solve(close).check());
+        // One tag misidentified: the field puts it 0.5 m from where the camera saw it.
+        var s =
+                seen(
+                        4,
+                        3,
+                        0,
+                        mount,
+                        new Translation3d(7, 1, 1),
+                        new Translation3d(7, 5, 1),
+                        new Translation3d(8, 3, 1));
+        var bad = s.get(2);
+        s.set(
+                2,
+                new TagSighting(
+                        "c",
+                        0,
+                        9,
+                        new Translation3d(8.5, 3, 1),
+                        bad.robotToCamera(),
+                        bad.cameraToTag(),
+                        1));
+        var r = Localization.solve(s);
+        assertEquals(null, r.pose(), r.check());
+    }
+
+    @Test
     void twoTagsGiveThePose() {
         var mount = new Transform3d(0.25, 0.1, 0.3, new Rotation3d(0, Math.toRadians(-15), 0.2));
         var pose =
-                Localization.seedFrom(
+                Localization.solve(
                         seen(
                                 4,
                                 3,
@@ -39,8 +70,9 @@ class LocalizationTest {
                                 new Translation3d(7, 5, 1.1),
                                 new Translation3d(6, 7, 0.9),
                                 new Translation3d(8, 3, 1.2)));
-        assertEquals(4, pose.getX(), 1e-9);
-        assertEquals(3, pose.getY(), 1e-9);
-        assertEquals(0.7, pose.getRotation().getRadians(), 1e-9);
+        assertEquals("ok", pose.check());
+        assertEquals(4, pose.pose().getX(), 1e-9);
+        assertEquals(3, pose.pose().getY(), 1e-9);
+        assertEquals(0.7, pose.pose().getRotation().getRadians(), 1e-9);
     }
 }

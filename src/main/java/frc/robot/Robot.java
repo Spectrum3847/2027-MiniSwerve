@@ -120,7 +120,7 @@ public class Robot extends SpectrumRobot {
         RobotSettings.periodic();
         swerve.updateInputs();
         vision.periodic();
-        localization.periodic(vision);
+        localization.periodic(vision, org.wpilib.system.Timer.getTimestamp());
         opModeLoop.run();
         CommandScheduler.getInstance().run();
         swerve.applyWantedState();

@@ -174,10 +174,16 @@ public final class Swerve implements Subsystem {
         }
     }
 
-    /** Receives each 250 Hz sample, in order, with odometry's heading after it (rad). */
+    /**
+     * Receives each 250 Hz sample, in order, with a continuous heading after it (rad: odometry's,
+     * unmoved by field-centric re-zeroing) and whether that heading came from the gyro.
+     */
     public interface SampleListener {
-        void accept(SwerveSample sample, double heading);
+        void accept(SwerveSample sample, double heading, boolean fromGyro);
     }
+
+    /** Sum of every jump field-centric re-zeroing put into odometry's heading (rad). */
+    private double headingResets;
 
     private SampleListener sampleListener;
     private final double[] moduleX;
@@ -230,8 +236,10 @@ public final class Swerve implements Subsystem {
             var sample = inputs.samples[s];
             odometry.update(sample, gyroOk() && sample.gyroOk, trust.weights(sample));
             if (sampleListener != null) {
-                // Odometry's heading: the gyro's when it is healthy, the wheels' when not.
-                sampleListener.accept(sample, odometry.heading());
+                // Odometry's heading (the gyro's when healthy, the wheels' when not) without the
+                // jumps of field-centric re-zeroing: a pose estimator would read them as turning.
+                sampleListener.accept(
+                        sample, odometry.heading() - headingResets, gyroOk() && sample.gyroOk);
             }
         }
         utilities.update(
@@ -477,7 +485,9 @@ public final class Swerve implements Subsystem {
      */
     public void seedFieldCentric() {
         headingHold.reset();
+        double before = odometry.heading();
         odometry.resetPose(odometry.x(), odometry.y(), operatorForwardDirection());
+        headingResets += odometry.heading() - before;
     }
 
     public Pose2d odometryPose() {

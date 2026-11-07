@@ -14,6 +14,7 @@ import frc.spectrumLib.hardware.SimFaults;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.LongConsumer;
+import org.wpilib.system.RobotController;
 
 /**
  * Our swerve on plain Phoenix 6 Pro devices (no CTRE swerve API). Each module's control runs on the
@@ -245,7 +246,13 @@ public final class SwerveIOPhoenix implements SwerveIO {
                 count++;
             }
         }
-        out.timestamp = count > 0 ? sum / count : Utils.getCurrentTimeSeconds();
+        double phoenixNow = Utils.getCurrentTimeSeconds();
+        double phoenixTime = count > 0 ? sum / count : phoenixNow;
+        // On the robot's clock (RobotController.getMonotonicTime, the camera frames' clock):
+        // Phoenix
+        // keeps its own, so shift by the two clocks' offset read back to back now. The sample is a
+        // logged input, so replay uses the shifted time as recorded.
+        out.timestamp = phoenixTime + (RobotController.getMonotonicTime() * 1e-9 - phoenixNow);
         out.gyroOk = yaw.getStatus().isOK() && yawRate.getStatus().isOK();
         double couple = cfg.coupleRatio() / cfg.driveRatio();
         for (int i = 0; i < n; i++) {
