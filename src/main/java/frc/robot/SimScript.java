@@ -32,6 +32,9 @@ final class SimScript {
         void set(GamepadSim pad, double seconds);
     }
 
+    private static final int UNPLUGGED_PAD = 1;
+    private static final int DS_LOST = 2;
+
     /** How long a person's quick tap holds a button down (s): several loops, not one. */
     static final double TAP_SECONDS = 0.12;
 
@@ -66,14 +69,25 @@ final class SimScript {
             RobotMode mode,
             String opMode,
             Consumer<SimFaults> faults,
-            Inputs inputs) {
+            Inputs inputs,
+            int events) {
         Step(double seconds, String what, double leftX, double leftY, double rightX) {
-            this(seconds, what, leftX, leftY, rightX, RobotMode.TELEOPERATED, "Drive", null, null);
+            this(
+                    seconds,
+                    what,
+                    leftX,
+                    leftY,
+                    rightX,
+                    RobotMode.TELEOPERATED,
+                    "Drive",
+                    null,
+                    null,
+                    0);
         }
 
         /** A step with no sticks in this mode and OpMode (the Driver Station's selection). */
         Step(double seconds, String what, RobotMode mode, String opMode) {
-            this(seconds, what, 0, 0, 0, mode, opMode, null, null);
+            this(seconds, what, 0, 0, 0, mode, opMode, null, null, 0);
         }
 
         /** A step with sticks and faults in this mode and OpMode. */
@@ -86,7 +100,7 @@ final class SimScript {
                 RobotMode mode,
                 String opMode,
                 Consumer<SimFaults> faults) {
-            this(seconds, what, leftX, leftY, rightX, mode, opMode, faults, null);
+            this(seconds, what, leftX, leftY, rightX, mode, opMode, faults, null, 0);
         }
 
         /** A teleop step that changes simulated faults when it starts. */
@@ -106,12 +120,43 @@ final class SimScript {
                     RobotMode.TELEOPERATED,
                     "Drive",
                     faults,
-                    null);
+                    null,
+                    0);
         }
 
         /** This step with other inputs set every loop (buttons, triggers, ...). */
         Step press(Inputs set) {
-            return new Step(seconds, what, leftX, leftY, rightX, mode, opMode, faults, set);
+            return new Step(seconds, what, leftX, leftY, rightX, mode, opMode, faults, set, events);
+        }
+
+        /** The controller's USB is unplugged for this step: the robot hears no controller. */
+        Step unplugged() {
+            return new Step(
+                    seconds,
+                    what,
+                    leftX,
+                    leftY,
+                    rightX,
+                    mode,
+                    opMode,
+                    faults,
+                    inputs,
+                    events | UNPLUGGED_PAD);
+        }
+
+        /** The Driver Station is gone for this step (radio drop): the robot disables. */
+        Step dsLost() {
+            return new Step(
+                    seconds,
+                    what,
+                    leftX,
+                    leftY,
+                    rightX,
+                    mode,
+                    opMode,
+                    faults,
+                    inputs,
+                    events | DS_LOST);
         }
     }
 
@@ -216,8 +261,33 @@ final class SimScript {
         new Step(0.5, "stop", 0, 0, 0),
     };
 
+    /**
+     * A real driver's inputs and the ways they fail: hands off (stick drift alone must not move the
+     * robot), the controller unplugged mid-drive with the stick still pushed (the robot must stop,
+     * then drive again when it is back), and the Driver Station lost (the robot disables, then
+     * drives again).
+     */
+    private static final Step[] DRIVER = {
+        new Step(1.0, "disabled", 0, 0, 0),
+        new Step(2.0, "hands off: stick drift only", 0, 0, 0),
+        new Step(1.5, "forward", 0, -0.8, 0),
+        new Step(1.5, "controller unplugged, stick still pushed", 0, -0.8, 0).unplugged(),
+        new Step(1.5, "controller back: forward", 0, -0.8, 0),
+        new Step(1.0, "Driver Station lost, stick pushed", 0, -0.8, 0).dsLost(),
+        new Step(1.5, "Driver Station back: forward", 0, -0.8, 0),
+        new Step(0.5, "stop", 0, 0, 0),
+    };
+
     private final Step[] steps;
     private final GamepadSim pad = new GamepadSim(0);
+    private final SimDriver driver = new SimDriver();
+    private final double[] want = new double[3];
+    private double lastLoop = Double.NaN;
+
+    /** What a plugged-in gamepad reports: 6 axes, 26 buttons (bit masks), 1 POV. */
+    private static final int AXES = (1 << 6) - 1;
+
+    private static final long BUTTONS_MASK = (1L << 26) - 1;
     private org.wpilib.hardware.hal.AllianceStationID baseAlliance;
     private boolean baseFms;
     private double baseMatchTime;
@@ -237,6 +307,7 @@ final class SimScript {
             case "auto" -> new SimScript(AUTO, faults);
             case "walls" -> new SimScript(WALLS, faults);
             case "buttons" -> new SimScript(BUTTONS, faults);
+            case "driver" -> new SimScript(DRIVER, faults);
             default -> throw new IllegalArgumentException("Unknown MINISWERVE_SIM_SCRIPT: " + name);
         };
     }
@@ -286,14 +357,30 @@ final class SimScript {
             }
         }
         // A disabled step between enabled ones, so the Driver Station starts the next OpMode.
-        boolean enabled = !step.what().equals("disabled");
-        DriverStationSim.setDsAttached(true);
+        boolean dsLost = (step.events() & DS_LOST) != 0;
+        boolean enabled = !step.what().equals("disabled") && !dsLost;
+        DriverStationSim.setDsAttached(!dsLost);
         DriverStationSim.setRobotMode(step.mode());
         DriverStationSim.setOpMode(opModeId(step.mode(), step.opMode()));
         DriverStationSim.setEnabled(enabled);
-        pad.setLeftX(step.leftX());
-        pad.setLeftY(step.leftY());
-        pad.setRightX(step.rightX());
+        // The driver's hands: what they do reaches the robot SimDriver.LINK_SECONDS late.
+        double tInput = driver.delayed() ? Math.max(0, t - SimDriver.LINK_SECONDS) : t;
+        int k = 0;
+        double inputStart = 0;
+        while (k < steps.length - 1 && tInput >= inputStart + steps[k].seconds()) {
+            inputStart += steps[k].seconds();
+            k++;
+        }
+        Step input = steps[k];
+        want[0] = input.leftX();
+        want[1] = input.leftY();
+        want[2] = input.rightX();
+        double dt = Double.isNaN(lastLoop) ? 0.02 : now - lastLoop;
+        lastLoop = now;
+        double[] sticks = driver.sticks(k, want, dt);
+        pad.setLeftX(sticks[0]);
+        pad.setLeftY(sticks[1]);
+        pad.setRightX(sticks[2]);
         // Everything else starts released each loop; the step presses what it names.
         for (Gamepad.Button b : Gamepad.Button.values()) {
             pad.setButton(b, false);
@@ -311,9 +398,15 @@ final class SimScript {
         DriverStationSim.setFmsAttached(baseFms);
         DriverStationSim.setMatchTime(baseMatchTime);
         DriverStationSim.setGameData("");
-        if (step.inputs() != null) {
-            step.inputs().set(pad, t - end);
+        if (input.inputs() != null) {
+            input.inputs().set(pad, tInput - inputStart);
         }
+        // A controller is connected when it reports axes, buttons or POVs (WPILib); unplugged
+        // reports none.
+        boolean unplugged = (input.events() & UNPLUGGED_PAD) != 0;
+        pad.setAxesAvailable(unplugged ? 0 : AXES);
+        pad.setButtonsAvailable(unplugged ? 0 : BUTTONS_MASK);
+        pad.setPOVsAvailable(unplugged ? 0 : 1);
         DriverStationSim.notifyNewData();
         if (faults != null) {
             // Simulated device faults active now ("device: fault").

@@ -129,6 +129,16 @@ In sim (both cameras, against the true field pose):
 TagEKF heading error is 0.01 to 0.02 deg median; it seeds 0.05 s after boot, once; no
 relocalizations or re-seeds; frame age 21 ms median.
 
+Scripted driving is a person's, not a step function (`SimDriver`): sticks reach where a step wants
+them over about 0.15 s and fall back the same way, each push is 95 to 100% and up to 3 deg off its
+axis, sticks rest up to 3% off center and jitter, and everything the driver does reaches the robot
+30 ms late (Driver Station and radio). Seeded: runs repeat. `MINISWERVE_SIM_DRIVER=perfect` gives
+exact, instant sticks. Steps can also unplug the controller (`.unplugged()`) or lose the Driver
+Station (`.dsLost()`). `MINISWERVE_SIM_SCRIPT=driver`: hands off for 2 s, the robot does not move
+(sticks read about 1.6% off center); the controller unplugged with the stick pushed, the robot
+stops and drives again when it is back; the Driver Station lost, the robot disables and stops, then
+drives again.
+
 `MINISWERVE_SIM_SCRIPT=buttons` presses the pilot's buttons (sim script steps can press any
 button, trigger or d-pad and set Driver Station inputs: `.press(p -> p.setBackButton(true))`):
 after a 60 deg turn, Back re-zeroes field-centric while driving. Odometry's heading jumps as
