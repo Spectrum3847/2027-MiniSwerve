@@ -340,8 +340,13 @@ it exactly. The auto, wheel-radius and faults scripts pass as before.
 Drive (VelocityTorqueCurrentFOC) matches within 0.04-0.08 m/s RMS on every run. Voltage steer is
 the open one: Phoenix's simulator overshoots about 25 deg on a 90 deg step with CTRE's MK4i
 defaults, ours does not. Our guess is that Phoenix's simulator feeds the fused CANcoder to the loop
-at the CANcoder's frame rate, where a real TalonFX fuses its rotor sensor at 1 kHz; a real-robot
-log of a voltage-steered step would settle it. MiniSwerve steers with PositionVoltage, so its drive
+at the CANcoder's frame rate, where a real TalonFX fuses its rotor sensor at 1 kHz.
+
+Real MK4i robots side with the model. Spectrum's 2024 robot (MotionMagicVoltage steer, kP 100,
+`Spectrum-Driver-Station-Logs`, 133 steps over 30 deg) settled within 2 deg in a median 0.12 s with
+median overshoot 0.0 deg (p90 1.1 deg); 2023's (Phoenix 5 position PID, `2023-Log-Files`, 72 steps)
+0.18 s and 0.0 deg (p90 0.8 deg). Neither ran CTRE's PositionVoltage tune, and no public log that
+did was found on GitHub, so MiniSwerve's own first steer steps will settle it. MiniSwerve steers with PositionVoltage, so its drive
 script differs between the two sims: the model turns faster while spinning (4.4 vs 3.1 rad/s), and
 odometry ends 0.64 m from truth versus 0.13-0.40 m on Phoenix's simulator.
 
@@ -351,13 +356,14 @@ The sim is checked against real robots, not just itself:
 
 ```bash
 python tools/fm_extract.py <real.wpilog> build/simreal/x.csv --start 0 --seconds 30
-./gradlew simReplay -Pin=build/simreal/x.csv -Pout=build/simreal/x_sim.csv [-Pmass=70 -Pfriction=1.1]
+./gradlew simReplay -Pin=build/simreal/x.csv -Pout=build/simreal/x_sim.csv [-Pparams="mass=70 friction=1.1"]
 python tools/sim_vs_real.py build/simreal/x.csv build/simreal/x_sim.csv
 ```
 
 `fm_extract` pulls a real match's commanded and measured module states, Pigeon acceleration and
 currents; `simReplay` drives the same commands through our sim configured as that robot (FM 2026:
-MK5n R2, Kraken X60 FOC, its gains and limits) in real time; `sim_vs_real` scores steer settling and
+MK5n R2, Kraken X60 FOC, its gains and limits) on the TalonFX models (`phoenix=1` for Phoenix's
+simulator in real time); `sim_vs_real` scores steer settling and
 overshoot, wheel-speed tracking, sprint rise time, acceleration percentiles and time at the current
 limit, real against sim. Change the physics, rerun, keep what shrinks the gaps.
 
@@ -370,8 +376,25 @@ Fitted so far (FM q32 at TXMAN1, 30 s):
 - tire friction about 0.9 (worn tread at TXMAN1): acceleration p99 0.91 vs real 0.89 g. Fresh tread
   is nearer 1.1, so `tireFriction` should be re-measured as tread wears; a match log can estimate it.
 
-Not fitted yet: gear losses (`-PgearEff`, `-PgearDrag`), robot mass and turning inertia, command
-latency, the tire curve's peak slip and sliding share, battery resistance, and load transfer.
+Fitted 2026-11-07 (`simReplay` now runs on the TalonFX models, about 6 s per 30 s of match
+including Gradle, and `-Psweep` runs many parameter sets in one JVM):
+- battery: `python tools/battery_fit.py <logs>` over FM's 13 TXMAN1 matches gives 0.011 to 0.014
+  ohm (median 0.012) and 11.6 to 12.3 V open-circuit; the sim's resistance is now 0.012 (was 0.025).
+- `python tools/fit_sim.py <logs>` on q1, q27 and q32 (40 s after auto, real battery voltage as
+  input, scored only where every real wheel tracks its command within 0.5 m/s):
+  - command timing: best at -0.03 s, the logged module targets trail what reached the motors by
+    about 30 ms (FM logs them on the main loop after the swerve thread sent them). So FM's targets
+    need a 30 ms shift before latency can be fitted; a true command latency is not measurable here.
+  - turning inertia factor 0.45 (0.3 to 0.6 within 2% of the best score); mass about 65 kg, but the
+    score is flat from 45 to 75 kg.
+  These are weak: only 14% of match samples count as free driving (defense, game pieces and walls
+  are not in the sim), and where the robot is not free the real gyro turns at about half the rate
+  the wheels report. Defaults are unchanged except the battery. A scripted characterization drive
+  (sprints, spins, steer steps on open carpet) on MiniSwerve is the data that pins mass, inertia and
+  latency.
+
+Not fitted yet: gear losses (`gearEff`, `gearDrag`), the tire curve's peak slip and sliding share,
+and load transfer.
 
 Physics so far: Kraken/Falcon motor models, drive supply current limit, battery sag, tire scrub
 torque when steering, wheel spin with a grip curve, gear losses, TalonFX control loops modeled at
