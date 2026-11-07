@@ -241,3 +241,27 @@ How it fits here:
   the swerve's supply currents, internal resistance per battery over the season.
 - Code moves into `frc.spectrumLib` (reader driver plus a `BatteryTag` input source) and adds
   `com.fazecast:jSerialComm`. The UID-to-name map is a deploy file.
+
+## Simulation: rigid body and device faults
+
+`SwervePhysicsSim` treats the robot as one rigid body. Each wheel pushes along its direction with
+its motor's torque and grips sideways with tire friction (both limited by friction on carpet, about
+1.1 g), and each wheel rolls with the robot's motion at that wheel. So a dead or coasting wheel rolls
+along, a misaligned wheel scrubs and fights the others, and pushing harder than the tires hold makes
+the robot slide, which wheel odometry cannot see. (The first sim moved each wheel on its own and fit
+the robot to them, which hid all of that.) Hard maneuvers now show real odometry drift: the drive
+script's full-speed forward-to-strafe change slides about 0.2 m with `maxDriveAcceleration` 8.
+
+Phoenix's simulator cannot disconnect one device, so `SimFaults` (sim only) does it in our code:
+`PhoenixDeviceSet` (connected, rebooted, config applies), the IO (frozen readings, ignored commands)
+and the physics (no torque) all ask it. Faults: UNPLUGGED (power and data lost; plugging back in
+reboots it), UNHEARD (frames lost, still obeys), failed config applies, reboots.
+
+`MINISWERVE_SIM_SCRIPT=faults` drives while unplugging a drive, a steer, a CANcoder, the Pigeon,
+making a drive unheard and rebooting a steer whose config then fails twice. Check it with
+`python tools/fault_summary.py logs/<log>.wpilog`: the robot must keep moving in every step and end
+with every module NORMAL (exit code 0).
+
+Known from the fault scenario: with the Pigeon out, heading comes from the wheels, which scrub, so
+odometry drifts (about 0.2 m over a 1.5 s outage while turning) and keeps that heading error when
+the gyro returns. The SystemCore/USB gyro as a second heading source, and the TagEKF, are the fix.

@@ -1,6 +1,7 @@
 package frc.spectrumLib.swerve;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.wpilib.hardware.hal.HAL;
 import org.wpilib.simulation.DriverStationSim;
@@ -54,18 +55,30 @@ class SwerveSimStepTest {
                         5.84 / 304,
                         true,
                         steerVoltage);
-        var io = new SwerveIOPhoenix(cfg, new SwervePhysicsSim(18, 0.004, 0.01, mx, my));
+        var io = new SwerveIOPhoenix(cfg, new SwervePhysicsSim(18, 0.004, 0.01, mx, my), null);
         var sample = new SwerveSample(4);
+        // 1. Robot still: every module steers to its own angle.
         double[] angle = {1.0, -1.0, 2.0, -2.5};
-        double[] velocity = {1.0, 1.0, 1.0, 1.0};
+        double[] still = new double[4];
         for (int k = 0; k < 250; k++) {
             DriverStationSim.notifyNewData();
             io.waitForSample(sample);
-            io.setModules(
-                    angle, velocity, new double[4], new double[4], ModuleCommands.allNormal(4));
+            io.setModules(angle, still, new double[4], new double[4], ModuleCommands.allNormal(4));
         }
         for (int i = 0; i < 4; i++) {
             assertEquals(angle[i], sample.angle[i], 0.02, "module " + i + " angle");
+        }
+        // 2. A motion a rigid robot can do: all wheels one way at 1 m/s.
+        double[] same = {1.0, 1.0, 1.0, 1.0};
+        double[] velocity = {1.0, 1.0, 1.0, 1.0};
+        for (int k = 0; k < 375; k++) {
+            DriverStationSim.notifyNewData();
+            io.waitForSample(sample);
+            io.setModules(
+                    same, velocity, new double[4], new double[4], ModuleCommands.allNormal(4));
+        }
+        for (int i = 0; i < 4; i++) {
+            assertEquals(1.0, sample.angle[i], 0.02, "module " + i + " angle");
             assertEquals(1.0, sample.velocity[i], 0.1, "module " + i + " velocity");
         }
     }
@@ -112,7 +125,8 @@ class SwerveSimStepTest {
                                 0.004,
                                 0.01,
                                 new double[] {h, h, -h, -h},
-                                new double[] {h, -h, h, -h}));
+                                new double[] {h, -h, h, -h}),
+                        null);
         var sample = new SwerveSample(4);
         double[] angle = {1.0, 1.0, 1.0, 1.0};
         double[] velocity = {1.0, 1.0, 1.0, 1.0};
@@ -128,15 +142,15 @@ class SwerveSimStepTest {
             io.waitForSample(sample);
             io.setModules(angle, velocity, new double[4], new double[4], modes);
         }
-        // Steer-only module still turns to its angle; its drive is coasting (not driven to 1 m/s).
+        // Steer-only module still turns to its angle, and its coasting wheel rolls with the robot.
         assertEquals(1.0, sample.angle[0], 0.02);
-        assertEquals(0.0, sample.velocity[0], 0.05);
-        // Coasting module does nothing.
-        assertEquals(0.0, sample.angle[1], 0.02);
-        // Healthy modules are unaffected.
+        assertEquals(sample.velocity[2], sample.velocity[0], 0.25);
+        // Coasting module is not steered (it stays where it was) and drags.
+        assertEquals(0.0, sample.angle[1], 0.05);
+        // Healthy modules still steer to target and drive the robot.
         for (int i = 2; i < 4; i++) {
             assertEquals(1.0, sample.angle[i], 0.02);
-            assertEquals(1.0, sample.velocity[i], 0.1);
+            assertTrue(sample.velocity[i] > 0.5, "module " + i + " drives");
         }
     }
 }

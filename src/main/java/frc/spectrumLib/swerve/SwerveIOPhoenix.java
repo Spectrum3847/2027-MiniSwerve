@@ -16,6 +16,7 @@ import com.ctre.phoenix6.hardware.CANcoder;
 import com.ctre.phoenix6.hardware.Pigeon2;
 import com.ctre.phoenix6.hardware.TalonFX;
 import frc.spectrumLib.hardware.PhoenixDeviceSet;
+import frc.spectrumLib.hardware.SimFaults;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -74,6 +75,7 @@ public final class SwerveIOPhoenix implements SwerveIO {
 
     private final boolean timesync;
     private final DriveNeutralMode neutralMode;
+    private final SimFaults faults;
 
     private final PhoenixDeviceSet devices = new PhoenixDeviceSet("Swerve");
 
@@ -86,10 +88,13 @@ public final class SwerveIOPhoenix implements SwerveIO {
      * Builds and configures every device. Blocking (config applies): call during robot init only.
      *
      * @param sim physics to step each cycle, or null on the real robot
+     * @param faults simulated device faults (sim only; null on the robot)
      */
-    public SwerveIOPhoenix(PhoenixSwerveConfig cfg, SwervePhysicsSim sim) {
+    public SwerveIOPhoenix(PhoenixSwerveConfig cfg, SwervePhysicsSim sim, SimFaults faults) {
         this.cfg = cfg;
         this.sim = sim;
+        this.faults = faults;
+        devices.setSimFaults(faults);
         n = cfg.modules();
         CANBus bus = new CANBus(cfg.canBus());
         // CANivore (CAN FD) with Pro: Phoenix timesync lines up every device's frames and applies
@@ -248,6 +253,11 @@ public final class SwerveIOPhoenix implements SwerveIO {
         out.gyroOk = yaw.getStatus().isOK() && yawRate.getStatus().isOK();
         double couple = cfg.coupleRatio() / cfg.driveRatio();
         for (int i = 0; i < n; i++) {
+            if (faults != null && (unheard("Drive" + i) || unheard("Steer" + i))) {
+                // Sim: no frames from this module, so its readings freeze, as on the robot.
+                out.moduleOk[i] = false;
+                continue;
+            }
             double steerRot =
                     BaseStatusSignal.getLatencyCompensatedValueAsDouble(
                             steerPosition[i], steerVelocity[i]);
@@ -271,6 +281,15 @@ public final class SwerveIOPhoenix implements SwerveIO {
         out.angularVelocityZWorld = Math.toRadians(yawRate.getValueAsDouble());
     }
 
+    private boolean unheard(String device) {
+        return faults != null && faults.unheard(device);
+    }
+
+    /** Sim: a device without power ignores commands. */
+    private boolean unpowered(String device) {
+        return faults != null && faults.unpowered(device);
+    }
+
     /** Cycles between commands to a disconnected motor: 10 Hz instead of the loop rate. */
     private final int slowDivisor;
 
@@ -290,7 +309,7 @@ public final class SwerveIOPhoenix implements SwerveIO {
         // be alive and listening, and the rest of the bus should not pay for it every cycle.
         boolean slowTurn = cycle++ % slowDivisor == 0;
         for (int i = 0; i < n; i++) {
-            if (!commands.steerSlow()[i] || slowTurn) {
+            if ((!commands.steerSlow()[i] || slowTurn) && !unpowered("Steer" + i)) {
                 if (commands.steer()[i]) {
                     double target = angle[i] / (2 * Math.PI);
                     double steerRps = steerVelocityPlan[i] / (2 * Math.PI);
@@ -312,7 +331,7 @@ public final class SwerveIOPhoenix implements SwerveIO {
                     steer[i].setControl(coast);
                 }
             }
-            if (!commands.driveSlow()[i] || slowTurn) {
+            if ((!commands.driveSlow()[i] || slowTurn) && !unpowered("Drive" + i)) {
                 if (commands.drive()[i]) {
                     double wheelRps = velocity[i] / metersPerWheelRotation;
                     // Coupling feedforward from the module's measured turn rate: a commanded rate

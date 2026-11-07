@@ -1,5 +1,10 @@
 package frc.robot;
 
+import static frc.spectrumLib.hardware.SimFaults.Fault.UNHEARD;
+import static frc.spectrumLib.hardware.SimFaults.Fault.UNPLUGGED;
+
+import frc.spectrumLib.hardware.SimFaults;
+import java.util.function.Consumer;
 import org.littletonrobotics.junction.Logger;
 import org.wpilib.hardware.hal.RobotMode;
 import org.wpilib.simulation.DriverStationSim;
@@ -11,9 +16,9 @@ import org.wpilib.system.Timer;
  * person. It drives through the real path (Driver Station inputs, Pilot bindings, wanted states),
  * so it tests what the robot will do.
  *
- * <p>Run with {@code MINISWERVE_SIM_SCRIPT=drive ./gradlew run -PnoSimGui} (or {@code radius} for
- * the wheel-radius routine); it exits when done. Then compare {@code Swerve/Odometry/Pose} with
- * {@code Sim/TruthPose} in the log.
+ * <p>Run with {@code MINISWERVE_SIM_SCRIPT=drive ./gradlew run -PnoSimGui} ({@code radius} for the
+ * wheel-radius routine, {@code faults} to unplug and reboot devices mid-drive); it exits when done.
+ * Then compare {@code Swerve/Odometry/Pose} with {@code Sim/TruthPose} in the log.
  */
 final class SimScript {
     private record Step(
@@ -23,9 +28,21 @@ final class SimScript {
             double leftY,
             double rightX,
             boolean utility,
-            boolean start) {
+            boolean start,
+            Consumer<SimFaults> faults) {
         Step(double seconds, String what, double leftX, double leftY, double rightX) {
-            this(seconds, what, leftX, leftY, rightX, false, false);
+            this(seconds, what, leftX, leftY, rightX, false, false, null);
+        }
+
+        /** A teleop step that changes simulated faults when it starts. */
+        Step(
+                double seconds,
+                String what,
+                double leftX,
+                double leftY,
+                double rightX,
+                Consumer<SimFaults> faults) {
+            this(seconds, what, leftX, leftY, rightX, false, false, faults);
         }
     }
 
@@ -41,9 +58,45 @@ final class SimScript {
 
     /** Utility mode, hold Start: the wheel-radius routine spins in place. */
     private static final Step[] RADIUS = {
-        new Step(1.0, "disabled", 0, 0, 0, true, false),
-        new Step(8.0, "characterize wheel radius", 0, 0, 0, true, true),
-        new Step(1.5, "released", 0, 0, 0, true, false),
+        new Step(1.0, "disabled", 0, 0, 0, true, false, null),
+        new Step(8.0, "characterize wheel radius", 0, 0, 0, true, true, null),
+        new Step(1.5, "released", 0, 0, 0, true, false, null),
+    };
+
+    /**
+     * Drives while devices fail and come back: the robot must keep driving the whole time and every
+     * module must return to NORMAL. Device names as in PhoenixDeviceSet (FL=0 FR=1 BL=2 BR=3).
+     */
+    private static final Step[] FAULTS = {
+        new Step(1.0, "disabled", 0, 0, 0),
+        new Step(1.0, "forward", 0, -0.8, 0),
+        new Step(2.0, "FR drive unplugged", 0, -0.8, 0, f -> f.set("Drive1", UNPLUGGED)),
+        new Step(1.5, "FR drive back; strafe", -0.6, 0, 0, f -> f.clear("Drive1")),
+        new Step(2.0, "BL steer unplugged; drive", 0, 0.6, 0, f -> f.set("Steer2", UNPLUGGED)),
+        new Step(1.5, "BL steer back", 0, 0.6, 0, f -> f.clear("Steer2")),
+        new Step(
+                2.0,
+                "BR CANcoder unplugged; spin",
+                0,
+                -0.5,
+                -0.6,
+                f -> f.set("Encoder3", UNPLUGGED)),
+        new Step(1.0, "BR CANcoder back", 0, 0, 0, f -> f.clear("Encoder3")),
+        new Step(1.5, "FL drive unheard (still obeys)", 0.5, 0, 0, f -> f.set("Drive0", UNHEARD)),
+        new Step(1.0, "FL drive heard again", 0, 0, 0, f -> f.clear("Drive0")),
+        new Step(1.5, "Pigeon unplugged; drive", 0, -0.6, 0.3, f -> f.set("Pigeon", UNPLUGGED)),
+        new Step(1.0, "Pigeon back", 0, 0, 0, f -> f.clear("Pigeon")),
+        new Step(
+                1.5,
+                "FR steer reboots, config fails twice",
+                0,
+                -0.6,
+                0,
+                f -> {
+                    f.failConfigs("Steer1", 2);
+                    f.reboot("Steer1");
+                }),
+        new Step(2.0, "recovered", 0, 0, 0),
     };
 
     private final Step[] steps;
@@ -52,20 +105,24 @@ final class SimScript {
     private int lastStep = -1;
 
     /** The script named by MINISWERVE_SIM_SCRIPT, or null for none (or not in sim). */
-    static SimScript fromEnvironment() {
+    static SimScript fromEnvironment(SimFaults faults) {
         String name = System.getenv("MINISWERVE_SIM_SCRIPT");
         if (RunMode.CURRENT != RunMode.Mode.SIM || name == null || name.isBlank()) {
             return null;
         }
         return switch (name) {
-            case "drive" -> new SimScript(DRIVE);
-            case "radius" -> new SimScript(RADIUS);
+            case "drive" -> new SimScript(DRIVE, faults);
+            case "radius" -> new SimScript(RADIUS, faults);
+            case "faults" -> new SimScript(FAULTS, faults);
             default -> throw new IllegalArgumentException("Unknown MINISWERVE_SIM_SCRIPT: " + name);
         };
     }
 
-    private SimScript(Step[] steps) {
+    private final SimFaults faults;
+
+    private SimScript(Step[] steps, SimFaults faults) {
         this.steps = steps;
+        this.faults = faults;
     }
 
     /** Called first thing each main loop. */
@@ -91,6 +148,9 @@ final class SimScript {
             lastStep = i;
             // Current sim script step.
             Logger.recordOutput("Sim/ScriptStep", step.what());
+            if (step.faults() != null && faults != null) {
+                step.faults().accept(faults);
+            }
         }
         boolean enabled = i > 0;
         DriverStationSim.setDsAttached(true);
@@ -101,5 +161,9 @@ final class SimScript {
         pad.setRightX(step.rightX());
         pad.setButton(org.wpilib.driverstation.Gamepad.Button.START, step.start());
         DriverStationSim.notifyNewData();
+        if (faults != null) {
+            // Simulated device faults active now ("device: fault").
+            Logger.recordOutput("Sim/Faults", faults.describe());
+        }
     }
 }

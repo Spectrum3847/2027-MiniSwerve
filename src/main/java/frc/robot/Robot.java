@@ -4,6 +4,7 @@ import frc.robot.pilot.Pilot;
 import frc.robot.subsystems.swerve.Swerve;
 import frc.spectrumLib.framework.RobotLoop;
 import frc.spectrumLib.framework.SpectrumRobot;
+import frc.spectrumLib.hardware.SimFaults;
 import frc.spectrumLib.robotsettings.NetworkTablesTransport;
 import frc.spectrumLib.robotsettings.RobotSettings;
 import frc.spectrumLib.robotsettings.TuningMode;
@@ -37,7 +38,7 @@ public class Robot extends SpectrumRobot {
 
     private final Alert mainThreadPriorityAlert = new Alert("", Level.MEDIUM);
     private final Swerve swerve;
-    private final SimScript simScript = SimScript.fromEnvironment();
+    private final SimScript simScript;
 
     public Robot() {
         super(RunMode.MAIN_LOOP_PERIOD_SECONDS);
@@ -50,7 +51,10 @@ public class Robot extends SpectrumRobot {
                 RunMode.CURRENT == RunMode.Mode.REAL ? LOCAL_SETTINGS : null,
                 new NetworkTablesTransport(RobotSettings.NT_PREFIX));
         // Subsystems are built here, after settings and before the RT priority below.
-        swerve = new Swerve();
+        // Sim only: devices the scripted sim can unplug, reboot or make fail.
+        SimFaults simFaults = RunMode.CURRENT == RunMode.Mode.SIM ? new SimFaults() : null;
+        swerve = new Swerve(simFaults);
+        simScript = SimScript.fromEnvironment(simFaults);
         // The pilot only binds controls; the bindings keep it alive.
         new Pilot(swerve);
         // Before the main thread goes real-time, so its thread does not inherit that.

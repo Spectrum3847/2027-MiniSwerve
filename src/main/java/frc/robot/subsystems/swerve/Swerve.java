@@ -3,6 +3,7 @@ package frc.robot.subsystems.swerve;
 import frc.robot.RunMode;
 import frc.robot.config.Hardware;
 import frc.spectrumLib.framework.RobotLoop;
+import frc.spectrumLib.hardware.SimFaults;
 import frc.spectrumLib.statemachine.WantedState;
 import frc.spectrumLib.swerve.DriveRequest;
 import frc.spectrumLib.swerve.HeadingHold;
@@ -89,7 +90,10 @@ public final class Swerve implements Subsystem {
     private DoubleSupplier teleopY = () -> 0;
     private DoubleSupplier teleopOmega = () -> 0;
 
-    public Swerve() {
+    /**
+     * @param simFaults simulated device faults (sim only; null otherwise)
+     */
+    public Swerve(SimFaults simFaults) {
         double half = SwerveSettings.TRACK.get() / 2;
         double[] mx = {half, half, -half, -half};
         double[] my = {half, -half, half, -half};
@@ -103,10 +107,10 @@ public final class Swerve implements Subsystem {
                             ? new SwervePhysicsSim(
                                     SwerveSettings.SIM_MASS.get(), 0.004, 0.01, mx, my)
                             : null;
-            io = new SwerveIOPhoenix(SwerveConfigs.phoenix(MODULES), sim);
+            io = new SwerveIOPhoenix(SwerveConfigs.phoenix(MODULES), sim, simFaults);
             if (sim != null) {
-                // The sim's wheels are the nominal size; a wrong wheelRadius setting then shows up
-                // as odometry error, and the wheel-radius routine should find the nominal value.
+                sim.setSimFaults(simFaults);
+                // Nominal-size sim wheels: a wrong wheelRadius setting shows up as odometry error.
                 sim.setTrueWheelRadius(Hardware.MK4iL2.NOMINAL_WHEEL_RADIUS_METERS);
             }
         } else {
@@ -127,7 +131,8 @@ public final class Swerve implements Subsystem {
         thread.setSetpointGenerator(
                 SwerveSettings.SETPOINT_GENERATOR.get(),
                 SwerveSettings.MAX_DRIVE_ACCELERATION.get(),
-                SwerveSettings.MAX_STEER_VELOCITY.get());
+                SwerveSettings.MAX_STEER_VELOCITY.get(),
+                SwerveSettings.MAX_STEER_ACCELERATION.get());
         if (io.hasHardware()) {
             thread.start();
         }
@@ -294,17 +299,7 @@ public final class Swerve implements Subsystem {
         threadFaultAlert.set(inputs.threadFaults > 0);
         gyroAlert.set(!gyroOk());
         if (sim != null) {
-            // Sim only: the true pose, for judging odometry. Never read by logic.
-            Pose2d truth =
-                    new Pose2d(
-                            sim.truthX(),
-                            sim.truthY(),
-                            org.wpilib.math.geometry.Rotation2d.fromRadians(sim.truthHeading()));
-            Logger.recordOutput("Sim/TruthPose", truth);
-            // Odometry position error against truth (m).
-            Logger.recordOutput(
-                    "Sim/OdometryError",
-                    Math.hypot(odometry.x() - sim.truthX(), odometry.y() - sim.truthY()));
+            sim.logTruth(odometry.x(), odometry.y());
         }
     }
 

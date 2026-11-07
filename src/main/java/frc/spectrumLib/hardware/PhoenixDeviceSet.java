@@ -41,6 +41,7 @@ public final class PhoenixDeviceSet {
     private final AtomicInteger signalsGeneration = new AtomicInteger();
     private volatile boolean signalsSet;
     private final AtomicLong resets = new AtomicLong();
+    private volatile SimFaults faults;
 
     /**
      * @param prefix names the background calls, e.g. "Swerve"
@@ -56,8 +57,24 @@ public final class PhoenixDeviceSet {
      * @return the device's index, for {@link #configured(int)}
      */
     public int add(String name, ParentDevice device, Supplier<StatusCode> config) {
-        devices.add(new Device(name, device, config));
+        // In sim, a faulted device's config applies fail like a real unplugged one's.
+        Supplier<StatusCode> guarded =
+                () ->
+                        faults != null && faults.configFails(name)
+                                ? StatusCode.TxTimeout
+                                : config.get();
+        devices.add(new Device(name, device, guarded));
         return devices.size() - 1;
+    }
+
+    /** Sim only: devices answer as {@code faults} says (unplugged, unheard, rebooted). */
+    public void setSimFaults(SimFaults faults) {
+        this.faults = faults;
+    }
+
+    /** The name a device was added with (how {@link SimFaults} refers to it). */
+    public String name(int index) {
+        return devices.get(index).name();
     }
 
     /** What sets every signal's update rate (blocking); redone after any device reboots. */
@@ -95,7 +112,12 @@ public final class PhoenixDeviceSet {
      */
     public void poll() {
         for (int i = 0; i < devices.size(); i++) {
-            if (devices.get(i).device().hasResetOccurred()) {
+            Device d = devices.get(i);
+            boolean reset = d.device().hasResetOccurred();
+            if (faults != null && faults.consumeReset(d.name())) {
+                reset = true;
+            }
+            if (reset) {
                 configured.set(i, 0);
                 generation.incrementAndGet(i);
                 signalsGeneration.incrementAndGet();
@@ -140,7 +162,8 @@ public final class PhoenixDeviceSet {
 
     /** The device's status frames are arriving (Phoenix {@code isConnected}). */
     public boolean connected(int index) {
-        return devices.get(index).device().isConnected();
+        Device d = devices.get(index);
+        return d.device().isConnected() && (faults == null || !faults.unheard(d.name()));
     }
 
     /** Every device's signal rates are set (false after a reboot until redone). */

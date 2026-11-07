@@ -46,9 +46,13 @@ final class SwerveSettings {
     /** Limit acceleration and steer rate with the setpoint generator (smoother, truer odometry). */
     static final BooleanSetting SETPOINT_GENERATOR = G.bool("setpointGenerator", true);
 
-    /** Largest wheel speed change the setpoint generator allows (m/s^2). */
+    /**
+     * Largest wheel speed change the setpoint generator allows (m/s^2). Keep it under what the
+     * tires hold on carpet (about 10.8 m/s^2, less once the drive rotors' inertia is counted), or
+     * the robot slides and wheel odometry cannot see it. 8 measured best in the rigid-body sim.
+     */
     static final DoubleSetting MAX_DRIVE_ACCELERATION =
-            G.number("maxDriveAcceleration", 10.0, "m/s^2", 1, 30);
+            G.number("maxDriveAcceleration", 8.0, "m/s^2", 1, 30);
 
     /** Fastest module turn the setpoint generator plans (rad/s); MK4i free speed is about 29. */
     static final DoubleSetting MAX_STEER_VELOCITY =
@@ -109,6 +113,13 @@ final class SwerveSettings {
     /** Spin rate for the wheel-radius measurement (rad/s). */
     static final DoubleSetting WHEEL_RADIUS_SPIN =
             G.number("wheelRadiusSpin", 1.5, "rad/s", 0.3, 4);
+
+    /**
+     * How fast the setpoint generator changes a module's turn rate (rad/s^2): the steer plan speeds
+     * up and slows down at this rate so the wheels land on their angle without overshooting.
+     */
+    static final DoubleSetting MAX_STEER_ACCELERATION =
+            G.number("maxSteerAcceleration", 300, "rad/s^2", 20, 1000);
 
     /** Driver top speed and turn rate. */
     static final DoubleSetting MAX_DRIVE_VELOCITY =
