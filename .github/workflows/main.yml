@@ -1,9 +1,11 @@
 name: CI
 
+# Runs only on pull requests into main (before a merge) and by hand. Every push is checked
+# locally first by tools/check.sh (the pre-push hook), so CI is the last line, not the first.
 on:
-  push:
-    branches: [ "main" ]
   pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -28,7 +30,6 @@ jobs:
 
   # Tuning mode lets dashboards change robot values; main must never have it on.
   tuning-mode:
-    if: github.event_name == 'push' || github.base_ref == 'main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

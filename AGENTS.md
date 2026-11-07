@@ -16,6 +16,9 @@ SystemCore image), and the testbed for the 2027 competition code. Read this file
 - `./gradlew run -PnoSimGui` runs the sim headless and writes `logs/*.wpilog`.
 - Replay: `AKIT_LOG_PATH=logs/<log>.wpilog MINISWERVE_REPLAY=1 ./gradlew run -PnoSimGui`. Always
   set the path: without it AdvantageKit picks the newest log, which may be a `_replay` output.
+- Never push anything that fails CI. `tools/check.sh` runs what CI runs; the pre-push hook runs it
+  for you once a clone has `git config core.hooksPath .githooks`. CI itself runs only on pull
+  requests into `main`, so work goes on a branch and merges by PR.
 - Compiling is not verification. A behavior change needs a sim run, a replay comparison or a bench
   test, written up under "How I verified" in the PR.
 - WPILib is 2027 alpha (`org.wpilib.*`). Don't guess 2026 names; check the jars (`javap`) or this

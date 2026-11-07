@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Blocks a push unless the same checks CI runs pass locally.
+exec tools/check.sh
