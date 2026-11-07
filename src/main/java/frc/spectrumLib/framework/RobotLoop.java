@@ -1,0 +1,71 @@
+package frc.spectrumLib.framework;
+
+/**
+ * Counts robot loops so work can be done "once per loop" or "every Nth loop" without a timer.
+ *
+ * <p>{@link frc.robot.Robot#robotPeriodic()} calls {@link #next()} first thing. Anything that wants
+ * to do something once per loop remembers the count it last ran at and compares; anything that
+ * wants a slower cadence uses {@link #every(int)}. Both are a long compare, so they are safe to
+ * call from tight per-loop paths such as status-signal reads.
+ *
+ * <p>Main robot thread only. The count never advances in unit tests, so once-per-loop caches there
+ * refresh exactly once.
+ */
+public final class RobotLoop {
+    private static long count = 0;
+
+    /** The robot loop period in seconds; set once by {@link SpectrumRobot}. */
+    private static double periodSeconds = 0.02;
+
+    private RobotLoop() {}
+
+    /** Advances to the next loop. Called once, at the top of {@code robotPeriodic()}. */
+    public static void next() {
+        count++;
+    }
+
+    /**
+     * Returns the current loop number. Starts at 0 and increases by one per {@link #next()}.
+     *
+     * @return the current loop count
+     */
+    public static long count() {
+        return count;
+    }
+
+    /**
+     * Sets the loop period. Called once, by {@link SpectrumRobot}'s constructor.
+     *
+     * @param seconds the robot loop period
+     */
+    static void setPeriodSeconds(double seconds) {
+        periodSeconds = seconds;
+    }
+
+    /** The robot loop period in seconds (0.02 at 50 Hz, 0.01 at 100 Hz). */
+    public static double periodSeconds() {
+        return periodSeconds;
+    }
+
+    /**
+     * Returns {@code true} about once every {@code seconds}, whatever the loop rate. Use it instead
+     * of counting loops, so a slow-tier rate such as 10 Hz holds when the loop period changes.
+     *
+     * @param seconds interval between {@code true} results
+     * @return whether this loop is one to run the periodic work on
+     */
+    public static boolean everySeconds(double seconds) {
+        return every((int) Math.max(1, Math.round(seconds / periodSeconds)));
+    }
+
+    /**
+     * Returns {@code true} on every {@code n}th loop, so a 20 ms loop with {@code n = 5} is 10 Hz.
+     * All callers in the same loop agree, so related values are logged in the same cycle.
+     *
+     * @param n loops between {@code true} results; values below 1 mean every loop
+     * @return whether this is a loop on which the periodic work should run
+     */
+    public static boolean every(int n) {
+        return n <= 1 || count % n == 0;
+    }
+}

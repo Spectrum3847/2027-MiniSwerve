@@ -1,0 +1,401 @@
+package frc.spectrumLib.telemetry;
+
+import frc.spectrumLib.framework.RobotLoop;
+import java.util.HashMap;
+import java.util.Map;
+import org.littletonrobotics.junction.Logger;
+import org.wpilib.system.Timer;
+import org.wpilib.units.Measure;
+import org.wpilib.units.Unit;
+import org.wpilib.util.WPISerializable;
+import org.wpilib.util.struct.StructSerializable;
+
+/**
+ * Telemetry and logging facade, backed by AdvantageKit.
+ *
+ * <p>Every value is an AdvantageKit <em>output</em> ({@link Logger#recordOutput}). Outputs land in
+ * the same wpilog as the replayed inputs, under {@code /RealOutputs/...} on the robot and {@code
+ * /ReplayOutputs/...} in replay, so a replayed match regenerates every one of these keys from the
+ * code under test.
+ *
+ * <h2>Rules that come with AdvantageKit</h2>
+ *
+ * <ul>
+ *   <li><b>Main thread only.</b> {@link Logger} is not thread-safe. Nothing on a Notifier, the CTRE
+ *       odometry thread or a vision callback may call this class; hand the data to the main loop
+ *       and log it there.
+ *   <li><b>Outputs never drive logic.</b> Anything a decision depends on must come from a logged
+ *       input ({@link Logger#processInputs}), or replay will diverge.
+ * </ul>
+ *
+ * <h2>Tiers</h2>
+ *
+ * <ul>
+ *   <li>{@link #log} records to the log only.
+ *   <li>{@link #logDash} / {@link #logDashAlways} record to the log and mark the key as a dashboard
+ *       key, which {@link DashboardReceiver} also sends to NetworkTables. Only dashboard keys
+ *       (these, and every key the Elastic layout reads) go to NT, unless the {@value
+ *       #NT_MIRROR_SWITCH_KEY} switch is on. That is the 2026 offseason rule, for the CPU it costs.
+ *   <li>{@link #slowLogThisLoop()} is true at 10 Hz whatever the loop rate. Wrap logs that do not
+ *       need loop-rate resolution (currents, temperatures, vision status) in it.
+ * </ul>
+ */
+public class Telemetry {
+
+    /**
+     * Priority levels for printing to the console.
+     *
+     * <ul>
+     *   <li>{@link #NORMAL}: printed only when the global priority is also {@code NORMAL}.
+     *   <li>{@link #HIGH}: always printed, regardless of the global priority setting.
+     * </ul>
+     */
+    public enum PrintPriority {
+        NORMAL,
+        HIGH
+    }
+
+    /** Minimum priority level a message must have to be written to the console. */
+    private static PrintPriority priority = PrintPriority.HIGH;
+
+    /** Seconds between slow-tier publishes (10 Hz at any loop rate). */
+    public static final double SLOW_LOG_PERIOD_SECONDS = 0.1;
+
+    private Telemetry() {}
+
+    /**
+     * Returns {@code true} on the loops the slow telemetry tier publishes on. Every caller in the
+     * same loop agrees, so related values are logged in the same cycle.
+     *
+     * @return whether slow-tier values should be logged this loop
+     */
+    public static boolean slowLogThisLoop() {
+        return RobotLoop.everySeconds(SLOW_LOG_PERIOD_SECONDS);
+    }
+
+    /**
+     * Sets the console print priority. Data receivers and the replay source are configured in
+     * {@code Robot} before {@link Logger#start()}, not here.
+     *
+     * @param priority The minimum priority level for console output.
+     */
+    public static void start(PrintPriority priority) {
+        Telemetry.priority = priority;
+    }
+
+    // ── Plain log ───────────────────────────────────────────────────────────
+
+    public static void log(String key, double value) {
+        Logger.recordOutput(key, value);
+    }
+
+    public static void log(String key, double value, String unit) {
+        Logger.recordOutput(key, value, unit);
+    }
+
+    public static void log(String key, float value) {
+        Logger.recordOutput(key, value);
+    }
+
+    public static void log(String key, boolean value) {
+        Logger.recordOutput(key, value);
+    }
+
+    public static void log(String key, int value) {
+        Logger.recordOutput(key, value);
+    }
+
+    public static void log(String key, long value) {
+        Logger.recordOutput(key, value);
+    }
+
+    public static void log(String key, String value) {
+        Logger.recordOutput(key, value);
+    }
+
+    public static void log(String key, double[] value) {
+        Logger.recordOutput(key, value);
+    }
+
+    public static void log(String key, boolean[] value) {
+        Logger.recordOutput(key, value);
+    }
+
+    public static void log(String key, long[] value) {
+        Logger.recordOutput(key, value);
+    }
+
+    public static void log(String key, int[] value) {
+        Logger.recordOutput(key, value);
+    }
+
+    public static void log(String key, String[] value) {
+        Logger.recordOutput(key, value);
+    }
+
+    public static <E extends Enum<E>> void log(String key, E value) {
+        Logger.recordOutput(key, value);
+    }
+
+    public static <T extends WPISerializable> void log(String key, T value) {
+        Logger.recordOutput(key, value);
+    }
+
+    @SafeVarargs
+    public static <T extends StructSerializable> void log(String key, T... value) {
+        Logger.recordOutput(key, value);
+    }
+
+    public static <U extends Unit> void log(String key, Measure<U> value) {
+        Logger.recordOutputMeasure(key, value);
+    }
+
+    // ── Dashboard tier ───────────────────────────────────────────────────────
+    //
+    // As in the 2026 offseason code, NetworkTables carries only what a dashboard shows; the log
+    // file carries everything. logDash and logDashAlways record exactly like log, and also mark
+    // the key as a dashboard key, which DashboardReceiver lets through to NetworkTables. Keys the
+    // Elastic layout reads are marked at startup (see addDashboardKeysFromElasticLayout). The
+    // mirror switch sends everything, for a live AdvantageScope session on the bench.
+
+    /** Keys (relative to the outputs table, e.g. {@code "Hood/Voltage"}) published to NT. */
+    private static final java.util.Set<String> dashboardKeys =
+            java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    /**
+     * Dashboard key of the switch that mirrors every log entry to NetworkTables. Forced off when
+     * the FMS is attached.
+     */
+    public static final String NT_MIRROR_SWITCH_KEY = "/SmartDashboard/Telemetry/MirrorLogsToNT";
+
+    private static org.littletonrobotics.junction.networktables.LoggedNetworkBoolean mirrorSwitch;
+
+    /** Read by the NT receiver thread; written once per loop on the main thread. */
+    private static volatile boolean mirrorAll = false;
+
+    /**
+     * Creates the mirror switch. Call once, after the logger has started.
+     *
+     * @param mirrorByDefault initial position: on in simulation, off on the robot
+     */
+    public static void startDashboard(boolean mirrorByDefault) {
+        mirrorSwitch =
+                new org.littletonrobotics.junction.networktables.LoggedNetworkBoolean(
+                        NT_MIRROR_SWITCH_KEY, mirrorByDefault);
+        mirrorAll = mirrorByDefault;
+    }
+
+    /** Updates the mirror switch. Call once per loop. */
+    public static void periodic() {
+        if (mirrorSwitch != null) {
+            mirrorAll = mirrorSwitch.get() && !org.wpilib.driverstation.RobotState.isFMSAttached();
+        }
+    }
+
+    /** Whether every output is being mirrored to NetworkTables right now. */
+    public static boolean isMirroringAll() {
+        return mirrorAll;
+    }
+
+    /** Whether an output key (relative to the outputs table) is a dashboard key. */
+    public static boolean isDashboardKey(String key) {
+        return dashboardKeys.contains(key);
+    }
+
+    /** The same keys as absolute log-table keys ({@code /RealOutputs/<key>}). */
+    private static final java.util.Set<String> dashboardTableKeys =
+            java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    /**
+     * Whether an absolute log-table key ({@code /RealOutputs/<key>}) is a dashboard key. For the
+     * NetworkTables receiver, which walks the whole table every cycle: one hash lookup per entry,
+     * no substring.
+     */
+    public static boolean isDashboardTableKey(String tableKey) {
+        return dashboardTableKeys.contains(tableKey);
+    }
+
+    private static boolean markDashboard(String key) {
+        dashboardTableKeys.add("/RealOutputs/" + key);
+        return dashboardKeys.add(key);
+    }
+
+    /** Marks a key for NetworkTables, e.g. one a dashboard layout reads. */
+    public static void addDashboardKey(String key) {
+        markDashboard(key);
+    }
+
+    /**
+     * Marks every output the Elastic layout reads as a dashboard key, so what Elastic shows is
+     * exactly what goes over NetworkTables and the two cannot drift apart. Topics under {@code
+     * /AdvantageKit/RealOutputs/} become output keys.
+     *
+     * @param layoutJson the layout file's contents
+     * @return how many keys were added
+     */
+    public static int addDashboardKeysFromElasticLayout(String layoutJson) {
+        var m =
+                java.util.regex.Pattern.compile(
+                                "\"topic\"\\s*:\\s*\"/AdvantageKit/RealOutputs/([^\"]+)\"")
+                        .matcher(layoutJson);
+        int n = 0;
+        while (m.find()) {
+            if (markDashboard(m.group(1))) {
+                n++;
+            }
+        }
+        return n;
+    }
+
+    public static void logDash(String key, double value) {
+        markDashboard(key);
+        log(key, value);
+    }
+
+    public static void logDash(String key, double value, String unit) {
+        markDashboard(key);
+        log(key, value, unit);
+    }
+
+    public static void logDash(String key, boolean value) {
+        markDashboard(key);
+        log(key, value);
+    }
+
+    public static void logDash(String key, String value) {
+        markDashboard(key);
+        log(key, value);
+    }
+
+    public static void logDash(String key, long value) {
+        markDashboard(key);
+        log(key, value);
+    }
+
+    public static void logDashAlways(String key, double value) {
+        logDash(key, value);
+    }
+
+    public static void logDashAlways(String key, double value, String unit) {
+        logDash(key, value, unit);
+    }
+
+    public static void logDashAlways(String key, boolean value) {
+        logDash(key, value);
+    }
+
+    public static void logDashAlways(String key, String value) {
+        logDash(key, value);
+    }
+
+    public static void logDashAlways(String key, long value) {
+        logDash(key, value);
+    }
+
+    // ── Loop timers ──────────────────────────────────────────────────────────
+
+    /** Start time per timer key; a one-element array so restarting a timer allocates nothing. */
+    private static final Map<String, long[]> epochStartNanos = new HashMap<>();
+
+    /**
+     * Starts a timed span. Pair with {@link #timeEnd(String)} on the same key.
+     *
+     * <p>Uses the real clock, not {@link Logger#getTimestamp()}, because the point is to measure
+     * how long the code took. In replay these values describe the replay machine, not the robot.
+     *
+     * @param key the log key the elapsed time will be written to
+     */
+    public static void time(String key) {
+        epochStartNanos.computeIfAbsent(key, k -> new long[1])[0] = System.nanoTime();
+    }
+
+    /** Per timer key: sum of seconds, spans, worst span, window start (ns), over this second. */
+    private static final Map<String, double[]> timerWindows = new HashMap<>();
+
+    private static final Map<String, String> timerMeanKeys = new HashMap<>();
+
+    /**
+     * Ends a timed span. Once a second it logs the worst span of that second under {@code key} and
+     * the mean under {@code key + "Mean"}, in seconds: every loop was ~15 values a loop, 7% of a
+     * log, and the worst loop is what an overrun investigation needs.
+     *
+     * @param key the key passed to {@link #time(String)}
+     */
+    public static void timeEnd(String key) {
+        long[] start = epochStartNanos.get(key);
+        if (start == null || start[0] == 0) {
+            return;
+        }
+        long now = System.nanoTime();
+        double seconds = (now - start[0]) / 1e9;
+        start[0] = 0;
+        double[] w = timerWindows.computeIfAbsent(key, k -> new double[] {0, 0, 0, now});
+        w[0] += seconds;
+        w[1]++;
+        w[2] = Math.max(w[2], seconds);
+        if (now - w[3] >= 1_000_000_000L) {
+            log(key, w[2], "seconds");
+            log(timerMeanKeys.computeIfAbsent(key, k -> k + "Mean"), w[0] / w[1], "seconds");
+            w[0] = 0;
+            w[1] = 0;
+            w[2] = 0;
+            w[3] = now;
+        }
+    }
+
+    // ── Events ───────────────────────────────────────────────────────────────
+
+    /**
+     * AdvantageKit cycle whose events {@link #events} holds, by its pinned timestamp. Not {@link
+     * RobotLoop}: that advances inside {@code robotPeriodic}, after the mode init of the same
+     * cycle, so an event from {@code disabledInit} was overwritten by the next one that cycle.
+     */
+    private static long eventCycle = Long.MIN_VALUE;
+
+    /** Events logged this loop, by key. */
+    private static final Map<String, java.util.List<String>> events = new HashMap<>();
+
+    /**
+     * Logs a discrete event. AdvantageKit keeps one value per key per cycle. Logging two messages
+     * to the same key in one loop kept only the second, so two commands ending in the same loop, or
+     * two prints, lost one. Events are accumulated per cycle and recorded as a string array holding
+     * all of them.
+     *
+     * @param key the log key
+     * @param message the event
+     */
+    public static void logEvent(String key, String message) {
+        long cycle = Logger.getTimestamp();
+        if (cycle != eventCycle) {
+            eventCycle = cycle;
+            events.clear();
+        }
+        var list = events.computeIfAbsent(key, k -> new java.util.ArrayList<>(2));
+        list.add(message);
+        Logger.recordOutput(key, list.toArray(new String[0]));
+    }
+
+    // ── Commands, prints ─────────────────────────────────────────────────────
+
+    /**
+     * Print a statement if the priority allows it. AdvantageKit captures the console into the log,
+     * so the text is also recorded; it is additionally logged under "Prints" for search.
+     */
+    public static void print(String output, PrintPriority priority) {
+        String out = "TIME: " + String.format("%.3f", Timer.getTimestamp()) + " || " + output;
+        if (priority == PrintPriority.HIGH || Telemetry.priority == PrintPriority.NORMAL) {
+            System.out.println(out);
+        }
+        // Every Telemetry.print line in this cycle, with its robot time.
+        logEvent("Prints", out);
+    }
+
+    /**
+     * Prints a message at {@link PrintPriority#NORMAL} priority.
+     *
+     * @param output The string to print
+     */
+    public static void print(String output) {
+        print(output, PrintPriority.NORMAL);
+    }
+}
