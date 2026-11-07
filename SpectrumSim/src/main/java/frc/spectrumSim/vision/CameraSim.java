@@ -24,7 +24,8 @@ import org.wpilib.system.RobotController;
  * and all four corners land on the image. Corners get pixel noise; the bearing comes from the noisy
  * corners' center, as the coprocessor computes it, and range gets noise growing with distance
  * (0.005 + 0.005 r^2 m, as measured on the Jetson). Frames are exposed at the camera's frame rate
- * and arrive after its latency, all on the sim clock, with a seeded noise source: runs repeat.
+ * and arrive after its latency, in order (a frame waits behind a slower one before it), all on the
+ * sim clock, with a seeded noise source: runs repeat.
  *
  * <p>No lens distortion, motion blur or occlusion yet. The bearing uses the corners' mean, which
  * sits a little off the true center at oblique angles, as the fork's will if it does the same.
@@ -57,7 +58,7 @@ public final class CameraSim {
             double cx,
             double cy,
             double fps,
-            double latencySeconds, // median capture-to-robot; the spread is FM's measured one
+            double latencySeconds, // the MEDIAN capture-to-robot; the spread is FM's, scaled
             double pixelNoise) {
         /**
          * Arducam/Thriftiest Cam at 1280x800, about 70 deg across, 60 fps; latency as measured on

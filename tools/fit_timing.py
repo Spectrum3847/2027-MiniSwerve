@@ -32,16 +32,16 @@ print("LOOP FullCycleMS n",len(cyc)," p50 %.1f p90 %.1f p99 %.1f max %.1f  share
 print("ODOM period n",len(per)," p50 %.2f p10 %.2f p90 %.2f p99 %.2f ms"%(pct(per,.5)*1e3,pct(per,.1)*1e3,pct(per,.9)*1e3,pct(per,.99)*1e3))
 print("DAQ failed",sum(fails),"of",sum(fails)+sum(succ),"= %.4f"%(sum(fails)/max(1,sum(fails)+sum(succ))))
 print("CAM latency ms n",len(lat)," p50 %.1f p90 %.1f"%(pct(lat,.5),pct(lat,.9)) if lat else "no latency")
-for name,v,i in vb[:13]:
+for name,v,i in vb:
     if len(v)<50: continue
     # open-circuit estimate: V + R*I with R=0.012 in early 10 s vs last 10 s
     def voc(win):
         pts=[x for a,x in v if win[0]<=a<win[1]]; cur=[x for a,x in i if win[0]<=a<win[1]]
         return statistics.mean(pts)+0.012*statistics.mean(cur) if pts and cur else float('nan')
-    ah=sum(x for a,x in i)*0.02/3600 if i else 0
-    print("BATT",name,"Voc start %.2f end %.2f  drop %.2f V  charge used %.2f Ah(est)"%(voc((0,10)),voc((140,155)),voc((0,10))-voc((140,155)),ah))
+    ah=sum((b[0]-a[0])*(a[1]+b[1])/2 for a,b in zip(i,i[1:]) if 0<b[0]-a[0]<1)/3600 if len(i)>1 else 0
+    print("BATT",name,"Voc start %.2f end %.2f  drop %.2f V  charge used %.2f Ah(est)"%(voc((0,10)),voc((145,155)),voc((0,10))-voc((145,155)),ah))
 import collections
 h=collections.Counter(round(p*1e3) for p in per); tot=sum(h.values())
 print("ODOM period histogram (ms: share):",{k:round(v/tot,4) for k,v in sorted(h.items()) if v/tot>0.0005})
-print("LOOP >5ms %.4f >10ms %.5f >20ms %.6f; count>10 per match %.1f"%(sum(c>5 for c in cyc)/len(cyc),sum(c>10 for c in cyc)/len(cyc),sum(c>20 for c in cyc)/len(cyc),sum(c>10 for c in cyc)/13))
+print("LOOP >5ms %.4f >10ms %.5f >20ms %.6f; count>10 per match %.1f"%(sum(c>5 for c in cyc)/len(cyc),sum(c>10 for c in cyc)/len(cyc),sum(c>20 for c in cyc)/len(cyc),sum(c>10 for c in cyc)/max(1,len(vb))))
 lh=collections.Counter(int(x//2)*2 for x in lat); lt=sum(lh.values()); print("CAM latency hist:",{k:round(v/lt,3) for k,v in sorted(lh.items()) if v/lt>0.005})

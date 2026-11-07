@@ -48,7 +48,7 @@ public final class SwervePhysicsSim {
     private static final double VOLTS_PER_AMP_HOUR = 0.8;
 
     /** Charge drawn from the battery so far (Ah). */
-    private double chargeUsedAh;
+    private volatile double chargeUsedAh;
 
     /**
      * Battery internal plus wiring resistance (ohm); voltage sags by this times total current.
@@ -96,6 +96,7 @@ public final class SwervePhysicsSim {
     public synchronized void setBattery(double openVolts, double ohms) {
         batteryOpenVolts = openVolts;
         batteryResistance = ohms;
+        chargeUsedAh = 0; // a fresh battery
     }
 
     /** Uses this battery voltage instead of the model (a real log's), or NaN for the model. */
@@ -620,6 +621,8 @@ public final class SwervePhysicsSim {
             // The other robots on the field (field frame), for AdvantageScope's field view.
             org.littletonrobotics.junction.Logger.recordOutput("Sim/OtherRobots", others);
         }
+        // Charge drawn from the sim battery so far by the drivetrain (Ah).
+        org.littletonrobotics.junction.Logger.recordOutput("Sim/BatteryChargeUsedAh", chargeUsedAh);
         // Each wheel's load on the floor in the sim, FL FR BL BR (N): weight transfer.
         org.littletonrobotics.junction.Logger.recordOutput("Sim/WheelLoads", loadLog);
         // Wheels the sim has lifted off the floor (the robot is starting to tip).
