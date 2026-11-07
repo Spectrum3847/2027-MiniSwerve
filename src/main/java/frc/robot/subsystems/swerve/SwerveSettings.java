@@ -200,4 +200,12 @@ final class SwerveSettings {
      * accelerate before the wheels slide.
      */
     static final DoubleSetting TIRE_FRICTION = G.number("tireFriction", 1.1, "", 0.3, 2.0);
+
+    /**
+     * Height of the robot's center of gravity above the floor, ready to play (in). Sets weight
+     * transfer in the sim: how much grip the front wheels lose under hard acceleration and when the
+     * robot would tip. Placeholder until measured (balance the robot on an edge, or tilt it until
+     * it tips and use the angle).
+     */
+    static final DoubleSetting COG_HEIGHT_INCHES = G.number("cogHeightInches", 6.0, "in", 1, 40);
 }

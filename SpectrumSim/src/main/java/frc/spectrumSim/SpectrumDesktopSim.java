@@ -53,6 +53,7 @@ public final class SpectrumDesktopSim implements DesktopSim {
                 clock != null
                         ? new SwerveIOSim(cfg, physics, faults, clock)
                         : PhoenixSwerveSim.create(cfg, physics, faults);
+        physics.setCogHeight(spec.cogHeight());
         if (!Double.isNaN(spec.trueWheelRadius())) {
             physics.setTrueWheelRadius(spec.trueWheelRadius());
         }

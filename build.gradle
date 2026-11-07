@@ -151,7 +151,7 @@ wpi.sim.addDriverstation()
 application.mainClass = ROBOT_MAIN_CLASS
 
 // Desktop runs (sim and replay) get SpectrumSim; the deploy jar does not.
-// (VS Code's "Simulate Robot Code" builds its own classpath without it: use ./gradlew run.)
+// VS Code's "Simulate Robot Code" launches this same run task (build/sim/java.json: taskPath :run).
 tasks.named('run') {
     classpath += sourceSets.sim.output
 }

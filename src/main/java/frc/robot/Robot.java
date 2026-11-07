@@ -63,7 +63,8 @@ public class Robot extends SpectrumRobot {
         if (RunMode.CURRENT == RunMode.Mode.SIM && desktopSim == null) {
             // Without SpectrumSim the robot would run with no physics and look broken.
             throw new IllegalStateException(
-                    "SpectrumSim is not on the classpath: run the sim with ./gradlew run");
+                    "SpectrumSim is not on the classpath: run the sim with ./gradlew run or WPILib's"
+                            + " Simulate Robot Code");
         }
         LoggingSetup.start(this);
         RobotSettings.start(

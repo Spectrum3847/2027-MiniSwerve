@@ -29,9 +29,10 @@ import org.wpilib.simulation.DriverStationSim;
  *
  * <p>{@code ./gradlew simReplay -Pin=in.csv -Pout=out.csv -Pparams="mass=60 latency=0.01"}. Params
  * (defaults in {@link #DEFAULTS}): mass (kg), friction, steerInertia (kg m^2), steerFriction (N m
- * per rad/s), gearEff, gearDrag (N m), inertia (turning inertia factor), latency (s from command to
- * motor), realBattery (1: use the log's battery voltage). {@code -Psweep=file} runs one line of
- * params per output ({@code name key=value ...}, writing {@code <out>_<name>.csv}) in one JVM.
+ * per rad/s), gearEff, gearDrag (N m), inertia (turning inertia factor), cog (center of gravity
+ * height, m), latency (s from command to motor), realBattery (1: use the log's battery voltage).
+ * {@code -Psweep=file} runs one line of params per output ({@code name key=value ...}, writing
+ * {@code <out>_<name>.csv}) in one JVM.
  *
  * <p>Runs on our TalonFX models, self-stepped: repeatable and much faster than real time. {@code
  * phoenix=1} runs Phoenix's simulator instead, in real time.
@@ -97,6 +98,7 @@ public final class SimReplay {
         DEFAULTS.put("gearEff", 0.9);
         DEFAULTS.put("gearDrag", 0.1);
         DEFAULTS.put("inertia", 0.6);
+        DEFAULTS.put("cog", 0.25);
         DEFAULTS.put("latency", 0.0);
         DEFAULTS.put("realBattery", 1.0);
         DEFAULTS.put("phoenix", 0.0);
@@ -162,6 +164,7 @@ public final class SimReplay {
                         new double[] {h, -h, h, -h});
         sim.setGearLosses(p.get("gearEff"), p.get("gearDrag"));
         sim.setInertiaFactor(p.get("inertia"));
+        sim.setCogHeight(p.get("cog"));
         boolean phoenix = p.get("phoenix") > 0;
         boolean realBattery = p.get("realBattery") > 0;
         double latency = p.get("latency");

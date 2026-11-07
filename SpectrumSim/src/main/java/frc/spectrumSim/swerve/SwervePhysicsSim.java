@@ -25,6 +25,12 @@ import frc.spectrumSim.MotorModel;
  * <p>Stepped by the sim clock (or its own thread with Phoenix's simulator). The true pose is
  * published for the main loop to log as sim truth; robot logic must never read it.
  *
+ * <p>Weight shifts between wheels as the robot accelerates ({@link WheelLoads}, set by {@link
+ * #setCogHeight}); each tire ({@link Tire}) grips in proportion to its load.
+ *
+ * <p>Over 400 lines on purpose: one integration step touches every wheel, the body and the battery
+ * together; the tire ({@link Tire}) and weight transfer ({@link WheelLoads}) are already apart.
+ *
  * <p>Index: {@link #attach} | {@link #step} | {@link #stepSteer} | truth getters
  */
 public final class SwervePhysicsSim {
@@ -92,32 +98,26 @@ public final class SwervePhysicsSim {
     /** Wheel's own spin inertia (kg m^2): a 4 in tread wheel and hub. */
     private static final double WHEEL_INERTIA = 0.0005;
 
-    /** Slip speed at which the tire gives its most grip (m/s): a few percent of driving speed. */
-    private static final double PEAK_SLIP = 0.1;
+    /** Center of gravity above the floor (m); sets weight transfer. */
+    private double cogHeight = 0.2;
 
-    /** Grip once fully sliding, as a share of peak (kinetic below static friction). */
-    private static final double SLIDING_SHARE = 0.85;
+    /** Net tire force over mass last step (m/s^2, robot frame): what shifts the wheel loads. */
+    private double lastAx;
+
+    private double lastAy;
+
+    private final WheelLoads loads;
 
     /**
-     * Tire force for a slip speed, as a share of peak grip: rises linearly to the peak at {@link
-     * #PEAK_SLIP}, then falls toward {@link #SLIDING_SHARE} as the tire slides.
+     * Sets the center of gravity's height (m), for weight transfer: a high one unloads the front
+     * wheels under hard acceleration, loses grip, and lifts wheels when it would tip.
      */
-    private static double gripCurve(double slip) {
-        double x = Math.abs(slip) / PEAK_SLIP;
-        double share = x <= 1 ? x : slidingFactor(Math.abs(slip));
-        return Math.copySign(share, slip);
-    }
-
-    /** Most grip at a total slip speed: full at the peak, sliding friction well past it. */
-    private static double slidingFactor(double slip) {
-        double x = slip / PEAK_SLIP;
-        return x <= 1 ? 1.0 : SLIDING_SHARE + (1 - SLIDING_SHARE) * Math.exp(-(x - 1));
+    public synchronized void setCogHeight(double meters) {
+        cogHeight = meters;
     }
 
     /** Wheel rolling drag. */
     private static final double ROLLING_DRAG = 0.5; // N per m/s along the wheel
-
-    private static final double GRAVITY = 9.81;
 
     private final MotorModel driveMotor;
     private final MotorModel steerMotor;
@@ -176,6 +176,7 @@ public final class SwervePhysicsSim {
         this.steerFriction = steerFriction;
         this.mx = mx.clone();
         this.my = my.clone();
+        loads = new WheelLoads(mx, my);
     }
 
     /** Called by the IO once its simulated devices exist. */
@@ -274,19 +275,36 @@ public final class SwervePhysicsSim {
         // wheel's own. The tire, not a rolling constraint, ties it to the ground.
         double wheelInertia = driveMotor.rotorInertia() * g2 + WHEEL_INERTIA;
         double inertiaEff = robotInertia();
-        double grip = tireFriction * robotMassKg * GRAVITY / n; // most force a tire can give
+        // Each tire grips in proportion to its share of the weight, which shifts as the robot
+        // accelerates (last step's acceleration: the loads lag it by one step).
+        loads.update(robotMassKg, cogHeight, lastAx, lastAy);
+        double gripMax = 0;
+        for (int i = 0; i < n; i++) {
+            gripMax = Math.max(gripMax, tireFriction * loads.load(i));
+        }
         // Below peak slip the tire is a stiff damper on the light wheel (grip / PEAK_SLIP per m/s
         // against about J / r^2 of mass). Explicit steps are stable only while dt * k * r^2 / J
-        // stays well under 2, so the wheel takes as many sub-steps as that needs, with the robot's
-        // speed held for the step.
+        // stays well under 2, so the wheel takes as many sub-steps as the most loaded wheel needs,
+        // with the robot's speed held for the step.
         int wheelSteps =
-                Math.max(1, (int) Math.ceil(dt * grip / PEAK_SLIP * r * r / wheelInertia / 0.5));
+                Math.max(
+                        1,
+                        (int)
+                                Math.ceil(
+                                        dt
+                                                * gripMax
+                                                / Tire.PEAK_SLIP
+                                                * r
+                                                * r
+                                                / wheelInertia
+                                                / 0.5));
         double wdt = dt / wheelSteps;
         double fx = 0, fy = 0, torque = 0;
         supplyAmps = 0;
         for (int i = 0; i < n; i++) {
             double cvx0 = vx - omega * my[i];
             double cvy0 = vy + omega * mx[i];
+            double grip = tireFriction * loads.load(i); // most force this tire can give now
             stepSteer(i, dt, Math.hypot(cvx0, cvy0), grip);
             double c = Math.cos(steerAngle[i]);
             double sn = Math.sin(steerAngle[i]);
@@ -319,10 +337,10 @@ public final class SwervePhysicsSim {
             double push = 0, side = 0;
             for (int k = 0; k < wheelSteps; k++) {
                 double slipAlong = wheelOmega[i] * r - along;
-                double p = grip * gripCurve(slipAlong);
-                double sd = -grip * gripCurve(across);
+                double p = grip * Tire.gripCurve(slipAlong);
+                double sd = -grip * Tire.gripCurve(across);
                 double total = Math.hypot(p, sd);
-                double cap = grip * slidingFactor(Math.hypot(slipAlong, across));
+                double cap = grip * Tire.slidingFactor(Math.hypot(slipAlong, across));
                 if (total > cap) {
                     p *= cap / total;
                     sd *= cap / total;
@@ -353,6 +371,8 @@ public final class SwervePhysicsSim {
                 Double.isNaN(batteryOverride)
                         ? Math.max(6.0, batteryOpenVolts - batteryResistance * supplyAmps)
                         : batteryOverride;
+        lastAx = fx / robotMassKg;
+        lastAy = fy / robotMassKg;
         // Rigid body in the robot frame (the frame turns with the robot).
         vx += (fx / robotMassKg + omega * vy) * dt;
         vy += (fy / robotMassKg - omega * vx) * dt;
@@ -449,6 +469,9 @@ public final class SwervePhysicsSim {
         return f != null && f.unpowered(device);
     }
 
+    private final double[] loadLog = new double[4];
+    private final boolean[] liftLog = new boolean[4];
+
     /**
      * Main thread: logs the true pose and odometry's error against it. Sim truth for judging
      * odometry; robot logic must never read it.
@@ -464,6 +487,14 @@ public final class SwervePhysicsSim {
         // Odometry position error against truth (m).
         org.littletonrobotics.junction.Logger.recordOutput(
                 "Sim/OdometryError", Math.hypot(odometryX - x, odometryY - y));
+        for (int i = 0; i < loadLog.length; i++) {
+            loadLog[i] = loads.load(i);
+            liftLog[i] = loads.lifted(i);
+        }
+        // Each wheel's load on the floor in the sim, FL FR BL BR (N): weight transfer.
+        org.littletonrobotics.junction.Logger.recordOutput("Sim/WheelLoads", loadLog);
+        // Wheels the sim has lifted off the floor (the robot is starting to tip).
+        org.littletonrobotics.junction.Logger.recordOutput("Sim/WheelLifted", liftLog);
     }
 
     /** Steer motor {@code i}'s stator current this step (A), after supply and battery limits. */
