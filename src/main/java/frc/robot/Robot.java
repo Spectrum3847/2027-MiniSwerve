@@ -6,6 +6,7 @@ import frc.robot.opmodes.DriveForwardAuto;
 import frc.robot.opmodes.DriveTeleop;
 import frc.robot.opmodes.WheelRadiusUtility;
 import frc.robot.pilot.Pilot;
+import frc.robot.subsystems.pose.Localization;
 import frc.robot.subsystems.swerve.Swerve;
 import frc.robot.subsystems.vision.Vision;
 import frc.robot.subsystems.vision.VisionSettings;
@@ -52,6 +53,7 @@ public class Robot extends SpectrumRobot {
     private final Alert mainThreadPriorityAlert = new Alert("", Level.MEDIUM);
     private final Swerve swerve;
     private final Vision vision;
+    private final Localization localization;
     private final SimScript simScript;
     private final DesktopSim desktopSim;
     private final OpModeLoop opModeLoop = new OpModeLoop();
@@ -84,14 +86,14 @@ public class Robot extends SpectrumRobot {
         simScript = SimScript.fromEnvironment(simFaults);
         VisionSettings.Camera[] cameras = VisionSettings.cameras();
         vision = new Vision(cameras);
+        Field field = Field.loadField(VisionSettings.FIELD);
+        localization = new Localization(swerve, vision, field);
         if (desktopSim != null) {
             Transform3d[] mounts = new Transform3d[cameras.length];
             for (int i = 0; i < cameras.length; i++) {
                 mounts[i] = cameras[i].robotToCamera();
             }
-            vision.expectFrames(
-                    desktopSim.cameras(
-                            Field.loadField(VisionSettings.FIELD), vision.names(), mounts));
+            vision.expectFrames(desktopSim.cameras(field, vision.names(), mounts));
         }
         // The pilot only binds controls; the bindings keep it alive.
         new Pilot(swerve);
@@ -118,6 +120,7 @@ public class Robot extends SpectrumRobot {
         RobotSettings.periodic();
         swerve.updateInputs();
         vision.periodic();
+        localization.periodic(vision, org.wpilib.system.Timer.getTimestamp());
         opModeLoop.run();
         CommandScheduler.getInstance().run();
         swerve.applyWantedState();

@@ -86,8 +86,50 @@ noise. Checked on the drive script against the true geometry: bearing error 0.00
 error 9 cm median (the noise model at 4 to 8 m), latency 31 ms as the robot reads it; two runs give
 identical frames, and replay matches. No lens distortion, blur, occlusion or object detection yet.
 
-Next: TagEKF (pose from these frames, driving the robot, with WPILib's estimator as a logged
-shadow), then the fork publishing `VisionFrame`.
+Next: the fork publishing `VisionFrame`.
+
+## Pose: TagEKF
+
+TagEKF (`frc.spectrumLib.localization.TagEkf`, FM's, tuned on the TXMAN1 replays) drives the
+robot's pose (`Localization`, logged `Pose/Robot`). Every 250 Hz swerve sample predicts it (wheel
+travel and odometry's heading: the gyro's when healthy, the wheels' when not); every camera's tags
+correct it one at a time, each as a bearing and range from its camera at the frame's capture time.
+The heading it predicts with is odometry's without the jumps of field-centric re-zeroing (those
+would read as a sudden turn). Swerve sample times are moved onto the robot clock at the IO (the
+Phoenix-to-robot offset read with each sample), the clock the camera frames use; each frame's age
+against the newest sample is logged, and frames older than 0.3 s or from the future raise an
+alert and are not used.
+Frames are inserted at their time and later samples replayed over them, so arrival order does not
+matter. A tag whose innovation fails a chi-squared gate is rejected; if tags keep failing the
+covariance widens so the cameras can pull it back (relocalization); adaptive uncertainty (mean NIS
+over 10) grows it when the cameras disagree. Its first pose comes from the first frame with two or
+more tags (heading from the line between them). Noise is Robot Settings (`tagekf/*`): TagEkf's
+tuned defaults, bearing 0.5 deg.
+
+Seeding is checked: a frame with two or more tags gives a whole pose only if its tags are at least
+1 m apart and within 8 m, every pair agrees on heading within 3 deg, and every tag lands within 15
+cm of where the pose puts it; a seed also needs every tag within 6 m and the next such frame to
+agree (20 cm, 3 deg), and goes in at its capture time. If TagEKF keeps rejecting tags for a second
+while checked frames agree on a pose more than 0.5 m away, it is re-seeded there. Logged:
+`Pose/Seeds`, `Pose/Reseeds`, `Pose/SeedCheck`, `Pose/UnknownTags`, `Pose/FrameAgeSeconds`,
+`Pose/RejectReasons`, `Pose/HeadingFromGyro`, `Pose/Shadow/Delta`.
+
+WPILib's `SwerveDrivePoseEstimator` runs beside it as a logged shadow (`Pose/Shadow/WPILib`), on the
+same samples, with each checked multi-tag frame as one pose measurement (never single tags). Its
+numbers below measure that feed, not WPILib's estimator at its best. Plain odometry is Swerve's own.
+
+In sim (both cameras, against the true field pose):
+
+| Script | TagEKF median / p90 | WPILib shadow median / p90 | Odometry median |
+|---|---|---|---|
+| drive | 1.1 / 3.2 cm | 9.4 / 34 cm | 37 cm |
+| walls (wheels scrubbing on walls) | 1.6 / 4.8 cm | 39 cm / 3.5 m (few checked frames at the walls) | 3.5 m |
+| drive with a defender and a parked robot | 2.4 / 12 cm | 12 / 69 cm | 1.1 m |
+
+TagEKF heading error is 0.01 to 0.02 deg median; it seeds 0.05 s after boot, once; no
+relocalizations or re-seeds; frame age 21 ms median.
+Runs repeat exactly and replay matches. The sim's cameras have no distortion, blur or occlusion,
+so real numbers will be worse; FM's real-match replays are the reference (0.057/0.136 m on Q17).
 
 ## Autos and modes
 
