@@ -19,6 +19,11 @@ SystemCore image), and the testbed for the 2027 competition code. Read this file
 - Never push anything that fails CI. `tools/check.sh` runs what CI runs; the pre-push hook runs it
   for you once a clone has `git config core.hooksPath .githooks`. CI itself runs only on pull
   requests into `main`, so work goes on a branch and merges by PR.
+- Text files are UTF-8 with LF line endings (`.bat`/`.cmd` excepted), set by `.gitattributes` and
+  `.editorconfig`. When writing files from a script, write bytes as UTF-8 with `
+` (Python:
+  `open(p, 'w', encoding='utf-8', newline='
+')`). `tools/fix-text.sh` repairs anything that slips.
 - Compiling is not verification. A behavior change needs a sim run, a replay comparison or a bench
   test, written up under "How I verified" in the PR.
 - WPILib is 2027 alpha (`org.wpilib.*`). Don't guess 2026 names; check the jars (`javap`) or this

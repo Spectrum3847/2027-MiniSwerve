@@ -10,6 +10,13 @@ echo "check: workflow YAML"
 for f in .github/workflows/*.yml; do
   python -c "import sys,yaml; yaml.safe_load(open(sys.argv[1], encoding='utf-8'))" "$f"
 done
+echo "check: line endings and encoding"
+# Stored files must be LF (.bat/.cmd excepted) and text must be UTF-8. A CRLF or Windows-codepage
+# byte here is what breaks Spotless and diffs on other machines; tools/fix-text.sh repairs both.
+bad_eol=$(git ls-files --eol | awk '$1 ~ /crlf|mixed/ {print $NF}' | grep -vE '\.(bat|cmd)$' || true)
+if [ -n "$bad_eol" ]; then echo "CRLF stored in git (run tools/fix-text.sh):"; echo "$bad_eol"; exit 1; fi
+bad_utf8=$(git ls-files -z | xargs -0 python tools/text_check.py)
+if [ -n "$bad_utf8" ]; then echo "$bad_utf8"; exit 1; fi
 echo "check: TUNING_MODE off"
 grep -Eq '^ *public static final boolean TUNING_MODE = false;' src/main/java/frc/robot/RunMode.java
 echo "check: no CTRE swerve API"
