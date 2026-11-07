@@ -19,10 +19,12 @@ import frc.spectrumLib.hardware.SimFaults;
  * robot, and each wheel rolls with the robot's motion at that wheel. So a dead or coasting wheel
  * rolls along, and a wheel pointed the wrong way scrubs and fights the others, as on a real robot.
  *
- * <p>Not modeled: wheel spin (slip along the wheel). A wheel always reports the robot's speed at
- * it, so sim odometry never sees spin; sim odometry accuracy is not evidence about the real robot.
- * A rebooted device also keeps its sim rotor position (a real TalonFX restarts its rotor count;
- * steering is safe because it fuses the CANcoder).
+ * <p>Each wheel spins on its own (motor and rotor through the gearing, plus the wheel), tied to the
+ * ground only by the tire: tire force follows a grip curve of slip speed (peak at a few cm/s,
+ * dropping to sliding friction past it), along and across the wheel, in one friction circle. So
+ * wheels spin when the motor gives more than the tire holds, encoders see the spin, and odometry
+ * drifts as on a real robot. A rebooted device also keeps its sim rotor position (a real TalonFX
+ * restarts its rotor count; steering is safe because it fuses the CANcoder).
  *
  * <p>Runs on the swerve thread. The true pose is published for the main loop to log as sim truth;
  * robot logic must never read it.
@@ -44,6 +46,31 @@ public final class SwervePhysicsSim {
     private volatile double batteryVolts = BATTERY_OPEN_VOLTS;
 
     private double supplyAmps;
+
+    /** Wheel's own spin inertia (kg m^2): a 4 in tread wheel and hub. */
+    private static final double WHEEL_INERTIA = 0.0005;
+
+    /** Slip speed at which the tire gives its most grip (m/s): a few percent of driving speed. */
+    private static final double PEAK_SLIP = 0.1;
+
+    /** Grip once fully sliding, as a share of peak (kinetic below static friction). */
+    private static final double SLIDING_SHARE = 0.85;
+
+    /**
+     * Tire force for a slip speed, as a share of peak grip: rises linearly to the peak at {@link
+     * #PEAK_SLIP}, then falls toward {@link #SLIDING_SHARE} as the tire slides.
+     */
+    private static double gripCurve(double slip) {
+        double x = Math.abs(slip) / PEAK_SLIP;
+        double share = x <= 1 ? x : slidingFactor(Math.abs(slip));
+        return Math.copySign(share, slip);
+    }
+
+    /** Most grip at a total slip speed: full at the peak, sliding friction well past it. */
+    private static double slidingFactor(double slip) {
+        double x = slip / PEAK_SLIP;
+        return x <= 1 ? 1.0 : SLIDING_SHARE + (1 - SLIDING_SHARE) * Math.exp(-(x - 1));
+    }
 
     /** Wheel rolling drag. */
     private static final double ROLLING_DRAG = 0.5; // N per m/s along the wheel
@@ -172,7 +199,7 @@ public final class SwervePhysicsSim {
                                 synchronized (this) {
                                     step(dt);
                                 }
-                                steps++;
+                                steps.incrementAndGet();
                             }
                         },
                         "SwervePhysicsSim");
@@ -202,9 +229,9 @@ public final class SwervePhysicsSim {
         int n = steerAngle.length;
         double r = wheelRadius();
         double g2 = cfg.driveRatio() * cfg.driveRatio();
-        // The drive rotors' inertia, seen at the wheels, adds to the robot's.
-        double rotorMass = driveMotor.rotorInertia() * g2 / (r * r);
-        double massEff = robotMassKg + n * rotorMass;
+        // The wheel spins on its own: the drive rotor's inertia, through the gearing, and the
+        // wheel's own. The tire, not a rolling constraint, ties it to the ground.
+        double wheelInertia = driveMotor.rotorInertia() * g2 + WHEEL_INERTIA;
         double inertiaEff = robotInertia();
         double grip = tireFriction * robotMassKg * GRAVITY / n; // most force a tire can give
         double fx = 0, fy = 0, torque = 0;
@@ -220,9 +247,6 @@ public final class SwervePhysicsSim {
             double cvy = vy + omega * mx[i];
             double along = cvx * c + cvy * sn;
             double across = -cvx * sn + cvy * c;
-            // The wheel rolls with the robot (no slip along it): a dead or coasting wheel just
-            // follows; a powered one pushes.
-            wheelOmega[i] = along / r;
             double driveMotorOmega =
                     wheelOmega[i] * cfg.driveRatio() + steerOmega[i] * cfg.coupleRatio();
             driveSim[i].setSupplyVoltage(batteryVolts);
@@ -240,16 +264,24 @@ public final class SwervePhysicsSim {
             supplyAmps +=
                     Math.max(0, driveMotor.supplyCurrent(amps, driveMotorOmega, batteryVolts));
             driveAmps[i] = amps;
-            double push = driveMotor.kT() * amps * cfg.driveRatio() / r - ROLLING_DRAG * along;
-            // Sideways the tire grips: it stops the slide within a step (the rotors do not resist
-            // sideways motion, so the robot's own mass), up to its friction.
-            double side = -across * (robotMassKg / n) / dt;
-            // One friction circle per tire: push and grip share it.
+            // Tire force from slip: the wheel surface's speed against the ground's, along the
+            // wheel,
+            // and the ground's sideways speed. Both follow the grip curve and share one friction
+            // circle. A wheel spinning faster than the ground pushes the robot (up to grip) and
+            // spins up when the motor gives more than the tire holds.
+            double slipAlong = wheelOmega[i] * r - along;
+            double push = grip * gripCurve(slipAlong);
+            double side = -grip * gripCurve(across);
             double total = Math.hypot(push, side);
-            if (total > grip) {
-                push *= grip / total;
-                side *= grip / total;
+            double cap = grip * slidingFactor(Math.hypot(slipAlong, across));
+            if (total > cap) {
+                push *= cap / total;
+                side *= cap / total;
             }
+            // The wheel: motor torque through the gearing, less what the tire pushes back.
+            double motorTorque = driveMotor.kT() * amps * cfg.driveRatio();
+            double wheelTorque = motorTorque - push * r - ROLLING_DRAG * r * r * wheelOmega[i];
+            wheelOmega[i] += wheelTorque / wheelInertia * dt;
             double wfx = push * c - side * sn;
             double wfy = push * sn + side * c;
             fx += wfx;
@@ -261,8 +293,8 @@ public final class SwervePhysicsSim {
         // The battery sags under everything drawn this step (drive and steer).
         batteryVolts = Math.max(6.0, BATTERY_OPEN_VOLTS - BATTERY_RESISTANCE * supplyAmps);
         // Rigid body in the robot frame (the frame turns with the robot).
-        vx += (fx / massEff + omega * vy) * dt;
-        vy += (fy / massEff - omega * vx) * dt;
+        vx += (fx / robotMassKg + omega * vy) * dt;
+        vy += (fy / robotMassKg - omega * vx) * dt;
         omega += torque / inertiaEff * dt;
         double h = truthHeading;
         double ch = Math.cos(h);
@@ -283,11 +315,8 @@ public final class SwervePhysicsSim {
         for (int i = 0; i < mx.length; i++) {
             r2 += mx[i] * mx[i] + my[i] * my[i];
         }
-        double r = wheelRadius();
-        double rotorMass =
-                driveMotor.rotorInertia() * cfg.driveRatio() * cfg.driveRatio() / (r * r);
         // A box robot about as wide as its wheelbase: about 0.6 of mass times module radius^2.
-        return 0.6 * robotMassKg * r2 / mx.length + rotorMass * r2;
+        return 0.6 * robotMassKg * r2 / mx.length;
     }
 
     /**
@@ -400,7 +429,8 @@ public final class SwervePhysicsSim {
         return new double[] {vx, vy, omega};
     }
 
-    private volatile long steps;
+    private final java.util.concurrent.atomic.AtomicLong steps =
+            new java.util.concurrent.atomic.AtomicLong();
     private volatile boolean running;
 
     /** Stops the physics thread (tests and replays that build more than one drivetrain). */
@@ -410,7 +440,7 @@ public final class SwervePhysicsSim {
 
     /** Physics steps taken since start, to check the step rate. */
     public long steps() {
-        return steps;
+        return steps.get();
     }
 
     /** The sim battery's voltage now (V), sagged under load. */
