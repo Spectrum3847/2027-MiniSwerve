@@ -8,6 +8,7 @@ import frc.spectrumLib.statemachine.WantedState;
 import frc.spectrumLib.swerve.DriveRequest;
 import frc.spectrumLib.swerve.HeadingHold;
 import frc.spectrumLib.swerve.ModuleTrust;
+import frc.spectrumLib.swerve.MotorModel;
 import frc.spectrumLib.swerve.SampleQueue;
 import frc.spectrumLib.swerve.SwerveIO;
 import frc.spectrumLib.swerve.SwerveIOPhoenix;
@@ -49,6 +50,10 @@ public final class Swerve implements Subsystem {
     }
 
     private static final int MODULES = 4;
+
+    /** Sim steer friction (N m per rad/s at the module), fitted to FM's real steer overshoot. */
+    private static final double SIM_STEER_FRICTION = 0.3;
+
     private static final int MAX_SAMPLES_PER_LOOP = 16;
     private static final int SWERVE_THREAD_PRIORITY = 1;
 
@@ -105,10 +110,12 @@ public final class Swerve implements Subsystem {
             sim =
                     RunMode.CURRENT == RunMode.Mode.SIM
                             ? new SwervePhysicsSim(
+                                    MotorModel.FALCON_500_FOC,
+                                    MotorModel.FALCON_500_FOC,
                                     SwerveSettings.robotMassKg(),
                                     SwerveSettings.TIRE_FRICTION.get(),
                                     0.004,
-                                    0.01,
+                                    SIM_STEER_FRICTION,
                                     mx,
                                     my)
                             : null;

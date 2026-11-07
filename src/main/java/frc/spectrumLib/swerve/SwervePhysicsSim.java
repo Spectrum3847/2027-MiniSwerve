@@ -31,25 +31,27 @@ import frc.spectrumLib.hardware.SimFaults;
  * getters
  */
 public final class SwervePhysicsSim {
-    /** Falcon 500 with FOC: stall torque / stall current (N m per A). */
-    private static final double KT = 5.84 / 304.0;
+    /** Battery open-circuit voltage (V), a charged battery. */
+    private static final double BATTERY_OPEN_VOLTS = 12.7;
 
-    /** Winding resistance (ohm): 12 V / stall current. */
-    private static final double R = 12.0 / 304.0;
+    /** Battery internal plus wiring resistance (ohm); voltage sags by this times total current. */
+    private static final double BATTERY_RESISTANCE = 0.025;
 
-    /** Back-EMF (V per rad/s of rotor): 12 V at free speed, 6080 rpm. */
-    private static final double KE = 12.0 / (6080.0 * 2 * Math.PI / 60.0);
+    /** Lever arm of the tire contact patch against turning in place (m): sets steer scrub. */
+    private static final double SCRUB_ARM = 0.012;
 
-    private static final double BATTERY_VOLTS = 12.0;
+    /** Battery voltage now (V), sagged by last step's total current. */
+    private volatile double batteryVolts = BATTERY_OPEN_VOLTS;
 
-    /** Falcon 500 rotor inertia (kg m^2); the gearing multiplies it by the ratio squared. */
-    private static final double ROTOR_INERTIA = 0.0000565;
+    private double supplyAmps;
 
     /** Wheel rolling drag. */
     private static final double ROLLING_DRAG = 0.5; // N per m/s along the wheel
 
     private static final double GRAVITY = 9.81;
 
+    private final MotorModel driveMotor;
+    private final MotorModel steerMotor;
     private final double robotMassKg;
     private final double tireFriction;
     private final double steerInertia; // kg m^2, module about its steer axis
@@ -67,6 +69,7 @@ public final class SwervePhysicsSim {
     private double[] steerOmega; // rad/s
     private double[] wheelAngle; // rad
     private double[] wheelOmega; // rad/s
+    private double[] driveAmps;
     // Rigid-body robot velocity, in the robot frame.
     private double vx;
     private double vy;
@@ -82,18 +85,24 @@ public final class SwervePhysicsSim {
     private volatile double truthHeading;
 
     /**
+     * @param driveMotor drive motor model
+     * @param steerMotor steer motor model
      * @param robotMassKg robot weight ready to play (kg)
      * @param tireFriction tire-to-carpet friction coefficient
      * @param mx module x positions (m)
      * @param my module y positions (m)
      */
     public SwervePhysicsSim(
+            MotorModel driveMotor,
+            MotorModel steerMotor,
             double robotMassKg,
             double tireFriction,
             double steerInertia,
             double steerFriction,
             double[] mx,
             double[] my) {
+        this.driveMotor = driveMotor;
+        this.steerMotor = steerMotor;
         this.robotMassKg = robotMassKg;
         this.tireFriction = tireFriction;
         this.steerInertia = steerInertia;
@@ -118,6 +127,7 @@ public final class SwervePhysicsSim {
         steerOmega = new double[n];
         wheelAngle = new double[n];
         wheelOmega = new double[n];
+        driveAmps = new double[n];
         for (int i = 0; i < n; i++) {
             driveSim[i] = drive[i].getSimState();
             steerSim[i] = steer[i].getSimState();
@@ -134,23 +144,43 @@ public final class SwervePhysicsSim {
         }
     }
 
-    private long lastStepNanos;
     private long nextDeadlineNanos;
 
     /**
-     * Steps the physics by the wall time since the last call (at most 20 ms).
-     *
-     * @return when this step started (ns), for {@link #waitForNextPeriod}
+     * Runs the physics on its own daemon thread at {@code hz}, stepping by the measured wall time
+     * (at most 20 ms per step). Call once, after {@link #attach}.
      */
-    long stepRealTime(double hz) {
-        long now = System.nanoTime();
-        double dt = lastStepNanos == 0 ? 1.0 / hz : (now - lastStepNanos) * 1e-9;
-        lastStepNanos = now;
-        step(Math.min(dt, 0.02));
-        return now;
+    void start(double hz) {
+        running = true;
+        Thread t =
+                new Thread(
+                        () -> {
+                            long period = (long) (1e9 / hz);
+                            long last = System.nanoTime();
+                            long next = last;
+                            while (running) {
+                                next += period;
+                                long now;
+                                while ((now = System.nanoTime()) < next) {
+                                    java.util.concurrent.locks.LockSupport.parkNanos(next - now);
+                                }
+                                if (now - next > 20 * period) {
+                                    next = now; // fell far behind: restart the schedule
+                                }
+                                double dt = Math.min(0.02, (now - last) * 1e-9);
+                                last = now;
+                                synchronized (this) {
+                                    step(dt);
+                                }
+                                steps++;
+                            }
+                        },
+                        "SwervePhysicsSim");
+        t.setDaemon(true);
+        t.start();
     }
 
-    /** Keeps the sim loop on a fixed 1/hz schedule; parkNanos can wake early on Windows. */
+    /** Keeps a loop on a fixed 1/hz schedule; parkNanos can wake early on Windows. */
     void waitForNextPeriod(long startNanos, double hz) {
         long periodNanos = (long) (1e9 / hz);
         if (nextDeadlineNanos == 0 || startNanos - nextDeadlineNanos > periodNanos) {
@@ -173,13 +203,16 @@ public final class SwervePhysicsSim {
         double r = wheelRadius();
         double g2 = cfg.driveRatio() * cfg.driveRatio();
         // The drive rotors' inertia, seen at the wheels, adds to the robot's.
-        double rotorMass = ROTOR_INERTIA * g2 / (r * r);
+        double rotorMass = driveMotor.rotorInertia() * g2 / (r * r);
         double massEff = robotMassKg + n * rotorMass;
         double inertiaEff = robotInertia();
         double grip = tireFriction * robotMassKg * GRAVITY / n; // most force a tire can give
         double fx = 0, fy = 0, torque = 0;
+        supplyAmps = 0;
         for (int i = 0; i < n; i++) {
-            stepSteer(i, dt);
+            double cvx0 = vx - omega * my[i];
+            double cvy0 = vy + omega * mx[i];
+            stepSteer(i, dt, Math.hypot(cvx0, cvy0), grip);
             double c = Math.cos(steerAngle[i]);
             double sn = Math.sin(steerAngle[i]);
             // The robot's velocity at this wheel, along and across the wheel.
@@ -192,10 +225,22 @@ public final class SwervePhysicsSim {
             wheelOmega[i] = along / r;
             double driveMotorOmega =
                     wheelOmega[i] * cfg.driveRatio() + steerOmega[i] * cfg.coupleRatio();
-            driveSim[i].setSupplyVoltage(BATTERY_VOLTS);
+            driveSim[i].setSupplyVoltage(batteryVolts);
             double amps =
-                    dead(driveName[i]) ? 0 : limit(driveSim[i].getTorqueCurrent(), driveMotorOmega);
-            double push = KT * amps * cfg.driveRatio() / r - ROLLING_DRAG * along;
+                    dead(driveName[i])
+                            ? 0
+                            : driveMotor.supplyLimited(
+                                    driveMotor.limit(
+                                            driveSim[i].getTorqueCurrent(),
+                                            driveMotorOmega,
+                                            batteryVolts),
+                                    driveMotorOmega,
+                                    batteryVolts,
+                                    cfg.driveSupplyCurrentLimit());
+            supplyAmps +=
+                    Math.max(0, driveMotor.supplyCurrent(amps, driveMotorOmega, batteryVolts));
+            driveAmps[i] = amps;
+            double push = driveMotor.kT() * amps * cfg.driveRatio() / r - ROLLING_DRAG * along;
             // Sideways the tire grips: it stops the slide within a step (the rotors do not resist
             // sideways motion, so the robot's own mass), up to its friction.
             double side = -across * (robotMassKg / n) / dt;
@@ -213,6 +258,8 @@ public final class SwervePhysicsSim {
             wheelAngle[i] += wheelOmega[i] * dt;
             writeModule(i, driveMotorOmega);
         }
+        // The battery sags under everything drawn this step (drive and steer).
+        batteryVolts = Math.max(6.0, BATTERY_OPEN_VOLTS - BATTERY_RESISTANCE * supplyAmps);
         // Rigid body in the robot frame (the frame turns with the robot).
         vx += (fx / massEff + omega * vy) * dt;
         vy += (fy / massEff - omega * vx) * dt;
@@ -223,7 +270,7 @@ public final class SwervePhysicsSim {
         truthX += (vx * ch - vy * sh) * dt;
         truthY += (vx * sh + vy * ch) * dt;
         truthHeading = h + omega * dt;
-        pigeonSim.setSupplyVoltage(BATTERY_VOLTS);
+        pigeonSim.setSupplyVoltage(batteryVolts);
         if (!dead("Pigeon")) {
             pigeonSim.setRawYaw(Math.toDegrees(truthHeading));
             pigeonSim.setAngularVelocityZ(Math.toDegrees(omega));
@@ -237,7 +284,8 @@ public final class SwervePhysicsSim {
             r2 += mx[i] * mx[i] + my[i] * my[i];
         }
         double r = wheelRadius();
-        double rotorMass = ROTOR_INERTIA * cfg.driveRatio() * cfg.driveRatio() / (r * r);
+        double rotorMass =
+                driveMotor.rotorInertia() * cfg.driveRatio() * cfg.driveRatio() / (r * r);
         // A box robot about as wide as its wheelbase: about 0.6 of mass times module radius^2.
         return 0.6 * robotMassKg * r2 / mx.length + rotorMass * r2;
     }
@@ -252,19 +300,40 @@ public final class SwervePhysicsSim {
      * the same in every drive motor's own (inverted) frame, which is what {@link SwerveIOPhoenix}
      * removes.
      */
-    private void stepSteer(int i, double dt) {
+    private void stepSteer(int i, double dt, double groundSpeed, double tireLoadFriction) {
         double steerRatio = cfg.steerRatio();
         double steerSign = cfg.steerInverted() ? -1.0 : 1.0;
-        steerSim[i].setSupplyVoltage(BATTERY_VOLTS);
+        steerSim[i].setSupplyVoltage(batteryVolts);
         double steerMotorOmega = steerOmega[i] * steerRatio;
         double steerAsked =
                 cfg.steerVoltage()
-                        ? (steerSign * steerSim[i].getMotorVoltage() - KE * steerMotorOmega) / R
+                        ? (steerSign * steerSim[i].getMotorVoltage()
+                                        - steerMotor.kE() * steerMotorOmega)
+                                / steerMotor.resistance()
                         : steerSim[i].getTorqueCurrent();
-        double steerAmps = dead(steerName[i]) ? 0 : limit(steerAsked, steerMotorOmega);
-        double steerTorque = KT * steerAmps * steerRatio - steerFriction * steerOmega[i];
-        double steerJ = steerInertia + ROTOR_INERTIA * steerRatio * steerRatio;
-        steerOmega[i] += steerTorque / steerJ * dt;
+        double steerAmps =
+                dead(steerName[i])
+                        ? 0
+                        : steerMotor.limit(steerAsked, steerMotorOmega, batteryVolts);
+        supplyAmps +=
+                Math.max(0, steerMotor.supplyCurrent(steerAmps, steerMotorOmega, batteryVolts));
+        double steerTorque =
+                steerMotor.kT() * steerAmps * steerRatio - steerFriction * steerOmega[i];
+        double steerJ = steerInertia + steerMotor.rotorInertia() * steerRatio * steerRatio;
+        // Turning a loaded tire in place scrubs the carpet: friction torque against the turn, much
+        // less once the wheel is rolling. It holds the module still if the motor cannot beat it.
+        double scrub = tireLoadFriction * SCRUB_ARM / (1 + groundSpeed / 0.3);
+        if (Math.abs(steerOmega[i]) < 1e-3 && Math.abs(steerTorque) <= scrub) {
+            steerOmega[i] = 0;
+        } else {
+            double dir =
+                    Math.abs(steerOmega[i]) >= 1e-3
+                            ? Math.signum(steerOmega[i])
+                            : Math.signum(steerTorque);
+            double next = steerOmega[i] + (steerTorque - dir * scrub) / steerJ * dt;
+            // Friction stops the turn; it never reverses it.
+            steerOmega[i] = Math.signum(next) == -dir && Math.abs(steerOmega[i]) >= 1e-3 ? 0 : next;
+        }
         steerAngle[i] += steerOmega[i] * dt;
     }
 
@@ -281,18 +350,10 @@ public final class SwervePhysicsSim {
                 driveSign * (wheelRot * cfg.driveRatio() + steerRot * cfg.coupleRatio()));
         driveSim[i].setRotorVelocity(driveSign * driveMotorOmega / (2 * Math.PI));
         if (!dead(encoderName[i])) {
-            encoderSim[i].setSupplyVoltage(BATTERY_VOLTS);
+            encoderSim[i].setSupplyVoltage(batteryVolts);
             encoderSim[i].setRawPosition(steerRot - cfg.magnetOffsets()[i]);
             encoderSim[i].setVelocity(steerOmega[i] / (2 * Math.PI));
         }
-    }
-
-    /** Current the battery can push through a motor turning at {@code rotorOmega} (rad/s). */
-    private static double limit(double amps, double rotorOmega) {
-        double emf = KE * rotorOmega;
-        double max = (BATTERY_VOLTS - emf) / R;
-        double min = (-BATTERY_VOLTS - emf) / R;
-        return Math.max(min, Math.min(max, amps));
     }
 
     /**
@@ -332,6 +393,34 @@ public final class SwervePhysicsSim {
         // Odometry position error against truth (m).
         org.littletonrobotics.junction.Logger.recordOutput(
                 "Sim/OdometryError", Math.hypot(odometryX - x, odometryY - y));
+    }
+
+    /** Robot-frame velocity (m/s, m/s, rad/s), for comparing with real logs. */
+    public double[] bodyVelocity() {
+        return new double[] {vx, vy, omega};
+    }
+
+    private volatile long steps;
+    private volatile boolean running;
+
+    /** Stops the physics thread (tests and replays that build more than one drivetrain). */
+    public void stop() {
+        running = false;
+    }
+
+    /** Physics steps taken since start, to check the step rate. */
+    public long steps() {
+        return steps;
+    }
+
+    /** The sim battery's voltage now (V), sagged under load. */
+    public double batteryVolts() {
+        return batteryVolts;
+    }
+
+    /** Each drive motor's current this step (A), for comparing with real logs. */
+    public double[] driveCurrents() {
+        return driveAmps.clone();
     }
 
     /** Puts the true robot at a pose (sim setup). */

@@ -59,6 +59,10 @@ final class SwervePhoenixConfigs {
         c.Feedback.SensorToMechanismRatio = cfg.driveRatio();
         c.CurrentLimits.StatorCurrentLimit = cfg.driveStatorCurrentLimit();
         c.CurrentLimits.StatorCurrentLimitEnable = true;
+        if (cfg.driveSupplyCurrentLimit() > 0) {
+            c.CurrentLimits.SupplyCurrentLimit = cfg.driveSupplyCurrentLimit();
+            c.CurrentLimits.SupplyCurrentLimitEnable = true;
+        }
         c.TorqueCurrent.PeakForwardTorqueCurrent = cfg.driveStatorCurrentLimit();
         c.TorqueCurrent.PeakReverseTorqueCurrent = -cfg.driveStatorCurrentLimit();
         c.Slot0 = slot0(cfg.drive());

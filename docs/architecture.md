@@ -277,3 +277,33 @@ with every module NORMAL (exit code 0).
 Known from the fault scenario: with the Pigeon out, heading comes from the wheels, which scrub, so
 odometry drifts (about 0.2 m over a 1.5 s outage while turning) and keeps that heading error when
 the gyro returns. The SystemCore/USB gyro as a second heading source, and the TagEKF, are the fix.
+
+## Sim against real logs
+
+The sim is checked against real robots, not just itself:
+
+```bash
+python tools/fm_extract.py <real.wpilog> build/simreal/x.csv --start 0 --seconds 30
+./gradlew simReplay -Pin=build/simreal/x.csv -Pout=build/simreal/x_sim.csv [-Pmass=70 -Pfriction=1.1]
+python tools/sim_vs_real.py build/simreal/x.csv build/simreal/x_sim.csv
+```
+
+`fm_extract` pulls a real match's commanded and measured module states, Pigeon acceleration and
+currents; `simReplay` drives the same commands through our sim configured as that robot (FM 2026:
+MK5n R2, Kraken X60 FOC, its gains and limits) in real time; `sim_vs_real` scores steer settling and
+overshoot, wheel-speed tracking, sprint rise time, acceleration percentiles and time at the current
+limit, real against sim. Change the physics, rerun, keep what shrinks the gaps.
+
+Fitted so far (FM q32 at TXMAN1, 30 s):
+- steer friction 0.3 N m per rad/s: overshoot 3.4 vs real 3.2 deg, settle 112 vs 100 ms;
+- tire friction about 0.9 (worn tread at TXMAN1): acceleration p99 0.91 vs real 0.89 g. Fresh tread
+  is nearer 1.1, so `tireFriction` should be re-measured as tread wears; a match log can estimate it.
+
+Still off: median acceleration (sim 0.40 vs real 0.28 g) and time at the drive current limit (sim
+about 7% vs real about 1%). Both point at wheel spin, not modeled yet: a slipping wheel spins up
+fast, accelerates the robot less and draws less current. Next to build.
+
+With scrub and 1 kHz physics the MiniSwerve drive script's odometry drift rose to about 0.4 m:
+steering under load is slower than the setpoint generator plans (20 rad/s, 300 rad/s^2), so wheels
+lag and slide. Fit the generator's steer limits to what the modules achieve under scrub. Physics added for it: Kraken/Falcon motor models, drive supply current
+limit, battery sag, tire scrub torque when steering, physics on its own 1 kHz thread.
