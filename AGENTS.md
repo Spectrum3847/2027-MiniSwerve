@@ -61,8 +61,9 @@ SystemCore image), and the testbed for the 2027 competition code. Read this file
   ratios, brake/coast, zero positions. Before changing one, state "this changes X from A to B;
   failure mode is Z" and wait for "confirm" unless the task asked for it. Put it in the PR.
 - Never act on a device's readings while its `connected` input is false.
-- No blocking Phoenix calls (`apply`, `refresh`, `setPosition`, `setUpdateFrequency`) while
-  enabled. Do them at init or disabled, or off-thread with the result fed back as an input.
+- No blocking Phoenix calls (`apply`, `refresh`, `setPosition`, `setUpdateFrequency`) on the main
+  loop or the swerve thread after boot. Queue them on `frc.spectrumLib.hardware.PhoenixBackground`
+  (one shared thread, retries, named results to log as inputs). Boot-time config may block.
 - Every wait that gates an action has a timeout or a driver override.
 - Never edit `BuildConstants.java` (generated). Change `vendordeps/*.json` only when asked.
 

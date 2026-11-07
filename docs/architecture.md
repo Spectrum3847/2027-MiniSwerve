@@ -142,3 +142,20 @@ testing on the robot:
 4. **Finding a lost steer angle.** Idea to try: drive the other three straight and steer the bad
    module (or sweep the chassis direction) while watching drive current and slip; the angle with
    the least drag is where the wheel points.
+
+## Drivetrain utilities
+
+- **Brake/coast** (`swerve/coastOnDisable`, `coastDelaySeconds`): brake while enabled and while the
+  robot is still moving after a disable; coast after 0.5 s disabled and still, so it can be pushed.
+  The config apply runs on `PhoenixBackground`. Logged: `Swerve/DriveBrakeWanted` and
+  `Swerve/Health/DriveBrake` (applied).
+- **Per-cycle limits**: `Swerve.limitDrive(maxWheelVelocity, maxDriveAcceleration)`, called every
+  loop while needed (e.g. an elevator raised), lowers the setpoint generator's limits for that
+  cycle only. Logged: `Swerve/Request/Limits`.
+- **Wheel radius**: in utility mode hold Start; the robot spins in place (`wheelRadiusSpin`) and
+  logs `Swerve/WheelRadius/Estimate` once spinning steadily (after 1 s), printing it when
+  released. Copy it into `swerve/wheelRadius`. Run it two or three times on carpet and average.
+  The desktop sim reproduces a wrong setting's true radius to within about 1% (its timing is not
+  real-time); the math is exact on synthetic data.
+- **Stick shaping**: radial deadband (`pilot/stickDeadband`) and squaring on the left stick's
+  magnitude, so diagonals keep their direction.

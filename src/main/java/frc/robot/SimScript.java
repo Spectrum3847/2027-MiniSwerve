@@ -11,11 +11,23 @@ import org.wpilib.system.Timer;
  * person. It drives through the real path (Driver Station inputs, Pilot bindings, wanted states),
  * so it tests what the robot will do.
  *
- * <p>Run with {@code MINISWERVE_SIM_SCRIPT=drive ./gradlew run -PnoSimGui}; it exits when done.
- * Then compare {@code Swerve/Odometry/Pose} with {@code Sim/TruthPose} in the log.
+ * <p>Run with {@code MINISWERVE_SIM_SCRIPT=drive ./gradlew run -PnoSimGui} (or {@code radius} for
+ * the wheel-radius routine); it exits when done. Then compare {@code Swerve/Odometry/Pose} with
+ * {@code Sim/TruthPose} in the log.
  */
 final class SimScript {
-    private record Step(double seconds, String what, double leftX, double leftY, double rightX) {}
+    private record Step(
+            double seconds,
+            String what,
+            double leftX,
+            double leftY,
+            double rightX,
+            boolean utility,
+            boolean start) {
+        Step(double seconds, String what, double leftX, double leftY, double rightX) {
+            this(seconds, what, leftX, leftY, rightX, false, false);
+        }
+    }
 
     private static final Step[] DRIVE = {
         new Step(1.0, "disabled", 0, 0, 0),
@@ -27,6 +39,14 @@ final class SimScript {
         new Step(1.0, "stop", 0, 0, 0),
     };
 
+    /** Utility mode, hold Start: the wheel-radius routine spins in place. */
+    private static final Step[] RADIUS = {
+        new Step(1.0, "disabled", 0, 0, 0, true, false),
+        new Step(8.0, "characterize wheel radius", 0, 0, 0, true, true),
+        new Step(1.5, "released", 0, 0, 0, true, false),
+    };
+
+    private final Step[] steps;
     private final GamepadSim pad = new GamepadSim(0);
     private double start = Double.NaN;
     private int lastStep = -1;
@@ -37,10 +57,15 @@ final class SimScript {
         if (RunMode.CURRENT != RunMode.Mode.SIM || name == null || name.isBlank()) {
             return null;
         }
-        if (!name.equals("drive")) {
-            throw new IllegalArgumentException("Unknown MINISWERVE_SIM_SCRIPT: " + name);
-        }
-        return new SimScript();
+        return switch (name) {
+            case "drive" -> new SimScript(DRIVE);
+            case "radius" -> new SimScript(RADIUS);
+            default -> throw new IllegalArgumentException("Unknown MINISWERVE_SIM_SCRIPT: " + name);
+        };
+    }
+
+    private SimScript(Step[] steps) {
+        this.steps = steps;
     }
 
     /** Called first thing each main loop. */
@@ -53,15 +78,15 @@ final class SimScript {
         double t = now - start;
         int i = 0;
         double end = 0;
-        while (i < DRIVE.length && t >= end + DRIVE[i].seconds()) {
-            end += DRIVE[i].seconds();
+        while (i < steps.length && t >= end + steps[i].seconds()) {
+            end += steps[i].seconds();
             i++;
         }
-        if (i >= DRIVE.length) {
+        if (i >= steps.length) {
             Logger.end();
             System.exit(0);
         }
-        Step step = DRIVE[i];
+        Step step = steps[i];
         if (i != lastStep) {
             lastStep = i;
             // Current sim script step.
@@ -69,11 +94,12 @@ final class SimScript {
         }
         boolean enabled = i > 0;
         DriverStationSim.setDsAttached(true);
-        DriverStationSim.setRobotMode(RobotMode.TELEOPERATED);
+        DriverStationSim.setRobotMode(step.utility() ? RobotMode.UTILITY : RobotMode.TELEOPERATED);
         DriverStationSim.setEnabled(enabled);
         pad.setLeftX(step.leftX());
         pad.setLeftY(step.leftY());
         pad.setRightX(step.rightX());
+        pad.setButton(org.wpilib.driverstation.Gamepad.Button.START, step.start());
         DriverStationSim.notifyNewData();
     }
 }

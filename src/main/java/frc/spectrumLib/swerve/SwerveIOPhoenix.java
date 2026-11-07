@@ -5,6 +5,7 @@ import com.ctre.phoenix6.CANBus;
 import com.ctre.phoenix6.StatusSignal;
 import com.ctre.phoenix6.Utils;
 import com.ctre.phoenix6.configs.CANcoderConfiguration;
+import com.ctre.phoenix6.configs.MotorOutputConfigs;
 import com.ctre.phoenix6.configs.Pigeon2Configuration;
 import com.ctre.phoenix6.configs.Slot0Configs;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
@@ -21,6 +22,7 @@ import com.ctre.phoenix6.signals.FeedbackSensorSourceValue;
 import com.ctre.phoenix6.signals.InvertedValue;
 import com.ctre.phoenix6.signals.NeutralModeValue;
 import com.ctre.phoenix6.signals.SensorDirectionValue;
+import frc.spectrumLib.hardware.PhoenixBackground;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -353,6 +355,30 @@ public final class SwerveIOPhoenix implements SwerveIO {
         }
     }
 
+    private volatile boolean driveBrakeApplied = true;
+
+    @Override
+    public void setDriveBrake(boolean brake) {
+        // A config apply per motor: off the robot loop, on the shared Phoenix background thread.
+        for (int i = 0; i < n; i++) {
+            final int m = i;
+            var out = new MotorOutputConfigs();
+            out.Inverted =
+                    cfg.driveInverted()[i]
+                            ? InvertedValue.Clockwise_Positive
+                            : InvertedValue.CounterClockwise_Positive;
+            out.NeutralMode = brake ? NeutralModeValue.Brake : NeutralModeValue.Coast;
+            PhoenixBackground.run(
+                    "Swerve/DriveBrake/" + i,
+                    () -> drive[m].getConfigurator().apply(out),
+                    ok -> {
+                        if (ok && m == n - 1) {
+                            driveBrakeApplied = brake;
+                        }
+                    });
+        }
+    }
+
     @Override
     public void setNeutral() {
         for (int i = 0; i < n; i++) {
@@ -384,5 +410,6 @@ public final class SwerveIOPhoenix implements SwerveIO {
         h.pigeonConnected = pigeon.isConnected() && pigeonConfigured;
         System.arraycopy(configured, 0, h.configured, 0, n);
         h.timesync = timesync;
+        h.driveBrake = driveBrakeApplied;
     }
 }

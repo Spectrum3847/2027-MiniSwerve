@@ -219,14 +219,17 @@ public final class SwerveThread {
                     vy = ry;
                 }
                 SwerveMath.discretize(vx, vy, r.omega(), dt, chassis);
+                // A request may lower this cycle's limits (never raise them).
+                double topSpeed = limit(maxWheelVelocity, r.maxWheelVelocity());
+                double topAccel = limit(maxDriveAcceleration, r.maxDriveAcceleration());
                 if (useSetpointGenerator) {
                     generator.generate(
                             chassis[0],
                             chassis[1],
                             chassis[2],
                             dt,
-                            maxWheelVelocity,
-                            maxDriveAcceleration,
+                            topSpeed,
+                            topAccel,
                             maxSteerVelocity);
                     sample.setpointFraction = generator.lastFraction();
                     System.arraycopy(generator.angle(), 0, angle, 0, n);
@@ -235,7 +238,7 @@ public final class SwerveThread {
                 } else {
                     SwerveMath.toSwerveModuleVelocities(
                             chassis[0], chassis[1], chassis[2], mx, my, velocity, angle);
-                    SwerveMath.desaturateWheelVelocities(velocity, maxWheelVelocity);
+                    SwerveMath.desaturateWheelVelocities(velocity, topSpeed);
                 }
             }
         }
@@ -257,6 +260,11 @@ public final class SwerveThread {
             }
         }
         io.setModules(angle, velocity, steerVelocity, wheelForce);
+    }
+
+    /** The lower of the configured limit and a request's (NaN or larger is ignored). */
+    private static double limit(double configured, double requested) {
+        return Double.isFinite(requested) && requested < configured ? requested : configured;
     }
 
     /** The sample being filled; for tests. */

@@ -47,7 +47,18 @@ class SwerveThreadTest {
         double[] fx = {10, 10, 10, 10};
         double[] fy = {0, 0, 0, 0};
         t.computeTargets(
-                new DriveRequest(DriveRequest.Mode.VELOCITY, 1, 0, 0, false, 0, true, fx, fy));
+                new DriveRequest(
+                        DriveRequest.Mode.VELOCITY,
+                        1,
+                        0,
+                        0,
+                        false,
+                        0,
+                        true,
+                        fx,
+                        fy,
+                        Double.NaN,
+                        Double.NaN));
         for (int i = 0; i < 4; i++) {
             assertEquals(0.0, io.angle[i], 1e-9);
             assertEquals(10.0, io.force[i], 1e-9);
@@ -62,7 +73,18 @@ class SwerveThreadTest {
         double[] fx = {-10, -10, -10, -10};
         double[] fy = {0, 0, 0, 0};
         t.computeTargets(
-                new DriveRequest(DriveRequest.Mode.VELOCITY, -1, 0, 0, false, 0, true, fx, fy));
+                new DriveRequest(
+                        DriveRequest.Mode.VELOCITY,
+                        -1,
+                        0,
+                        0,
+                        false,
+                        0,
+                        true,
+                        fx,
+                        fy,
+                        Double.NaN,
+                        Double.NaN));
         for (int i = 0; i < 4; i++) {
             assertEquals(0.0, io.angle[i], 1e-9);
             assertEquals(-1.0, io.velocity[i], 1e-9);
@@ -89,5 +111,17 @@ class SwerveThreadTest {
         RecordingIO io = new RecordingIO();
         thread(io).computeTargets(DriveRequest.NEUTRAL);
         assertEquals(true, io.neutral);
+    }
+
+    @Test
+    void aRequestCanLowerTopSpeedButNotRaiseIt() {
+        RecordingIO io = new RecordingIO();
+        SwerveThread t = thread(io); // configured top wheel speed 4.5 m/s
+        t.computeTargets(
+                DriveRequest.velocity(4.0, 0, 0, false, 0, true).withLimits(2.0, Double.NaN));
+        assertEquals(2.0, io.velocity[0], 1e-9);
+        t.computeTargets(
+                DriveRequest.velocity(6.0, 0, 0, false, 0, true).withLimits(9.0, Double.NaN));
+        assertEquals(4.5, io.velocity[0], 1e-9);
     }
 }

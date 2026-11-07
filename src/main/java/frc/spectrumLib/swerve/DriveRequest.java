@@ -15,6 +15,9 @@ package frc.spectrumLib.swerve;
  * @param wheelForceFeedforwardX per-module force (N) along x, in the same frame as vx/vy, or null;
  *     CTRE's {@code WheelForceFeedforwardX}, from a path follower such as Choreo
  * @param wheelForceFeedforwardY per-module force (N) along y, or null
+ * @param maxWheelVelocity this cycle's top wheel speed (m/s), NaN for the configured one; e.g. a
+ *     raised elevator lowering it to keep the robot from tipping
+ * @param maxDriveAcceleration this cycle's wheel acceleration limit (m/s^2), NaN for configured
  */
 public record DriveRequest(
         Mode mode,
@@ -25,7 +28,9 @@ public record DriveRequest(
         double headingOffset,
         boolean useGyro,
         double[] wheelForceFeedforwardX,
-        double[] wheelForceFeedforwardY) {
+        double[] wheelForceFeedforwardY,
+        double maxWheelVelocity,
+        double maxDriveAcceleration) {
 
     public enum Mode {
         /** Motors neutral (brake or coast per config). */
@@ -37,7 +42,8 @@ public record DriveRequest(
     }
 
     public static final DriveRequest NEUTRAL =
-            new DriveRequest(Mode.NEUTRAL, 0, 0, 0, false, 0, true, null, null);
+            new DriveRequest(
+                    Mode.NEUTRAL, 0, 0, 0, false, 0, true, null, null, Double.NaN, Double.NaN);
 
     /** A velocity request with no wheel force feedforward. */
     public static DriveRequest velocity(
@@ -48,9 +54,36 @@ public record DriveRequest(
             double headingOffset,
             boolean useGyro) {
         return new DriveRequest(
-                Mode.VELOCITY, vx, vy, omega, fieldRelative, headingOffset, useGyro, null, null);
+                Mode.VELOCITY,
+                vx,
+                vy,
+                omega,
+                fieldRelative,
+                headingOffset,
+                useGyro,
+                null,
+                null,
+                Double.NaN,
+                Double.NaN);
+    }
+
+    /** This request with this cycle's speed and acceleration limits (NaN keeps the configured). */
+    public DriveRequest withLimits(double maxWheelVelocity, double maxDriveAcceleration) {
+        return new DriveRequest(
+                mode,
+                vx,
+                vy,
+                omega,
+                fieldRelative,
+                headingOffset,
+                useGyro,
+                wheelForceFeedforwardX,
+                wheelForceFeedforwardY,
+                maxWheelVelocity,
+                maxDriveAcceleration);
     }
 
     public static final DriveRequest X_LOCK =
-            new DriveRequest(Mode.X_LOCK, 0, 0, 0, false, 0, true, null, null);
+            new DriveRequest(
+                    Mode.X_LOCK, 0, 0, 0, false, 0, true, null, null, Double.NaN, Double.NaN);
 }
