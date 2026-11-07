@@ -211,7 +211,12 @@ public final class Swerve implements Subsystem {
                                     0, 0, SwerveSettings.WHEEL_RADIUS_SPIN.get(), false, 0, true);
                     case ROBOT_VELOCITY ->
                             DriveRequest.velocity(robotVx, robotVy, robotOmega, false, 0, true);
+                    // Sticks drive only in teleop: in auto and utility they hold still unless an
+                    // OpMode asks for something.
                     case TELEOP_DRIVE -> {
+                        if (!RobotState.isTeleop()) {
+                            yield DriveRequest.NEUTRAL;
+                        }
                         // Sticks are in the driver's frame; turn them into the field frame.
                         double fwd = operatorForwardDirection();
                         double x = teleopX.getAsDouble() * maxDriveVelocity;
@@ -247,11 +252,11 @@ public final class Swerve implements Subsystem {
                 || Double.isFinite(limitAlpha)) {
             request = request.withLimits(limitVelocity, limitAcceleration, limitOmega, limitAlpha);
         }
-        // This cycle's lowered limits: wheel speed (m/s), wheel acceleration (m/s^2), turn rate
-        // (rad/s), turn acceleration (rad/s^2); NaN means configured. E.g. from a raised mechanism.
         // Robot-relative velocity an OpMode asked for: forward, left (m/s), CCW (rad/s).
         Logger.recordOutput(
                 "Swerve/Request/RobotVelocity", new double[] {robotVx, robotVy, robotOmega});
+        // This cycle's lowered limits: wheel speed (m/s), wheel acceleration (m/s^2), turn rate
+        // (rad/s), turn acceleration (rad/s^2); NaN means configured. E.g. from a raised mechanism.
         Logger.recordOutput(
                 "Swerve/Request/Limits",
                 new double[] {limitVelocity, limitAcceleration, limitOmega, limitAlpha});

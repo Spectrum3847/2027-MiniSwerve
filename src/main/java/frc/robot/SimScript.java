@@ -69,10 +69,14 @@ final class SimScript {
         new Step(1.0, "disabled", RobotMode.UTILITY, "Wheel radius"),
     };
 
-    /** Auto OpMode "Drive forward", then teleop "Demo" driving at full stick (capped). */
+    /**
+     * Auto "Drive forward" with the sticks pushed (ignored), then "Demo" at full stick (capped).
+     */
     private static final Step[] AUTO = {
         new Step(1.0, "disabled", RobotMode.AUTONOMOUS, "Drive forward"),
-        new Step(3.0, "auto drive forward", RobotMode.AUTONOMOUS, "Drive forward"),
+        // Sticks pushed hard left during auto: they must not move the robot.
+        new Step(
+                3.0, "auto drive forward", -1.0, 0, 0, RobotMode.AUTONOMOUS, "Drive forward", null),
         new Step(0.5, "disabled", RobotMode.TELEOPERATED, "Demo"),
         new Step(2.0, "demo forward", 0, -1.0, 0, RobotMode.TELEOPERATED, "Demo", null),
         new Step(1.5, "demo spin", 0, 0, -1.0, RobotMode.TELEOPERATED, "Demo", null),

@@ -1,6 +1,7 @@
 package frc.robot.opmodes;
 
 import frc.robot.subsystems.swerve.Swerve;
+import frc.spectrumLib.framework.OpModeLoop;
 import frc.spectrumLib.robotsettings.DoubleSetting;
 import frc.spectrumLib.robotsettings.RobotSettings;
 import frc.spectrumLib.robotsettings.SettingGroup;
@@ -33,14 +34,26 @@ public final class DemoTeleop implements OpMode {
 
     private final Swerve swerve;
     private final Limits limits;
+    private final OpModeLoop loop;
+    private final Runnable step = this::step;
 
-    public DemoTeleop(Swerve swerve, Limits limits) {
+    public DemoTeleop(Swerve swerve, Limits limits, OpModeLoop loop) {
         this.swerve = swerve;
         this.limits = limits;
+        this.loop = loop;
     }
 
     @Override
-    public void periodic() {
+    public void start() {
+        loop.set(step);
+    }
+
+    @Override
+    public void end() {
+        loop.clear(step);
+    }
+
+    private void step() {
         swerve.limitDrive(
                 limits.speed().get(),
                 limits.accel().get(),

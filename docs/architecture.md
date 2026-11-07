@@ -71,9 +71,14 @@ the same one.
 
 - Teleop: `Drive` (match, full speed), `Demo` (pilot driving capped by settings `demo/*`: 1.5 m/s,
   3 m/s^2, 3 rad/s, 6 rad/s^2).
-- Auto: `Do nothing`, `Drive forward` (1.5 m, robot-relative; a placeholder until the Choreo auto
+- Auto: `Do nothing`, `Drive forward` (1 m/s for 1.5 s, robot-relative, then holds still; a placeholder until the Choreo auto
   builder generates match autos as OpModes).
 - Utility: `Wheel radius` (spins in place while enabled, prints the estimate when disabled).
+
+The pilot's sticks and buttons act only in teleop; in auto and utility the swerve holds still
+unless an OpMode asks. An OpMode's per-loop work runs through `OpModeLoop`, before the scheduler
+and `applyWantedState`, so it takes effect on the same loop (WPILib calls `periodic()` after
+`robotPeriodic()`, one loop late).
 
 OpModes ask subsystems for wanted states (`Swerve.driveRobotRelative`, `limitDrive`); they never
 command devices. Settings an OpMode uses are made at boot (`DemoTeleop.Limits.fromSettings`), not

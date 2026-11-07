@@ -5,13 +5,15 @@ import frc.spectrumLib.robotsettings.DoubleSetting;
 import frc.spectrumLib.robotsettings.RobotSettings;
 import frc.spectrumLib.robotsettings.SettingGroup;
 import org.wpilib.command2.button.CommandGamepad;
+import org.wpilib.command2.button.RobotModeTriggers;
+import org.wpilib.command2.button.Trigger;
 import org.wpilib.driverstation.Gamepad;
 
 /**
  * The driver: one Xbox controller on the 2027 Driver Station mapping, port 0. Face buttons use
  * WPILib's position names (A = faceDown, B = faceRight, X = faceLeft, Y = faceUp).
  *
- * <p>Bindings:
+ * <p>Bindings (teleop only; in auto and utility the sticks and buttons do nothing):
  *
  * <ul>
  *   <li>Left stick: drive, field-relative. Right stick X: turn.
@@ -45,8 +47,11 @@ public final class Pilot {
         gamepad.setRightXDeadband(0);
         gamepad.setRightYDeadband(0);
         swerve.setTeleopInputs(this::driverForward, this::driverLeft, this::turn);
-        pad.faceLeft().whileTrue(swerve.hold(Swerve.State.X_LOCK, "pilotXLock"));
-        pad.back().onTrue(swerve.runOnce(swerve::seedFieldCentric).withName("SeedFieldCentric"));
+        // Pilot buttons act only in teleop; autos and utilities own the robot otherwise.
+        Trigger teleop = RobotModeTriggers.teleop();
+        teleop.and(pad.faceLeft()).whileTrue(swerve.hold(Swerve.State.X_LOCK, "pilotXLock"));
+        teleop.and(pad.back())
+                .onTrue(swerve.runOnce(swerve::seedFieldCentric).withName("SeedFieldCentric"));
     }
 
     /** Away from the driver, from stick up, -1..1 (Swerve turns it into the field frame). */

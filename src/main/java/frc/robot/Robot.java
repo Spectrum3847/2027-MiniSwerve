@@ -7,6 +7,7 @@ import frc.robot.opmodes.DriveTeleop;
 import frc.robot.opmodes.WheelRadiusUtility;
 import frc.robot.pilot.Pilot;
 import frc.robot.subsystems.swerve.Swerve;
+import frc.spectrumLib.framework.OpModeLoop;
 import frc.spectrumLib.framework.RobotLoop;
 import frc.spectrumLib.framework.SpectrumRobot;
 import frc.spectrumLib.hardware.SimFaults;
@@ -33,6 +34,7 @@ import org.wpilib.util.Alert.Level;
  *   <li>{@link RobotLoop#next()} - loop counter
  *   <li>{@link RobotSettings#periodic()} - apply live tuning, log values (inputs)
  *   <li>{@link Swerve#updateInputs()} - drain 250 Hz samples, log, odometry
+ *   <li>{@link OpModeLoop#run()} - the running OpMode's requests
  *   <li>{@link CommandScheduler#run()} - wanted-state requests and commands
  *   <li>{@link Swerve#applyWantedState()} - wanted state to the swerve thread
  *   <li>alerts and telemetry
@@ -45,6 +47,7 @@ public class Robot extends SpectrumRobot {
     private final Alert mainThreadPriorityAlert = new Alert("", Level.MEDIUM);
     private final Swerve swerve;
     private final SimScript simScript;
+    private final OpModeLoop opModeLoop = new OpModeLoop();
 
     public Robot() {
         super(RunMode.MAIN_LOOP_PERIOD_SECONDS);
@@ -79,6 +82,7 @@ public class Robot extends SpectrumRobot {
         }
         RobotSettings.periodic();
         swerve.updateInputs();
+        opModeLoop.run();
         CommandScheduler.getInstance().run();
         swerve.applyWantedState();
         Alert.periodic();
@@ -97,14 +101,14 @@ public class Robot extends SpectrumRobot {
                 "Demo",
                 "Demo",
                 "Driving with speed and turn capped, for visitors",
-                () -> new DemoTeleop(swerve, demo));
+                () -> new DemoTeleop(swerve, demo, opModeLoop));
         addOpMode(RobotMode.AUTONOMOUS, "Do nothing", "Match", "Sits still", DoNothingAuto::new);
         addOpMode(
                 RobotMode.AUTONOMOUS,
                 "Drive forward",
                 "Test",
-                "Drives straight ahead 1.5 m, then stops",
-                () -> new DriveForwardAuto(swerve));
+                "Drives ahead at 1 m/s for 1.5 s, then holds still",
+                () -> new DriveForwardAuto(swerve, opModeLoop));
         addOpMode(
                 RobotMode.UTILITY,
                 "Wheel radius",
