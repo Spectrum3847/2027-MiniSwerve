@@ -185,3 +185,25 @@ scaled or miscalibrated camera shows up before it reaches the EKF.
 
 Output: a tool reads the log and writes proposed values into `deploy/settings/*.json` for review
 (the same pull-back-to-git path as Robot Settings), never applied silently.
+
+## Planned: battery identity (NFC tags)
+
+From [SpectrumBatteryLogger](https://github.com/Spectrum3847/SpectrumBatteryLogger): every battery
+carries an NFC sticker, and a PN532 reader on USB (CH340, `/dev/ttyUSB0`) sits against it when the
+battery is installed, so every log records which battery the robot ran on. Proven so far on a
+laptop and a Pi 4 (300/300 reads, about 30 ms each, tag present at power-up read first time, name
+read from the tag's NDEF text record). Still open, and the test robots are where to prove them:
+the SystemCore image itself, read range through the battery wrap near metal, reads with the
+drivetrain running, and battery swaps while disabled.
+
+How it fits here:
+
+- The reader runs on its own daemon thread (serial I/O never on the main loop or swerve thread):
+  once at boot, then every 2 s while disabled. The main loop logs the result.
+- Battery UID and tag name are AdvantageKit **inputs** (`Battery/TagUID`, `Battery/TagName`), not
+  outputs, so replay and anything that reacts to the battery (an alert for a battery flagged as
+  weak, per-battery current limits) see the same value.
+- Per-battery history comes from the logs: voltage sag under load, energy used per match, and with
+  the swerve's supply currents, internal resistance per battery over the season.
+- Code moves into `frc.spectrumLib` (reader driver plus a `BatteryTag` input source) and adds
+  `com.fazecast:jSerialComm`. The UID-to-name map is a deploy file.
