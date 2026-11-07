@@ -198,6 +198,7 @@ public final class SwerveThread {
             }
         }
         io.setNeutral();
+        io.close();
     }
 
     /** Fills the sample's targets from the request and sends them. Package-private for tests. */

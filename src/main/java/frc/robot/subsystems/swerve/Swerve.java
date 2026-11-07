@@ -4,14 +4,16 @@ import frc.robot.RunMode;
 import frc.robot.config.Hardware;
 import frc.spectrumLib.framework.RobotLoop;
 import frc.spectrumLib.hardware.SimFaults;
+import frc.spectrumLib.sim.MotorModel;
+import frc.spectrumLib.sim.SimClock;
 import frc.spectrumLib.statemachine.WantedState;
 import frc.spectrumLib.swerve.DriveRequest;
 import frc.spectrumLib.swerve.HeadingHold;
 import frc.spectrumLib.swerve.ModuleTrust;
-import frc.spectrumLib.swerve.MotorModel;
 import frc.spectrumLib.swerve.SampleQueue;
 import frc.spectrumLib.swerve.SwerveIO;
 import frc.spectrumLib.swerve.SwerveIOPhoenix;
+import frc.spectrumLib.swerve.SwerveIOSim;
 import frc.spectrumLib.swerve.SwerveInputs;
 import frc.spectrumLib.swerve.SwerveOdometry;
 import frc.spectrumLib.swerve.SwervePhysicsSim;
@@ -103,8 +105,10 @@ public final class Swerve implements Subsystem {
 
     /**
      * @param simFaults simulated device faults (sim only; null otherwise)
+     * @param simClock the sim clock (sim on our TalonFX models); null on the robot, in replay, or
+     *     for a sim on Phoenix's own simulator
      */
-    public Swerve(SimFaults simFaults) {
+    public Swerve(SimFaults simFaults, SimClock simClock) {
         double half = SwerveSettings.TRACK.get() / 2;
         double[] mx = {half, half, -half, -half};
         double[] my = {half, -half, half, -half};
@@ -125,7 +129,11 @@ public final class Swerve implements Subsystem {
                                     mx,
                                     my)
                             : null;
-            io = new SwerveIOPhoenix(SwerveConfigs.phoenix(MODULES), sim, simFaults);
+            io =
+                    simClock != null
+                            ? new SwerveIOSim(
+                                    SwerveConfigs.phoenix(MODULES), sim, simFaults, simClock)
+                            : new SwerveIOPhoenix(SwerveConfigs.phoenix(MODULES), sim, simFaults);
             if (sim != null) {
                 sim.setSimFaults(simFaults);
                 // Nominal-size sim wheels: a wrong wheelRadius setting shows up as odometry error.

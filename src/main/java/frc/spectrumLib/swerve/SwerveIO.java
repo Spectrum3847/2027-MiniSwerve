@@ -44,6 +44,9 @@ public interface SwerveIO {
      */
     default void setDriveBrake(boolean brake) {}
 
+    /** The swerve thread is exiting (a sim clock must stop waiting for it). */
+    default void close() {}
+
     /** Main thread, slow rate: currents, temperatures, connection. */
     void updateHealth(SwerveHealth out);
 

@@ -3,6 +3,7 @@ package frc.spectrumLib.swerve;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import frc.spectrumLib.sim.MotorModel;
 import org.wpilib.hardware.hal.HAL;
 import org.wpilib.simulation.DriverStationSim;
 

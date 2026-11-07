@@ -8,6 +8,7 @@ Columns, on a 100 Hz grid from the first enabled moment (+ --start seconds):
   ax, ay                  Pigeon acceleration, robot frame (g, gravity leaks in on tilt)
   i0..i3                  drive stator current (A), /RealOutputs/Swerve/Currents/<module>
   vbat                    battery voltage
+  yawrate                 Pigeon yaw rate (rad/s), /Swerve/GyroYawRateRadPerSec
 Module order FL, FR, BL, BR.
 """
 
@@ -53,6 +54,7 @@ def main():
     ay = series(r, t, "Swerve/AccelYG")
     cur = [series(r, t, "Swerve/Currents/%s/DriveStatorCurrent" % m) for m in MODULES]
     vbat = series(r, t, "Runtime/BatteryVoltage") or series(r, t, "SystemStats/BatteryVoltage")
+    yawrate = series(r, t, "Swerve/GyroYawRateRadPerSec")
     if not targets or not measured:
         print("missing ModuleTargets/ModuleVelocities")
         return 1
@@ -60,7 +62,7 @@ def main():
     with open(a.out, "w", encoding="utf-8", newline="\n") as f:
         cols = ["t"] + ["tv%d" % i for i in range(4)] + ["ta%d" % i for i in range(4)]
         cols += ["mv%d" % i for i in range(4)] + ["ma%d" % i for i in range(4)]
-        cols += ["ax", "ay"] + ["i%d" % i for i in range(4)] + ["vbat"]
+        cols += ["ax", "ay"] + ["i%d" % i for i in range(4)] + ["vbat", "yawrate"]
         f.write(",".join(cols) + "\n")
         k = 0
         while k * 0.01 < a.seconds:
@@ -75,7 +77,7 @@ def main():
             row += [ms[2 * i] for i in range(4)] + [ms[2 * i + 1] for i in range(4)]
             row += [at(ax, tm) or 0.0, at(ay, tm) or 0.0]
             row += [at(c, tm) or 0.0 for c in cur]
-            row += [at(vbat, tm) or 12.0]
+            row += [at(vbat, tm) or 12.0, at(yawrate, tm) or 0.0]
             f.write(",".join("%.5g" % x for x in row) + "\n")
             rows += 1
             k += 1

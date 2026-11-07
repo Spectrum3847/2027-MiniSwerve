@@ -5,13 +5,7 @@ import com.ctre.phoenix6.CANBus;
 import com.ctre.phoenix6.StatusSignal;
 import com.ctre.phoenix6.Utils;
 import com.ctre.phoenix6.configs.Pigeon2Configuration;
-import com.ctre.phoenix6.controls.CoastOut;
-import com.ctre.phoenix6.controls.MotionMagicExpoTorqueCurrentFOC;
-import com.ctre.phoenix6.controls.MotionMagicExpoVoltage;
-import com.ctre.phoenix6.controls.NeutralOut;
-import com.ctre.phoenix6.controls.PositionTorqueCurrentFOC;
-import com.ctre.phoenix6.controls.PositionVoltage;
-import com.ctre.phoenix6.controls.VelocityTorqueCurrentFOC;
+import com.ctre.phoenix6.controls.ControlRequest;
 import com.ctre.phoenix6.hardware.CANcoder;
 import com.ctre.phoenix6.hardware.Pigeon2;
 import com.ctre.phoenix6.hardware.TalonFX;
@@ -26,8 +20,9 @@ import java.util.List;
  * VelocityTorqueCurrentFOC. The 250 Hz thread only sends setpoints and reads latency-compensated
  * signals.
  *
- * <p>In simulation the same devices run through Phoenix's simulator and {@link SwervePhysicsSim}
- * moves them, so sim exercises the exact control path the robot uses.
+ * <p>The desktop sim normally uses {@link SwerveIOSim} (our TalonFX models, repeatable). This IO
+ * also runs in sim on Phoenix's own simulator, with {@link SwervePhysicsSim} moving the devices, to
+ * check that path and our models against CTRE's.
  *
  * <p>Device configs are in {@link SwervePhoenixConfigs}; reboot detection and endless config
  * retries in {@code PhoenixDeviceSet}.
@@ -52,23 +47,22 @@ public final class SwerveIOPhoenix implements SwerveIO {
     private final BaseStatusSignal[] fast;
     private final BaseStatusSignal[] slow;
 
-    // UpdateFreqHz 0: send each setpoint once when we call setControl, as CTRE's swerve does,
-    // instead of Phoenix also repeating it on its own 100 Hz timer. Halves control traffic.
-    private final VelocityTorqueCurrentFOC driveRequest =
-            new VelocityTorqueCurrentFOC(0).withUpdateFreqHz(0);
-    private final PositionTorqueCurrentFOC steerRequest =
-            new PositionTorqueCurrentFOC(0).withUpdateFreqHz(0);
-    private final MotionMagicExpoTorqueCurrentFOC steerExpoRequest =
-            new MotionMagicExpoTorqueCurrentFOC(0).withUpdateFreqHz(0);
-    private final PositionVoltage steerVoltageRequest =
-            new PositionVoltage(0).withEnableFOC(true).withUpdateFreqHz(0);
-    private final MotionMagicExpoVoltage steerExpoVoltageRequest =
-            new MotionMagicExpoVoltage(0).withEnableFOC(true).withUpdateFreqHz(0);
-    private final NeutralOut neutral = new NeutralOut().withUpdateFreqHz(0);
-    // Once per call too: Phoenix would otherwise resend it at 100 Hz to a dead motor.
-    private final CoastOut coast = new CoastOut().withUpdateFreqHz(0);
     private final double metersPerWheelRotation;
     private final SwervePhysicsSim sim;
+    private final SwerveRequests requests;
+    private final double[] measuredSteerRps;
+    private final SwerveRequests.Motors motors =
+            new SwerveRequests.Motors() {
+                @Override
+                public void setDrive(int i, ControlRequest r) {
+                    drive[i].setControl(r);
+                }
+
+                @Override
+                public void setSteer(int i, ControlRequest r) {
+                    steer[i].setControl(r);
+                }
+            };
 
     /** Keeps every device configured for the match: reboots noticed, configs retried. */
     private final Pigeon2Configuration pigeonConfig;
@@ -109,11 +103,9 @@ public final class SwerveIOPhoenix implements SwerveIO {
         // CANivore (CAN FD) with Pro: Phoenix timesync lines up every device's frames and applies
         // setpoints at the same instant. SystemCore's own bus does not support it.
         timesync = bus.isNetworkFD() && cfg.allowTimesync();
-        driveRequest.UseTimesync = timesync;
-        steerRequest.UseTimesync = timesync;
-        steerExpoRequest.UseTimesync = timesync;
-        steerVoltageRequest.UseTimesync = timesync;
-        steerExpoVoltageRequest.UseTimesync = timesync;
+        requests = new SwerveRequests(cfg, faults);
+        requests.setTimesync(timesync);
+        measuredSteerRps = new double[n];
         drive = new TalonFX[n];
         neutralMode = new DriveNeutralMode(drive);
         steer = new TalonFX[n];
@@ -123,7 +115,6 @@ public final class SwerveIOPhoenix implements SwerveIO {
         steerPosition = new StatusSignal<?>[n];
         steerVelocity = new StatusSignal<?>[n];
         metersPerWheelRotation = 2 * Math.PI * cfg.wheelRadius();
-        slowDivisor = Math.max(1, (int) Math.round(cfg.signalHz() / 10.0));
         pigeon = new Pigeon2(cfg.pigeonId(), bus);
         driveIndex = new int[n];
         driveName = new String[n];
@@ -201,7 +192,9 @@ public final class SwerveIOPhoenix implements SwerveIO {
                                 cfg.signalHz(), fast, slow, drive, steer, encoder, pigeon));
         devices.configureAtBoot();
         if (sim != null) {
-            sim.attach(cfg, drive, steer, encoder, pigeon);
+            sim.attach(
+                    cfg,
+                    new PhoenixSimDevices(cfg, sim.steerMotor(), drive, steer, encoder, pigeon));
             // Physics on its own 1 kHz thread, so the simulated motors' 1 kHz loops see fresh
             // positions as real ones do (stepping at 250 Hz with this thread made them lag).
             sim.start(PHYSICS_HZ);
@@ -279,16 +272,6 @@ public final class SwerveIOPhoenix implements SwerveIO {
         return faults != null && faults.unheard(device);
     }
 
-    /** Sim: a device without power ignores commands. */
-    private boolean unpowered(String device) {
-        return faults != null && faults.unpowered(device);
-    }
-
-    /** Cycles between commands to a disconnected motor: 10 Hz instead of the loop rate. */
-    private final int slowDivisor;
-
-    private long cycle;
-
     @Override
     public void setModules(
             double[] angle,
@@ -296,50 +279,11 @@ public final class SwerveIOPhoenix implements SwerveIO {
             double[] steerVelocityPlan,
             double[] wheelForce,
             ModuleCommands commands) {
-        double couple = cfg.coupleRatio() / cfg.driveRatio();
-        // Wheel force (N) to drive torque current (A): F * r / (ratio * Kt).
-        double ampsPerNewton = cfg.wheelRadius() / (cfg.driveRatio() * cfg.driveKt());
-        // A disconnected motor still gets its command, but only every slowDivisor cycles: it may
-        // be alive and listening, and the rest of the bus should not pay for it every cycle.
-        boolean slowTurn = cycle++ % slowDivisor == 0;
         for (int i = 0; i < n; i++) {
-            if ((!commands.steerSlow()[i] || slowTurn) && !unpowered(steerName[i])) {
-                if (commands.steer()[i]) {
-                    double target = angle[i] / (2 * Math.PI);
-                    double steerRps = steerVelocityPlan[i] / (2 * Math.PI);
-                    // The planned turn rate keeps the steer D term from fighting the motion.
-                    if (cfg.steerVoltage()) {
-                        steer[i].setControl(
-                                cfg.steerMotionMagicExpo()
-                                        ? steerExpoVoltageRequest.withPosition(target)
-                                        : steerVoltageRequest
-                                                .withPosition(target)
-                                                .withVelocity(steerRps));
-                    } else {
-                        steer[i].setControl(
-                                cfg.steerMotionMagicExpo()
-                                        ? steerExpoRequest.withPosition(target)
-                                        : steerRequest.withPosition(target).withVelocity(steerRps));
-                    }
-                } else {
-                    steer[i].setControl(coast);
-                }
-            }
-            if ((!commands.driveSlow()[i] || slowTurn) && !unpowered(driveName[i])) {
-                if (commands.drive()[i]) {
-                    double wheelRps = velocity[i] / metersPerWheelRotation;
-                    // Coupling feedforward from the module's measured turn rate: a commanded rate
-                    // would spike whenever the target angle jumps.
-                    double measuredSteerRps = steerVelocity[i].getValueAsDouble();
-                    drive[i].setControl(
-                            driveRequest
-                                    .withVelocity(wheelRps + measuredSteerRps * couple)
-                                    .withFeedForward(wheelForce[i] * ampsPerNewton));
-                } else {
-                    drive[i].setControl(coast);
-                }
-            }
+            measuredSteerRps[i] = steerVelocity[i].getValueAsDouble();
         }
+        requests.setModules(
+                angle, velocity, steerVelocityPlan, wheelForce, commands, measuredSteerRps, motors);
     }
 
     @Override
@@ -354,10 +298,7 @@ public final class SwerveIOPhoenix implements SwerveIO {
 
     @Override
     public void setNeutral() {
-        for (int i = 0; i < n; i++) {
-            drive[i].setControl(neutral);
-            steer[i].setControl(neutral);
-        }
+        requests.setNeutral(motors);
     }
 
     @Override

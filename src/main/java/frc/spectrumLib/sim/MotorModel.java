@@ -1,4 +1,4 @@
-package frc.spectrumLib.swerve;
+package frc.spectrumLib.sim;
 
 /**
  * A DC motor for the physics sim: torque per amp, winding resistance, back-EMF and rotor inertia,
