@@ -24,7 +24,8 @@ import frc.spectrumSim.swerve.SwervePhysicsSim;
  * 2,2,0}: near the blue wall, clear of the walls for the scripted drives). {@code
  * SPECTRUM_SIM_ROBOTS} adds other robots, separated by {@code ;}: {@code parked:x,y,deg}, {@code
  * shuttle:x1,y1,x2,y2,speed} (drives back and forth), {@code defender:x,y,speed} (chases and pushes
- * ours). Each is a 60 kg robot with 0.9 m square bumpers and 1.1 tire friction.
+ * ours; starts facing -x, toward the blue wall). Each is a 60 kg robot with 0.9 m square bumpers
+ * and 1.1 tire friction.
  */
 public final class SpectrumDesktopSim implements DesktopSim {
     private SimClock clock;
@@ -128,6 +129,23 @@ public final class SpectrumDesktopSim implements DesktopSim {
         for (int i = 0; i < p.length; i++) {
             v[i] = Double.parseDouble(p[i].trim());
         }
+        int need =
+                switch (kv[0]) {
+                    case "parked", "defender" -> 3;
+                    case "shuttle" -> 5;
+                    default ->
+                            throw new IllegalArgumentException(
+                                    "SPECTRUM_SIM_ROBOTS: parked, shuttle or defender, not "
+                                            + kv[0]);
+                };
+        if (v.length != need) {
+            throw new IllegalArgumentException(
+                    "SPECTRUM_SIM_ROBOTS: " + kv[0] + " takes " + need + " numbers: " + spec);
+        }
+        checkOnField(v[0], v[1], spec);
+        if (kv[0].equals("shuttle")) {
+            checkOnField(v[2], v[3], spec);
+        }
         return switch (kv[0]) {
             case "parked" -> other(v[0], v[1], Math.toRadians(v[2]), SimRobot.parked());
             case "shuttle" -> other(v[0], v[1], 0, SimRobot.shuttle(v[0], v[1], v[2], v[3], v[4]));
@@ -136,6 +154,12 @@ public final class SpectrumDesktopSim implements DesktopSim {
                     throw new IllegalArgumentException(
                             "SPECTRUM_SIM_ROBOTS: parked, shuttle or defender, not " + kv[0]);
         };
+    }
+
+    private static void checkOnField(double x, double y, String what) {
+        if (x < 0.5 || x > Arena.FIELD_LENGTH - 0.5 || y < 0.5 || y > Arena.FIELD_WIDTH - 0.5) {
+            throw new IllegalArgumentException(what + " is not on the field, clear of the walls");
+        }
     }
 
     private static SimRobot other(double x, double y, double heading, SimRobot.Behavior b) {

@@ -88,14 +88,16 @@ public final class Contact {
             }
         }
         if (count == 0) {
-            // Edges crossing with no corner inside: the deepest corner of b along -n.
+            // Edges crossing with no corner inside: b's deepest corner, moved onto a's face so the
+            // point sits in the overlap.
             int deepest = 0;
             for (int k = 1; k < b.size(); k++) {
                 if (b.x[k] * nx + b.y[k] * ny < b.x[deepest] * nx + b.y[deepest] * ny) {
                     deepest = k;
                 }
             }
-            offer(b.x[deepest], b.y[deepest], best);
+            double back = aFace - (b.x[deepest] * nx + b.y[deepest] * ny);
+            offer(b.x[deepest] + nx * back / 2, b.y[deepest] + ny * back / 2, best);
         }
         return true;
     }

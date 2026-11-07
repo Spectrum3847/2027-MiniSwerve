@@ -102,17 +102,22 @@ public final class Arena {
         for (SimRobot r : robots) {
             r.step(ours, time, dt);
         }
-        for (SimRobot r : robots) {
-            walls(r.body);
-        }
-        for (int a = 0; a < robots.size(); a++) {
-            for (int b = a + 1; b < robots.size(); b++) {
-                bodies(robots.get(a).body, robots.get(b).body);
+        // Each contact is solved on its own, so a robot pinned between another and a wall would be
+        // pushed out of one into the other: a few passes settle the stack.
+        int n = 0;
+        for (int pass = 0; pass < PASSES; pass++) {
+            for (SimRobot r : robots) {
+                walls(r.body);
             }
-        }
-        int n = walls(ours);
-        for (SimRobot r : robots) {
-            n += bodies(r.body, ours);
+            for (int a = 0; a < robots.size(); a++) {
+                for (int b = a + 1; b < robots.size(); b++) {
+                    bodies(robots.get(a).body, robots.get(b).body);
+                }
+            }
+            n = walls(ours);
+            for (SimRobot r : robots) {
+                n += bodies(r.body, ours);
+            }
         }
         return n;
     }
@@ -146,6 +151,9 @@ public final class Arena {
         push(a, b, contact);
         return 1;
     }
+
+    /** Passes over all contacts per step, so stacked contacts (robot, robot, wall) settle. */
+    private static final int PASSES = 3;
 
     /** Solver passes over a contact's points per step: enough for two points to settle. */
     private static final int ITERATIONS = 12;

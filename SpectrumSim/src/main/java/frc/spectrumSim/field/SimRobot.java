@@ -86,9 +86,9 @@ public final class SimRobot {
         body.vx += dvx;
         body.vy += dvy;
         double wOmega = Math.max(-maxTurn, Math.min(maxTurn, want[2]));
-        // Turning is traction-limited too: about the same push at the wheels' radius.
+        // Turning is traction-limited too: the tires' push at the corners' radius, over inertia.
         double radius = Math.hypot(body.length, body.width) / 2;
-        double mostTurn = most / radius;
+        double mostTurn = most * radius * body.mass / body.inertia;
         body.omega += Math.max(-mostTurn, Math.min(mostTurn, wOmega - body.omega));
         body.x += body.vx * dt;
         body.y += body.vy * dt;
@@ -110,6 +110,10 @@ public final class SimRobot {
      */
     public static Behavior shuttle(double x1, double y1, double x2, double y2, double speed) {
         double len = Math.hypot(x2 - x1, y2 - y1);
+        if (len < 1e-3 || !(speed > 0)) {
+            throw new IllegalArgumentException(
+                    "shuttle needs two different points and a speed > 0");
+        }
         return (self, target, time, out) -> {
             double period = 2 * len / speed;
             double phase = (time % period) / period;
