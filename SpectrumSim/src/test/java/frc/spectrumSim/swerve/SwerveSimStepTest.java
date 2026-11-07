@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import frc.spectrumLib.swerve.ModuleCommands;
 import frc.spectrumLib.swerve.PhoenixSwerveConfig;
+import frc.spectrumLib.swerve.SwerveIOPhoenix;
 import frc.spectrumLib.swerve.SwerveSample;
 import frc.spectrumSim.MotorModel;
 import org.wpilib.hardware.hal.HAL;
@@ -76,28 +77,72 @@ class SwerveSimStepTest {
         // 1. Robot still: every module steers to its own angle.
         double[] angle = {1.0, -1.0, 2.0, -2.5};
         double[] still = new double[4];
-        for (int k = 0; k < 250; k++) {
-            DriverStationSim.notifyNewData();
-            io.waitForSample(sample);
-            io.setModules(angle, still, new double[4], new double[4], ModuleCommands.allNormal(4));
-        }
+        settle(io, sample, angle, still, ModuleCommands.allNormal(4), s -> anglesAt(s, angle));
         for (int i = 0; i < 4; i++) {
             assertEquals(angle[i], sample.angle[i], 0.02, "module " + i + " angle");
         }
         // 2. A motion a rigid robot can do: all wheels one way at 1 m/s.
         double[] same = {1.0, 1.0, 1.0, 1.0};
         double[] velocity = {1.0, 1.0, 1.0, 1.0};
-        for (int k = 0; k < 375; k++) {
-            DriverStationSim.notifyNewData();
-            io.waitForSample(sample);
-            io.setModules(
-                    same, velocity, new double[4], new double[4], ModuleCommands.allNormal(4));
-        }
+        settle(
+                io,
+                sample,
+                same,
+                velocity,
+                ModuleCommands.allNormal(4),
+                s -> anglesAt(s, same) && speedsAt(s, velocity));
         for (int i = 0; i < 4; i++) {
             assertEquals(1.0, sample.angle[i], 0.02, "module " + i + " angle");
             assertEquals(1.0, sample.velocity[i], 0.1, "module " + i + " velocity");
         }
         physics.stop();
+    }
+
+    /** Samples a module must stay within tolerance for: 0.1 s at 250 Hz. */
+    private static final int HOLD = 25;
+
+    /** Longest a phase may take to settle: 4 s at 250 Hz. */
+    private static final int MOST = 1000;
+
+    /**
+     * Commands the modules until {@code done} has held for {@link #HOLD} samples in a row, or for
+     * {@link #MOST} samples. Phoenix's simulator runs on the wall clock, so a busy machine (CI) is
+     * slower to settle; waiting for the result instead of a fixed time keeps the test about signs
+     * and inverts, not machine speed. A real sign mistake never settles and still fails the
+     * asserts.
+     */
+    private static void settle(
+            SwerveIOPhoenix io,
+            SwerveSample sample,
+            double[] angle,
+            double[] velocity,
+            ModuleCommands modes,
+            java.util.function.Predicate<SwerveSample> done) {
+        int held = 0;
+        for (int k = 0; k < MOST && held < HOLD; k++) {
+            DriverStationSim.notifyNewData();
+            io.waitForSample(sample);
+            io.setModules(angle, velocity, new double[4], new double[4], modes);
+            held = done.test(sample) ? held + 1 : 0;
+        }
+    }
+
+    private static boolean anglesAt(SwerveSample s, double[] angle) {
+        for (int i = 0; i < angle.length; i++) {
+            if (Math.abs(Math.IEEEremainder(s.angle[i] - angle[i], 2 * Math.PI)) > 0.02) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean speedsAt(SwerveSample s, double[] velocity) {
+        for (int i = 0; i < velocity.length; i++) {
+            if (Math.abs(s.velocity[i] - velocity[i]) > 0.1) {
+                return false;
+            }
+        }
+        return true;
     }
 
     @org.junit.jupiter.api.Test
@@ -157,11 +202,19 @@ class SwerveSimStepTest {
                         new boolean[] {true, false, true, true},
                         new boolean[4],
                         new boolean[4]);
-        for (int k = 0; k < 250; k++) {
-            DriverStationSim.notifyNewData();
-            io.waitForSample(sample);
-            io.setModules(angle, velocity, new double[4], new double[4], modes);
-        }
+        settle(
+                io,
+                sample,
+                angle,
+                velocity,
+                modes,
+                s ->
+                        Math.abs(s.angle[0] - 1.0) < 0.02
+                                && Math.abs(s.angle[2] - 1.0) < 0.02
+                                && Math.abs(s.angle[3] - 1.0) < 0.02
+                                && s.velocity[2] > 0.5
+                                && s.velocity[3] > 0.5
+                                && Math.abs(s.velocity[2] - s.velocity[0]) < 0.25);
         // Steer-only module still turns to its angle, and its coasting wheel rolls with the robot.
         assertEquals(1.0, sample.angle[0], 0.02);
         assertEquals(sample.velocity[2], sample.velocity[0], 0.25);
