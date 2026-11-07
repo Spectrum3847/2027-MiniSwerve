@@ -128,6 +128,26 @@ In sim (both cameras, against the true field pose):
 
 TagEKF heading error is 0.01 to 0.02 deg median; it seeds 0.05 s after boot, once; no
 relocalizations or re-seeds; frame age 21 ms median.
+
+Scripted driving is a person's, not a step function (`SimDriver`): sticks reach where a step wants
+them over about 0.15 s and fall back the same way, each push is 95 to 100% and up to 3 deg off its
+axis, sticks rest up to 3% off center and jitter, and everything the driver does reaches the robot
+30 ms late (Driver Station and radio). Stick reach is a 0.05 s time constant, 95% in 0.15 s. Seeded: runs repeat. `MINISWERVE_SIM_DRIVER=perfect` gives
+exact, instant sticks. Steps can also unplug the controller (`.unplugged()`) or lose the Driver
+Station (`.dsLost()`: a radio drop; the robot disables and hears no controller. WPILib's sim keeps
+reporting the Driver Station attached, so that flag is not tested). The 30 ms delay is the
+driver's only: mode, enable, faults, unplug and Driver Station loss happen on the robot's
+timeline. The scripts themselves are in `SimScripts`. `MINISWERVE_SIM_SCRIPT=driver`: hands off for 2 s, the robot does not move
+(sticks read about 1.6% off center); the controller unplugged with the stick pushed, the robot
+stops and drives again when it is back; the Driver Station lost, the robot disables and stops, then
+drives again.
+
+`MINISWERVE_SIM_SCRIPT=buttons` presses the pilot's buttons (sim script steps can press any
+button, trigger or d-pad and set Driver Station inputs: `.press(p -> p.setBackButton(true))`):
+after a 60 deg turn, Back re-zeroes field-centric while driving. Odometry's heading jumps as
+meant; TagEKF's error stays under 1 deg and 1.4 cm. Fed odometry's raw heading instead, the same
+re-zero throws TagEKF 63 deg and 1.2 m off. X held with the stick pushed brakes the robot to a
+stop, and slow mode drives at 0.55 m/s against 1.87 at full stick.
 Runs repeat exactly and replay matches. The sim's cameras have no distortion, blur or occlusion,
 so real numbers will be worse; FM's real-match replays are the reference (0.057/0.136 m on Q17).
 
