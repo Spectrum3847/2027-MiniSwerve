@@ -1,8 +1,8 @@
 package frc.tools;
 
 import com.ctre.phoenix6.unmanaged.Unmanaged;
+import frc.spectrumLib.sim.MotorModel;
 import frc.spectrumLib.swerve.ModuleCommands;
-import frc.spectrumLib.swerve.MotorModel;
 import frc.spectrumLib.swerve.PhoenixSwerveConfig;
 import frc.spectrumLib.swerve.SwerveIOPhoenix;
 import frc.spectrumLib.swerve.SwervePhysicsSim;

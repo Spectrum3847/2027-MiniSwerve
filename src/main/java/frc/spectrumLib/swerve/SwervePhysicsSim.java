@@ -1,18 +1,13 @@
 package frc.spectrumLib.swerve;
 
-import com.ctre.phoenix6.hardware.CANcoder;
-import com.ctre.phoenix6.hardware.Pigeon2;
-import com.ctre.phoenix6.hardware.TalonFX;
-import com.ctre.phoenix6.sim.CANcoderSimState;
-import com.ctre.phoenix6.sim.Pigeon2SimState;
-import com.ctre.phoenix6.sim.TalonFXSimState;
 import frc.spectrumLib.hardware.SimFaults;
+import frc.spectrumLib.sim.MotorModel;
 
 /**
- * Desktop physics for the drivetrain. Phoenix's simulator runs the motors' own closed loops; this
- * reads the torque current each motor asks for, turns it into motion with a DC motor model (current
- * limited by back-EMF and battery), and writes the motion back into the simulated motors, CANcoders
- * and Pigeon.
+ * Desktop physics for the drivetrain. The simulated devices ({@link SwerveSimDevices}: our TalonFX
+ * models on the sim clock, or Phoenix's own simulator) run the motors' closed loops; this reads the
+ * current each motor asks for, turns it into motion with a DC motor model (current limited by
+ * back-EMF and battery), and writes the motion back into the simulated motors, CANcoders and gyro.
  *
  * <p>The robot is one rigid body. Each wheel pushes along its direction with its motor's torque and
  * grips sideways with tire friction (both limited by friction on carpet); those forces move the
@@ -26,11 +21,10 @@ import frc.spectrumLib.hardware.SimFaults;
  * drifts as on a real robot. A rebooted device also keeps its sim rotor position (a real TalonFX
  * restarts its rotor count; steering is safe because it fuses the CANcoder).
  *
- * <p>Runs on the swerve thread. The true pose is published for the main loop to log as sim truth;
- * robot logic must never read it.
+ * <p>Stepped by the sim clock (or its own thread with Phoenix's simulator). The true pose is
+ * published for the main loop to log as sim truth; robot logic must never read it.
  *
- * <p>Index: {@link #attach} | {@link #step} | {@link #stepSteer} | {@link #writeModule} | truth
- * getters
+ * <p>Index: {@link #attach} | {@link #step} | {@link #stepSteer} | truth getters
  */
 public final class SwervePhysicsSim {
     /** Battery open-circuit voltage (V), a charged battery. */
@@ -104,10 +98,7 @@ public final class SwervePhysicsSim {
     private final double[] my;
 
     private PhoenixSwerveConfig cfg;
-    private TalonFXSimState[] driveSim;
-    private TalonFXSimState[] steerSim;
-    private CANcoderSimState[] encoderSim;
-    private Pigeon2SimState pigeonSim;
+    private SwerveSimDevices devices;
 
     private double[] steerAngle; // rad
     private double[] steerOmega; // rad/s
@@ -155,29 +146,16 @@ public final class SwervePhysicsSim {
         this.my = my.clone();
     }
 
-    /** Called by {@link SwerveIOPhoenix} once its devices exist. */
-    void attach(
-            PhoenixSwerveConfig cfg,
-            TalonFX[] drive,
-            TalonFX[] steer,
-            CANcoder[] encoder,
-            Pigeon2 pigeon) {
+    /** Called by the IO once its simulated devices exist. */
+    void attach(PhoenixSwerveConfig cfg, SwerveSimDevices devices) {
         this.cfg = cfg;
-        int n = drive.length;
-        driveSim = new TalonFXSimState[n];
-        steerSim = new TalonFXSimState[n];
-        encoderSim = new CANcoderSimState[n];
+        this.devices = devices;
+        int n = cfg.modules();
         steerAngle = new double[n];
         steerOmega = new double[n];
         wheelAngle = new double[n];
         wheelOmega = new double[n];
         driveAmps = new double[n];
-        for (int i = 0; i < n; i++) {
-            driveSim[i] = drive[i].getSimState();
-            steerSim[i] = steer[i].getSimState();
-            encoderSim[i] = encoder[i].getSimState();
-        }
-        pigeonSim = pigeon.getSimState();
         driveName = new String[n];
         steerName = new String[n];
         encoderName = new String[n];
@@ -286,15 +264,12 @@ public final class SwervePhysicsSim {
             double across = -cvx * sn + cvy * c;
             double driveMotorOmega =
                     wheelOmega[i] * cfg.driveRatio() + steerOmega[i] * cfg.coupleRatio();
-            driveSim[i].setSupplyVoltage(batteryVolts);
+            double asked = devices.driveAmps(i, driveMotorOmega, batteryVolts, dt);
             double amps =
                     dead(driveName[i])
                             ? 0
                             : driveMotor.supplyLimited(
-                                    driveMotor.limit(
-                                            driveSim[i].getTorqueCurrent(),
-                                            driveMotorOmega,
-                                            batteryVolts),
+                                    driveMotor.limit(asked, driveMotorOmega, batteryVolts),
                                     driveMotorOmega,
                                     batteryVolts,
                                     cfg.driveSupplyCurrentLimit());
@@ -330,7 +305,15 @@ public final class SwervePhysicsSim {
             fy += wfy;
             torque += mx[i] * wfy - my[i] * wfx;
             wheelAngle[i] += wheelOmega[i] * dt;
-            writeModule(i, driveMotorOmega);
+            double steerRot = steerAngle[i] / (2 * Math.PI);
+            devices.sense(
+                    i,
+                    steerRot,
+                    steerOmega[i],
+                    wheelAngle[i] / (2 * Math.PI) * cfg.driveRatio() + steerRot * cfg.coupleRatio(),
+                    driveMotorOmega,
+                    batteryVolts,
+                    !dead(encoderName[i]));
         }
         // The battery sags under everything drawn this step (drive and steer).
         batteryVolts = Math.max(6.0, BATTERY_OPEN_VOLTS - BATTERY_RESISTANCE * supplyAmps);
@@ -344,10 +327,8 @@ public final class SwervePhysicsSim {
         truthX += (vx * ch - vy * sh) * dt;
         truthY += (vx * sh + vy * ch) * dt;
         truthHeading = h + omega * dt;
-        pigeonSim.setSupplyVoltage(batteryVolts);
         if (!dead("Pigeon")) {
-            pigeonSim.setRawYaw(Math.toDegrees(truthHeading));
-            pigeonSim.setAngularVelocityZ(Math.toDegrees(omega));
+            devices.senseGyro(truthHeading, omega, batteryVolts);
         }
     }
 
@@ -374,27 +355,11 @@ public final class SwervePhysicsSim {
         return 0.6 * robotMassKg * r2 / mx.length;
     }
 
-    /**
-     * One module's steering: motor current to motion.
-     *
-     * <p>Phoenix sim reports torque current in the motor's own (inverted) frame, which is already
-     * the mechanism's direction, but takes rotor position and velocity in the chassis frame, before
-     * the invert, and reports motor voltage in the chassis frame too. An inverted motor is mounted
-     * reversed, so its rotor turns opposite to the mechanism. The MK4i steer-to-drive coupling is
-     * the same in every drive motor's own (inverted) frame, which is what {@link SwerveIOPhoenix}
-     * removes.
-     */
+    /** One module's steering: motor current to motion. */
     private void stepSteer(int i, double dt, double groundSpeed, double tireLoadFriction) {
         double steerRatio = cfg.steerRatio();
-        double steerSign = cfg.steerInverted() ? -1.0 : 1.0;
-        steerSim[i].setSupplyVoltage(batteryVolts);
         double steerMotorOmega = steerOmega[i] * steerRatio;
-        double steerAsked =
-                cfg.steerVoltage()
-                        ? (steerSign * steerSim[i].getMotorVoltage()
-                                        - steerMotor.kE() * steerMotorOmega)
-                                / steerMotor.resistance()
-                        : steerSim[i].getTorqueCurrent();
+        double steerAsked = devices.steerAmps(i, steerMotorOmega, batteryVolts, dt);
         double steerAmps =
                 dead(steerName[i])
                         ? 0
@@ -423,25 +388,6 @@ public final class SwervePhysicsSim {
             steerOmega[i] = Math.signum(next) == -dir && Math.abs(steerOmega[i]) >= 1e-3 ? 0 : next;
         }
         steerAngle[i] += steerOmega[i] * dt;
-    }
-
-    /** Writes one module's motion back to its simulated motors and CANcoder. */
-    private void writeModule(int i, double driveMotorOmega) {
-        double steerRatio = cfg.steerRatio();
-        double steerSign = cfg.steerInverted() ? -1.0 : 1.0;
-        double driveSign = cfg.driveInverted()[i] ? -1.0 : 1.0;
-        double steerRot = steerAngle[i] / (2 * Math.PI);
-        double wheelRot = wheelAngle[i] / (2 * Math.PI);
-        steerSim[i].setRawRotorPosition(steerSign * steerRot * steerRatio);
-        steerSim[i].setRotorVelocity(steerSign * steerOmega[i] * steerRatio / (2 * Math.PI));
-        driveSim[i].setRawRotorPosition(
-                driveSign * (wheelRot * cfg.driveRatio() + steerRot * cfg.coupleRatio()));
-        driveSim[i].setRotorVelocity(driveSign * driveMotorOmega / (2 * Math.PI));
-        if (!dead(encoderName[i])) {
-            encoderSim[i].setSupplyVoltage(batteryVolts);
-            encoderSim[i].setRawPosition(steerRot - cfg.magnetOffsets()[i]);
-            encoderSim[i].setVelocity(steerOmega[i] / (2 * Math.PI));
-        }
     }
 
     /**
@@ -481,6 +427,19 @@ public final class SwervePhysicsSim {
         // Odometry position error against truth (m).
         org.littletonrobotics.junction.Logger.recordOutput(
                 "Sim/OdometryError", Math.hypot(odometryX - x, odometryY - y));
+    }
+
+    /** Drive motor {@code i}'s stator current this step (A). */
+    double driveCurrent(int i) {
+        return driveAmps[i];
+    }
+
+    MotorModel driveMotor() {
+        return driveMotor;
+    }
+
+    MotorModel steerMotor() {
+        return steerMotor;
     }
 
     /** Robot-frame velocity (m/s, m/s, rad/s), for comparing with real logs. */

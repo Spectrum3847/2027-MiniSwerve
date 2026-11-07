@@ -9,6 +9,7 @@ How MiniSwerve's code fits together. Status marks: **built**, **next**, **planne
 | Main | 100 Hz, RT priority 1 | settings, logging, wanted states, commands | built |
 | Swerve | 250 Hz (setting `swerve/loopHz`), RT | module setpoints, device reads, sample queue (vision ingest planned) | built |
 | Settings writer | on demand | saving Robot Settings to disk | built |
+| Sim clock (sim only) | 1 kHz sim time | physics and TalonFX models; steps the main loop and swerve thread in turn | built |
 
 The swerve thread never logs. It writes samples into preallocated ring buffers; the main loop
 drains them into logged inputs, and replay feeds the same inputs back.
@@ -100,7 +101,8 @@ is both the stator limit and peak torque current, as CTRE's SlipCurrent. Field-r
 follows the alliance (operator forward: 0 blue, pi red); Back seeds field-centric. The 250 Hz thread reads latency-compensated signals,
 turns the latest `DriveRequest` into module targets with that fresh reading (field-relative
 rotation by the live gyro, discretize, desaturate, optimize, cosine scale, MK4i coupling
-compensation, wheel force feedforward) and queues the sample. In sim, `SwervePhysicsSim` moves the same Phoenix devices.
+compensation, wheel force feedforward) and queues the sample. In sim, `SwerveIOSim` sends the same
+Phoenix control requests to TalonFX models that `SwervePhysicsSim` moves (see "Repeatable sim").
 
 Sim check: `MINISWERVE_SIM_SCRIPT=drive ./gradlew run -PnoSimGui`, then
 `python tools/swerve_summary.py logs/<log>.wpilog`. On 2026-11-07: 249 Hz, no dropped samples,
@@ -305,6 +307,44 @@ Known from the fault scenario: with the Pigeon out, heading comes from the wheel
 odometry drifts (about 0.2 m over a 1.5 s outage while turning) and keeps that heading error when
 the gyro returns. The SystemCore/USB gyro as a second heading source, and the TagEKF, are the fix.
 
+## Repeatable sim
+
+Phoenix's simulator runs each motor's control loop on the wall clock, so two runs of the same
+script never matched (three drive-script runs ended at headings 122, 131 and 40 deg). The desktop
+sim now runs on one clock instead:
+
+- `SimClock` (spectrumLib `sim/`) pauses WPILib's sim time at a fixed start and steps it 1 ms at a
+  time: physics and motor models, then WPILib's clock (which runs the main loop when it is due and
+  waits for it), then the 250 Hz swerve thread. Nothing moves while any of them is working.
+- `TalonFXModel` runs a TalonFX's control loop from the same `TalonFXConfiguration` and control
+  requests the robot sends (`SwervePhoenixConfigs`, `SwerveRequests`), at 1 kHz on that clock.
+  Other mechanisms will use it too; new control requests are added as they need them.
+- `SwerveIOSim` is the drivetrain on those models; faults (`SimFaults`) act on it as before.
+
+Pace: `MINISWERVE_SIM_SPEED` (multiple of real time, or `max`); default `max` when a script runs,
+real time otherwise. `MINISWERVE_SIM_DEVICES=phoenix` runs the old way, on Phoenix's simulator.
+
+Result (2026-11-07): three drive-script runs give identical logs (only boot ID and build time
+differ), a 9.5 s script takes about 4 s including Gradle startup, and replay of a sim log matches
+it exactly. The auto, wheel-radius and faults scripts pass as before.
+
+`./gradlew talonCrosscheck` runs the same commands through Phoenix's simulator and our model:
+
+| Steer request | Angle diff RMS | Steer 90 deg settle (Phoenix / model) | Overshoot (Phoenix / model) |
+|---|---|---|---|
+| PositionTorqueCurrentFOC | 1.0 deg | 104 / 104 ms | 2.0 / 1.7 deg |
+| MotionMagicExpoTorqueCurrentFOC | 0.35 deg | 164 / 172 ms | 9.7 / 9.3 deg |
+| PositionVoltage (FOC) | 7.9 deg | 284 / 136 ms | 27.6 / 0 deg |
+| MotionMagicExpoVoltage (FOC) | 10.4 deg | 284 / 172 ms | 23.6 / 10.4 deg |
+
+Drive (VelocityTorqueCurrentFOC) matches within 0.04-0.08 m/s RMS on every run. Voltage steer is
+the open one: Phoenix's simulator overshoots about 25 deg on a 90 deg step with CTRE's MK4i
+defaults, ours does not. Our guess is that Phoenix's simulator feeds the fused CANcoder to the loop
+at the CANcoder's frame rate, where a real TalonFX fuses its rotor sensor at 1 kHz; a real-robot
+log of a voltage-steered step would settle it. MiniSwerve steers with PositionVoltage, so its drive
+script differs between the two sims: the model turns faster while spinning (4.4 vs 3.1 rad/s), and
+odometry ends 0.64 m from truth versus 0.13-0.40 m on Phoenix's simulator.
+
 ## Sim against real logs
 
 The sim is checked against real robots, not just itself:
@@ -334,4 +374,5 @@ Not fitted yet: gear losses (`-PgearEff`, `-PgearDrag`), robot mass and turning 
 latency, the tire curve's peak slip and sliding share, battery resistance, and load transfer.
 
 Physics so far: Kraken/Falcon motor models, drive supply current limit, battery sag, tire scrub
-torque when steering, wheel spin with a grip curve, gear losses, physics on its own 1 kHz thread.
+torque when steering, wheel spin with a grip curve, gear losses, TalonFX control loops modeled at
+1 kHz on a repeatable sim clock.

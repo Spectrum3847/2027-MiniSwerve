@@ -287,3 +287,18 @@ tasks.register('simReplay', JavaExec) {
         project.findProperty('gearDrag') ?: '0.1'
     ]
 }
+
+// Checks the deterministic sim's TalonFX model against Phoenix's simulator (same commands on each):
+//   ./gradlew talonCrosscheck
+tasks.register('talonCrosscheck', JavaExec) {
+    group = 'Spectrum'
+    description = 'Compare our TalonFX model with Phoenix simulator step responses'
+    dependsOn 'testClasses', 'extractReleaseNative'
+    mainClass = 'frc.tools.TalonCrosscheck'
+    classpath = sourceSets.test.runtimeClasspath
+    def nativeDir = file("$buildDir/jni/release")
+    jvmArgs = [
+        "-Djava.library.path=${nativeDir}"
+    ]
+    environment 'PATH', "${nativeDir}${File.pathSeparator}${System.getenv('PATH')}"
+}

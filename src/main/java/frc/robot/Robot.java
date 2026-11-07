@@ -14,6 +14,7 @@ import frc.spectrumLib.hardware.SimFaults;
 import frc.spectrumLib.robotsettings.NetworkTablesTransport;
 import frc.spectrumLib.robotsettings.RobotSettings;
 import frc.spectrumLib.robotsettings.TuningMode;
+import frc.spectrumLib.sim.SimClock;
 import frc.spectrumLib.telemetry.Alert;
 import frc.spectrumLib.telemetry.Telemetry;
 import java.nio.file.Path;
@@ -47,12 +48,15 @@ public class Robot extends SpectrumRobot {
     private final Alert mainThreadPriorityAlert = new Alert("", Level.MEDIUM);
     private final Swerve swerve;
     private final SimScript simScript;
+    private final SimClock simClock;
     private final OpModeLoop opModeLoop = new OpModeLoop();
 
     public Robot() {
         super(RunMode.MAIN_LOOP_PERIOD_SECONDS);
         // Before anything tunable exists, so a tunable made early fails safe (off).
         TuningMode.set(RunMode.TUNING_MODE);
+        // Sim: the clock fixes sim time before logging reads it.
+        simClock = RunMode.simClock();
         LoggingSetup.start(this);
         RobotSettings.start(
                 Filesystem.getDeployDirectory().toPath().resolve("settings"),
@@ -62,13 +66,16 @@ public class Robot extends SpectrumRobot {
         // Subsystems are built here, after settings and before the RT priority below.
         // Sim only: devices the scripted sim can unplug, reboot or make fail.
         SimFaults simFaults = RunMode.CURRENT == RunMode.Mode.SIM ? new SimFaults() : null;
-        swerve = new Swerve(simFaults);
+        swerve = new Swerve(simFaults, simClock);
         simScript = SimScript.fromEnvironment(simFaults);
         // The pilot only binds controls; the bindings keep it alive.
         new Pilot(swerve);
         registerOpModes();
         // Before the main thread goes real-time, so its thread does not inherit that.
         frc.spectrumLib.hardware.PhoenixBackground.start();
+        if (simClock != null) {
+            simClock.start(); // ticks once the robot loop is waiting for its first alarm
+        }
         if (RunMode.CURRENT == RunMode.Mode.REAL) {
             setMainThreadPriority(RunMode.MAIN_THREAD_RT_PRIORITY);
         }
@@ -76,6 +83,9 @@ public class Robot extends SpectrumRobot {
 
     @Override
     public void robotPeriodic() {
+        if (simClock != null) {
+            simClock.loopStarted();
+        }
         RobotLoop.next();
         if (simScript != null) {
             simScript.periodic();
@@ -87,6 +97,9 @@ public class Robot extends SpectrumRobot {
         swerve.applyWantedState();
         Alert.periodic();
         Telemetry.periodic();
+        if (simClock != null) {
+            simClock.loopDone();
+        }
     }
 
     /**
