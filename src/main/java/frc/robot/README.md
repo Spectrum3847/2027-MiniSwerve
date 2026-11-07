@@ -10,5 +10,6 @@
 | `config/Hardware` | CAN IDs, bus, gear ratios, inverts, current limits: hard stops |
 | `subsystems/swerve/` | The drivetrain |
 | `subsystems/vision/` | The cameras |
+| `subsystems/pose/` | Where the robot is: TagEKF, with WPILib's estimator as a shadow |
 | `pilot/` | Driver controller |
 | `opmodes/` | What the Driver Station can pick: autos, teleop and utility modes |

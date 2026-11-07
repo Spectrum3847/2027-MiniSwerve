@@ -86,8 +86,35 @@ noise. Checked on the drive script against the true geometry: bearing error 0.00
 error 9 cm median (the noise model at 4 to 8 m), latency 31 ms as the robot reads it; two runs give
 identical frames, and replay matches. No lens distortion, blur, occlusion or object detection yet.
 
-Next: TagEKF (pose from these frames, driving the robot, with WPILib's estimator as a logged
-shadow), then the fork publishing `VisionFrame`.
+Next: the fork publishing `VisionFrame`.
+
+## Pose: TagEKF
+
+TagEKF (`frc.spectrumLib.localization.TagEkf`, FM's, tuned on the TXMAN1 replays) drives the
+robot's pose (`Localization`, logged `Pose/Robot`). Every 250 Hz swerve sample predicts it (wheel
+travel and odometry's heading: the gyro's when healthy, the wheels' when not); every camera's tags
+correct it one at a time, each as a bearing and range from its camera at the frame's capture time.
+Frames are inserted at their time and later samples replayed over them, so arrival order does not
+matter. A tag whose innovation fails a chi-squared gate is rejected; if tags keep failing the
+covariance widens so the cameras can pull it back (relocalization); adaptive uncertainty (mean NIS
+over 10) grows it when the cameras disagree. Its first pose comes from the first frame with two or
+more tags (heading from the line between them). Noise is Robot Settings (`tagekf/*`): TagEkf's
+tuned defaults, bearing 0.5 deg.
+
+WPILib's `SwerveDrivePoseEstimator` runs beside it as a logged shadow (`Pose/Shadow/WPILib`), on the
+same samples, with each two-tag frame as one pose measurement. Plain odometry is Swerve's own.
+
+In sim (both cameras, against the true field pose):
+
+| Script | TagEKF median / p90 | WPILib shadow median / p90 | Odometry median |
+|---|---|---|---|
+| drive | 1.1 / 3.2 cm | 11 / 49 cm | 37 cm |
+| walls (wheels scrubbing on walls) | 1.6 / 4.8 cm | 8.5 / 30 cm | 3.5 m |
+| drive with a defender and a parked robot | 2.4 / 12 cm | 8.3 / 62 cm | 1.1 m |
+
+TagEKF heading error is 0.01 to 0.02 deg median; it seeds 0.03 s after boot; no relocalizations.
+Runs repeat exactly and replay matches. The sim's cameras have no distortion, blur or occlusion,
+so real numbers will be worse; FM's real-match replays are the reference (0.057/0.136 m on Q17).
 
 ## Autos and modes
 

@@ -15,6 +15,7 @@ import frc.spectrumLib.swerve.SwerveIO;
 import frc.spectrumLib.swerve.SwerveIOPhoenix;
 import frc.spectrumLib.swerve.SwerveInputs;
 import frc.spectrumLib.swerve.SwerveOdometry;
+import frc.spectrumLib.swerve.SwerveSample;
 import frc.spectrumLib.swerve.SwerveSimSpec;
 import frc.spectrumLib.swerve.SwerveThread;
 import frc.spectrumLib.telemetry.Alert;
@@ -26,6 +27,7 @@ import org.wpilib.driverstation.Alliance;
 import org.wpilib.driverstation.MatchState;
 import org.wpilib.driverstation.RobotState;
 import org.wpilib.math.geometry.Pose2d;
+import org.wpilib.math.geometry.Translation2d;
 import org.wpilib.math.util.Units;
 import org.wpilib.util.Alert.Level;
 
@@ -111,6 +113,8 @@ public final class Swerve implements Subsystem {
         double half = SwerveSettings.TRACK.get() / 2;
         double[] mx = {half, half, -half, -half};
         double[] my = {half, -half, half, -half};
+        moduleX = mx;
+        moduleY = my;
         maxDriveVelocity = SwerveSettings.MAX_DRIVE_VELOCITY.get();
         maxAngularVelocity = SwerveSettings.MAX_ANGULAR_VELOCITY.get();
         odometry = new SwerveOdometry(mx, my);
@@ -170,6 +174,29 @@ public final class Swerve implements Subsystem {
         }
     }
 
+    /** Receives each 250 Hz sample, in order, with odometry's heading after it (rad). */
+    public interface SampleListener {
+        void accept(SwerveSample sample, double heading);
+    }
+
+    private SampleListener sampleListener;
+    private final double[] moduleX;
+    private final double[] moduleY;
+
+    /** The pose estimator's feed: every sample, from the main loop's {@link #updateInputs}. */
+    public void setSampleListener(SampleListener listener) {
+        sampleListener = listener;
+    }
+
+    /** Module positions from the robot's center (m), FL FR BL BR. */
+    public Translation2d[] moduleLocations() {
+        Translation2d[] out = new Translation2d[moduleX.length];
+        for (int i = 0; i < moduleX.length; i++) {
+            out[i] = new Translation2d(moduleX[i], moduleY[i]);
+        }
+        return out;
+    }
+
     /** Where the pilot's sticks come from: -1..1 field x, field y, rotation. */
     public void setTeleopInputs(DoubleSupplier x, DoubleSupplier y, DoubleSupplier omega) {
         teleopX = x;
@@ -202,6 +229,10 @@ public final class Swerve implements Subsystem {
         for (int s = 0; s < inputs.count; s++) {
             var sample = inputs.samples[s];
             odometry.update(sample, gyroOk() && sample.gyroOk, trust.weights(sample));
+            if (sampleListener != null) {
+                // Odometry's heading: the gyro's when it is healthy, the wheels' when not.
+                sampleListener.accept(sample, odometry.heading());
+            }
         }
         utilities.update(
                 inputs,
