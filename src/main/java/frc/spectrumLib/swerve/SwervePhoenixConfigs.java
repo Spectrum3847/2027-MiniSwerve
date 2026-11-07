@@ -9,13 +9,13 @@ import com.ctre.phoenix6.signals.NeutralModeValue;
 import com.ctre.phoenix6.signals.SensorDirectionValue;
 
 /**
- * The Phoenix device configs {@link SwerveIOPhoenix} applies, built from {@link
- * PhoenixSwerveConfig}.
+ * The Phoenix device configs {@link SwerveIOPhoenix} applies (and SpectrumSim's TalonFX models
+ * take), built from {@link PhoenixSwerveConfig}.
  */
-final class SwervePhoenixConfigs {
+public final class SwervePhoenixConfigs {
     private SwervePhoenixConfigs() {}
 
-    static CANcoderConfiguration encoder(PhoenixSwerveConfig cfg, int i) {
+    public static CANcoderConfiguration encoder(PhoenixSwerveConfig cfg, int i) {
         var c = new CANcoderConfiguration();
         c.MagnetSensor.MagnetOffset = cfg.magnetOffsets()[i];
         c.MagnetSensor.SensorDirection = SensorDirectionValue.CounterClockwise_Positive;
@@ -23,7 +23,7 @@ final class SwervePhoenixConfigs {
         return c;
     }
 
-    static TalonFXConfiguration steer(PhoenixSwerveConfig cfg, int i) {
+    public static TalonFXConfiguration steer(PhoenixSwerveConfig cfg, int i) {
         var c = new TalonFXConfiguration();
         c.MotorOutput.Inverted =
                 cfg.steerInverted()
@@ -52,7 +52,7 @@ final class SwervePhoenixConfigs {
         return c;
     }
 
-    static TalonFXConfiguration drive(PhoenixSwerveConfig cfg, int i, boolean brake) {
+    public static TalonFXConfiguration drive(PhoenixSwerveConfig cfg, int i, boolean brake) {
         var c = new TalonFXConfiguration();
         c.MotorOutput.Inverted =
                 cfg.driveInverted()[i]

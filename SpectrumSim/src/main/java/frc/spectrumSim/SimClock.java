@@ -1,4 +1,4 @@
-package frc.spectrumLib.sim;
+package frc.spectrumSim;
 
 import java.util.ArrayList;
 import java.util.List;

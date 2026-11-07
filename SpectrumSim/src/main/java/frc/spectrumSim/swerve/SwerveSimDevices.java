@@ -1,4 +1,4 @@
-package frc.spectrumLib.swerve;
+package frc.spectrumSim.swerve;
 
 /**
  * What {@link SwervePhysicsSim} moves: the simulated motors, encoders and gyro. Either Phoenix's

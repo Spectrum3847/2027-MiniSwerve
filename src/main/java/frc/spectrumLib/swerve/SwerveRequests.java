@@ -12,12 +12,12 @@ import frc.spectrumLib.hardware.SimFaults;
 
 /**
  * Module targets to Phoenix control requests, shared by {@link SwerveIOPhoenix} (real TalonFXs) and
- * {@link SwerveIOSim} (TalonFX models), so the sim runs on exactly the requests the robot sends.
- * Reuses one request object per kind: no allocation per cycle.
+ * SpectrumSim's {@code SwerveIOSim} (TalonFX models), so the sim runs on exactly the requests the
+ * robot sends. Reuses one request object per kind: no allocation per cycle.
  */
-final class SwerveRequests {
+public final class SwerveRequests {
     /** Where the requests go. */
-    interface Motors {
+    public interface Motors {
         void setDrive(int i, ControlRequest r);
 
         void setSteer(int i, ControlRequest r);
@@ -53,7 +53,7 @@ final class SwerveRequests {
     /**
      * @param faults simulated faults (an unpowered motor ignores commands); null on the robot
      */
-    SwerveRequests(PhoenixSwerveConfig cfg, SimFaults faults) {
+    public SwerveRequests(PhoenixSwerveConfig cfg, SimFaults faults) {
         this.cfg = cfg;
         this.faults = faults;
         int n = cfg.modules();
@@ -68,7 +68,7 @@ final class SwerveRequests {
     }
 
     /** Phoenix timesync on every setpoint (CANivore only). */
-    void setTimesync(boolean timesync) {
+    public void setTimesync(boolean timesync) {
         driveRequest.UseTimesync = timesync;
         steerRequest.UseTimesync = timesync;
         steerExpoRequest.UseTimesync = timesync;
@@ -81,7 +81,7 @@ final class SwerveRequests {
      *
      * @param measuredSteerRps each module's measured turn rate (rps), for the coupling feedforward
      */
-    void setModules(
+    public void setModules(
             double[] angle,
             double[] velocity,
             double[] steerVelocityPlan,
@@ -138,7 +138,7 @@ final class SwerveRequests {
     }
 
     /** Every motor to its neutral mode. */
-    void setNeutral(Motors m) {
+    public void setNeutral(Motors m) {
         for (int i = 0; i < cfg.modules(); i++) {
             m.setDrive(i, neutral);
             m.setSteer(i, neutral);

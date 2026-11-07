@@ -1,4 +1,4 @@
-package frc.spectrumLib.sim;
+package frc.spectrumSim;
 
 /**
  * A DC motor for the physics sim: torque per amp, winding resistance, back-EMF and rotor inertia,
@@ -45,6 +45,16 @@ public record MotorModel(
      */
     public static final MotorModel KRAKEN_X60_FOC =
             fromCurve("KrakenX60FOC", 9.37, 483, 5800, 0.00006);
+
+    /** A motor by {@link #name}: "KrakenX60FOC" or "Falcon500FOC". */
+    public static MotorModel byName(String name) {
+        for (MotorModel m : new MotorModel[] {KRAKEN_X60_FOC, FALCON_500_FOC}) {
+            if (m.name().equals(name)) {
+                return m;
+            }
+        }
+        throw new IllegalArgumentException("unknown motor " + name);
+    }
 
     /**
      * Stator current allowed by a supply (battery-side) current limit at this rotor speed: battery

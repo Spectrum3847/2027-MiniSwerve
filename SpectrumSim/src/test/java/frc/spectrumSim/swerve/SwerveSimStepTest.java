@@ -1,9 +1,12 @@
-package frc.spectrumLib.swerve;
+package frc.spectrumSim.swerve;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import frc.spectrumLib.sim.MotorModel;
+import frc.spectrumLib.swerve.ModuleCommands;
+import frc.spectrumLib.swerve.PhoenixSwerveConfig;
+import frc.spectrumLib.swerve.SwerveSample;
+import frc.spectrumSim.MotorModel;
 import org.wpilib.hardware.hal.HAL;
 import org.wpilib.simulation.DriverStationSim;
 
@@ -68,7 +71,7 @@ class SwerveSimStepTest {
                         0.01,
                         mx,
                         my);
-        var io = new SwerveIOPhoenix(cfg, physics, null);
+        var io = PhoenixSwerveSim.create(cfg, physics, null);
         var sample = new SwerveSample(4);
         // 1. Robot still: every module steers to its own angle.
         double[] angle = {1.0, -1.0, 2.0, -2.5};
@@ -143,7 +146,7 @@ class SwerveSimStepTest {
                         0.01,
                         new double[] {h, h, -h, -h},
                         new double[] {h, -h, h, -h});
-        var io = new SwerveIOPhoenix(cfg, physics, null);
+        var io = PhoenixSwerveSim.create(cfg, physics, null);
         var sample = new SwerveSample(4);
         double[] angle = {1.0, 1.0, 1.0, 1.0};
         double[] velocity = {1.0, 1.0, 1.0, 1.0};

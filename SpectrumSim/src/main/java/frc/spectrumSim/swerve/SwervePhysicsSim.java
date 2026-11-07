@@ -1,7 +1,8 @@
-package frc.spectrumLib.swerve;
+package frc.spectrumSim.swerve;
 
 import frc.spectrumLib.hardware.SimFaults;
-import frc.spectrumLib.sim.MotorModel;
+import frc.spectrumLib.swerve.PhoenixSwerveConfig;
+import frc.spectrumSim.MotorModel;
 
 /**
  * Desktop physics for the drivetrain. The simulated devices ({@link SwerveSimDevices}: our TalonFX

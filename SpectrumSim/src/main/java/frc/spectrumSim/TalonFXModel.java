@@ -1,4 +1,4 @@
-package frc.spectrumLib.sim;
+package frc.spectrumSim;
 
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.CoastOut;
