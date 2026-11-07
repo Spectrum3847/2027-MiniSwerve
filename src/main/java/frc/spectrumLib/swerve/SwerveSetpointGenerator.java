@@ -62,6 +62,9 @@ public final class SwerveSetpointGenerator {
         velocity = new double[n];
         angle = new double[n];
         steerVelocity = new double[n];
+        turnAtZero = new double[n];
+        requestDir = new double[n];
+        reachable = new double[n];
     }
 
     /**
@@ -74,6 +77,7 @@ public final class SwerveSetpointGenerator {
     public void reset(double[] measuredVelocity, double[] measuredAngle) {
         for (int i = 0; i < n; i++) {
             lastAngle[i] = measuredAngle[i];
+            steerVelocity[i] = 0;
             dx[i] = measuredVelocity[i] * Math.cos(measuredAngle[i]);
             dy[i] = measuredVelocity[i] * Math.sin(measuredAngle[i]);
         }
@@ -109,9 +113,44 @@ public final class SwerveSetpointGenerator {
             double maxDriveAcceleration,
             double maxSteerVelocity,
             boolean[] pushing) {
+        generate(
+                vx,
+                vy,
+                omega,
+                dt,
+                maxWheelVelocity,
+                maxDriveAcceleration,
+                maxSteerVelocity,
+                DEFAULT_STEER_ACCELERATION,
+                pushing);
+    }
+
+    /** Default steer acceleration (rad/s^2) when not given: about half what an MK4i can do. */
+    public static final double DEFAULT_STEER_ACCELERATION = 300;
+
+    /**
+     * One cycle, with the steer acceleration limit.
+     *
+     * @param maxSteerAcceleration how fast a module's turn rate may change (rad/s^2)
+     */
+    public void generate(
+            double vx,
+            double vy,
+            double omega,
+            double dt,
+            double maxWheelVelocity,
+            double maxDriveAcceleration,
+            double maxSteerVelocity,
+            double maxSteerAcceleration,
+            boolean[] pushing) {
         this.pushing = pushing;
         // 1. Desaturate the request as a whole chassis velocity.
         SwerveMath.toSwerveModuleVelocities(vx, vy, omega, mx, my, speed, dir);
+        // Where each wheel will need to point for the request, so a stopped robot turns its
+        // wheels toward it before moving (otherwise the steer limit below would never let it go).
+        for (int i = 0; i < n; i++) {
+            requestDir[i] = speed[i] > STOPPED ? dir[i] : Double.NaN;
+        }
         // Only wheels that push count: a free-rolling wheel may spin past top speed.
         double top = 0;
         for (int i = 0; i < n; i++) {
@@ -128,6 +167,19 @@ public final class SwerveSetpointGenerator {
 
         // 2. Largest step toward the request that every wheel's acceleration allows.
         double maxDelta = maxDriveAcceleration * dt;
+        maxTurnStep = maxSteerVelocity * dt;
+        // How far each wheel is from the direction it already has to point (s = 0): the step may
+        // not make any wheel turn further than it can this cycle, unless it is already behind, and
+        // then only not worse. So the robot's direction never outruns its wheels.
+        for (int i = 0; i < n; i++) {
+            turnAtZero[i] = turnNeeded(pvx, pvy, pw, i);
+            // How far this wheel can really turn this cycle from its current turn rate.
+            double rate =
+                    Math.min(
+                            maxSteerVelocity,
+                            Math.abs(steerVelocity[i]) + maxSteerAcceleration * dt);
+            reachable[i] = Math.min(maxTurnStep, rate * dt);
+        }
         double s = 1.0;
         if (!fits(vx, vy, omega, 1.0, maxDelta)) {
             double lo = 0.0;
@@ -151,15 +203,29 @@ public final class SwerveSetpointGenerator {
         SwerveMath.toSwerveModuleVelocities(pvx, pvy, pw, mx, my, speed, dir);
         double maxTurn = maxSteerVelocity * dt;
         for (int i = 0; i < n; i++) {
-            double target = speed[i] > STOPPED ? dir[i] : lastAngle[i];
+            double target =
+                    speed[i] > STOPPED
+                            ? dir[i]
+                            : Double.isNaN(requestDir[i]) ? lastAngle[i] : requestDir[i];
             // The short way: within 90 degrees, driving backward if that is closer.
             double err = SwerveMath.angleModulus(target - lastAngle[i]);
             if (Math.abs(err) > Math.PI / 2) {
                 err = SwerveMath.angleModulus(err + Math.PI);
             }
-            double turn = Math.max(-maxTurn, Math.min(maxTurn, err));
+            // A trapezoid in turn rate: speed up and slow down at maxSteerAcceleration, so the
+            // steer feedforward ends at zero on the target instead of overshooting it.
+            double stopRate = Math.sqrt(2 * maxSteerAcceleration * Math.abs(err));
+            double rate = Math.copySign(Math.min(maxSteerVelocity, stopRate), err);
+            double dv = maxSteerAcceleration * dt;
+            rate = Math.max(steerVelocity[i] - dv, Math.min(steerVelocity[i] + dv, rate));
+            double turn = rate * dt;
+            if (Math.abs(turn) > Math.abs(err)) {
+                turn = err; // land exactly
+                rate = turn / dt;
+            }
+            turn = Math.max(-maxTurn, Math.min(maxTurn, turn));
             angle[i] = SwerveMath.angleModulus(lastAngle[i] + turn);
-            steerVelocity[i] = turn / dt;
+            steerVelocity[i] = rate;
             // The wheel pushes only along where it points: the module velocity projected onto
             // that direction (cosine scaling, signed). fits() measures acceleration the same way.
             double v = along(pvx, pvy, pw, i, angle[i]);
@@ -187,11 +253,36 @@ public final class SwerveSetpointGenerator {
             if (Math.abs(along(cx, cy, cw, i, lastAngle[i]) - lastVelocity[i]) > maxDelta + 1e-9) {
                 return false;
             }
+            if (turnNeeded(cx, cy, cw, i) > Math.max(reachable[i], turnAtZero[i]) + 1e-9) {
+                return false;
+            }
         }
         return true;
     }
 
     private boolean[] pushing;
+    private double maxTurnStep;
+    private final double[] turnAtZero;
+    private final double[] requestDir;
+    private final double[] reachable;
+
+    /**
+     * How far (rad, the short way) wheel {@code i} must turn from where it points to follow chassis
+     * motion (vx, vy, omega); 0 when that wheel would be nearly still.
+     */
+    private double turnNeeded(double vx, double vy, double omega, int i) {
+        double mvx = vx - omega * my[i];
+        double mvy = vy + omega * mx[i];
+        if (Math.hypot(mvx, mvy) <= STOPPED) {
+            if (Double.isNaN(requestDir[i])) {
+                return 0;
+            }
+            double e = Math.abs(SwerveMath.angleModulus(requestDir[i] - lastAngle[i]));
+            return Math.min(e, Math.PI - e);
+        }
+        double err = Math.abs(SwerveMath.angleModulus(Math.atan2(mvy, mvx) - lastAngle[i]));
+        return Math.min(err, Math.PI - err); // driving backward is as good as turning around
+    }
 
     /** Whether wheel {@code i} can push this cycle (all, when not told otherwise). */
     private boolean pushes(int i) {

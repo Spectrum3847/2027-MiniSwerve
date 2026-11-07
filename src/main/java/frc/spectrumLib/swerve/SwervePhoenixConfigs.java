@@ -75,4 +75,39 @@ final class SwervePhoenixConfigs {
         s.kA = g.kA();
         return s;
     }
+
+    /**
+     * Sets every signal's update rate and turns the rest off. Not saved on the devices: a device
+     * that reboots (a connector wiggle, a brown-out) comes back with default rates, so this runs
+     * again whenever one resets. Blocking: boot, or the Phoenix background thread.
+     */
+    static com.ctre.phoenix6.StatusCode signals(
+            double hz,
+            com.ctre.phoenix6.BaseStatusSignal[] fast,
+            com.ctre.phoenix6.BaseStatusSignal[] slow,
+            com.ctre.phoenix6.hardware.TalonFX[] drive,
+            com.ctre.phoenix6.hardware.TalonFX[] steer,
+            com.ctre.phoenix6.hardware.CANcoder[] encoder,
+            com.ctre.phoenix6.hardware.Pigeon2 pigeon) {
+        int n = drive.length;
+        var code = com.ctre.phoenix6.BaseStatusSignal.setUpdateFrequencyForAll(hz, fast);
+        // The steer motors' FusedCANcoder feedback reads these frames: keep them on, or
+        // optimizeBusUtilization below turns them off and the steer loop runs blind.
+        for (int i = 0; i < n; i++) {
+            var c =
+                    com.ctre.phoenix6.BaseStatusSignal.setUpdateFrequencyForAll(
+                            hz, encoder[i].getPosition(), encoder[i].getVelocity());
+            code = code.isOK() ? c : code;
+        }
+        var c = com.ctre.phoenix6.BaseStatusSignal.setUpdateFrequencyForAll(10, slow);
+        code = code.isOK() ? c : code;
+        // Everything else off the bus: only what we read is sent.
+        for (int i = 0; i < n; i++) {
+            drive[i].optimizeBusUtilization();
+            steer[i].optimizeBusUtilization();
+            encoder[i].optimizeBusUtilization();
+        }
+        pigeon.optimizeBusUtilization();
+        return code;
+    }
 }

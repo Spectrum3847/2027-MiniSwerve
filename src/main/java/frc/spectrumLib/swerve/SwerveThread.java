@@ -24,6 +24,8 @@ public final class SwerveThread {
     private volatile double rotationLookahead;
     private volatile double maxDriveAcceleration = 10.0;
     private volatile double maxSteerVelocity = 20.0;
+    private volatile double maxSteerAcceleration =
+            SwerveSetpointGenerator.DEFAULT_STEER_ACCELERATION;
     private final SwerveSetpointGenerator generator;
     private final double[] steerVelocity;
     private final double[] current;
@@ -129,11 +131,16 @@ public final class SwerveThread {
      *
      * @param maxDriveAcceleration largest wheel speed change (m/s^2)
      * @param maxSteerVelocity fastest module turn (rad/s)
+     * @param maxSteerAcceleration how fast a module's turn rate may change (rad/s^2)
      */
     public void setSetpointGenerator(
-            boolean enabled, double maxDriveAcceleration, double maxSteerVelocity) {
+            boolean enabled,
+            double maxDriveAcceleration,
+            double maxSteerVelocity,
+            double maxSteerAcceleration) {
         this.maxDriveAcceleration = maxDriveAcceleration;
         this.maxSteerVelocity = maxSteerVelocity;
+        this.maxSteerAcceleration = maxSteerAcceleration;
         this.useSetpointGenerator = enabled;
     }
 
@@ -284,6 +291,7 @@ public final class SwerveThread {
                             topSpeed,
                             topAccel,
                             maxSteerVelocity,
+                            maxSteerAcceleration,
                             pushing);
                     sample.setpointFraction = generator.lastFraction();
                     System.arraycopy(generator.angle(), 0, angle, 0, n);

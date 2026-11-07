@@ -57,9 +57,21 @@ def read_wpilog(path):
                     ticks = 1e9  # AdvantageKit 27.0.0-alpha-7 and later
             continue
         if eid in entries:
-            records[entries[eid][0]].append((ts / 1e6, payload))
+            records[entries[eid][0]].append((ts, payload))
     types = {name: typ for name, typ in entries.values()}
     types[TICKS_KEY] = ticks
+    # Record times are microseconds in a normal log, but nanoseconds in logs converted for
+    # alpha-7 replay (tools/akit_log_to_ns.py in 2026-FM-SystemCore). /Timestamp's own value says
+    # which: compare it with its record's time.
+    unit = 1e6
+    stamp = records.get("/Timestamp")
+    if stamp:
+        raw_t, payload = stamp[len(stamp) // 2]
+        value = struct.unpack("<q", payload)[0] / ticks  # seconds
+        if raw_t > 0 and value > 0 and abs(raw_t / 1e9 - value) < abs(raw_t / 1e6 - value):
+            unit = 1e9
+    for name in records:
+        records[name] = [(t / unit, p) for t, p in records[name]]
     return records, types
 
 

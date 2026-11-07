@@ -3,6 +3,7 @@ package frc.robot.subsystems.swerve;
 import frc.robot.config.Hardware;
 import frc.robot.config.ImuSettings;
 import frc.spectrumLib.swerve.PhoenixSwerveConfig;
+import org.littletonrobotics.junction.Logger;
 
 /** Builds the Phoenix drivetrain configuration from {@link Hardware} and the Robot Settings. */
 final class SwerveConfigs {
@@ -33,7 +34,7 @@ final class SwerveConfigs {
                 Hardware.MK4iL2.STEER_RATIO,
                 Hardware.MK4iL2.COUPLE_RATIO,
                 SwerveSettings.WHEEL_RADIUS.get(),
-                Hardware.DRIVE_SLIP_CURRENT_AMPS,
+                driveSlipCurrent(),
                 Hardware.STEER_STATOR_LIMIT_AMPS,
                 new PhoenixSwerveConfig.Gains(
                         SwerveSettings.DRIVE_KP.get(), 0, 0, SwerveSettings.DRIVE_KS.get(), 0, 0),
@@ -64,5 +65,64 @@ final class SwerveConfigs {
                 Hardware.MK4iL2.DRIVE_KT,
                 SwerveSettings.TIMESYNC.get(),
                 SwerveSettings.steerVoltage());
+    }
+
+    /**
+     * Most acceleration the tires can give before sliding (m/s^2): friction times g. (The drive
+     * rotors' inertia does not lower this; it costs extra motor current, in {@link
+     * #driveSlipCurrent}.)
+     */
+    static double tractionLimit() {
+        return SwerveSettings.TIRE_FRICTION.get() * GRAVITY;
+    }
+
+    /**
+     * Drive current at which a wheel would start to slip while the robot accelerates at the
+     * traction limit (A): the tire's share of friction times weight through the gearing, plus what
+     * spins up the motor's own rotor at that acceleration, over the motor's torque constant.
+     */
+    static double slipCurrentAtLimit() {
+        double m = SwerveSettings.robotMassKg();
+        double r = SwerveSettings.WHEEL_RADIUS.get();
+        double gear = Hardware.MK4iL2.DRIVE_RATIO;
+        double tireForce = SwerveSettings.TIRE_FRICTION.get() * m * GRAVITY / 4;
+        double accel = tractionLimit();
+        double torque = tireForce * r / gear + FALCON_ROTOR_INERTIA * (accel / r) * gear;
+        return torque / Hardware.MK4iL2.DRIVE_KT;
+    }
+
+    /**
+     * The drive slip current used (A): tractionUse of the computed slip current, never above the
+     * hardware cap. HARD STOP (current limit): set robotMass and tireFriction truthfully.
+     */
+    static double driveSlipCurrent() {
+        return Math.min(
+                Hardware.DRIVE_SLIP_CURRENT_AMPS,
+                SwerveSettings.TRACTION_USE.get() * slipCurrentAtLimit());
+    }
+
+    /** Acceleration the setpoint generator may plan (m/s^2): tractionUse of the traction limit. */
+    static double plannedAccelerationLimit() {
+        return Math.min(
+                SwerveSettings.MAX_DRIVE_ACCELERATION.get(),
+                SwerveSettings.TRACTION_USE.get() * tractionLimit());
+    }
+
+    private static final double GRAVITY = 9.81;
+
+    /** Falcon 500 rotor inertia (kg m^2). */
+    private static final double FALCON_ROTOR_INERTIA = 0.0000565;
+
+    /** Logs the traction numbers once at boot. */
+    static void logTraction() {
+        // Robot weight used (lb).
+        Logger.recordOutput(
+                "Swerve/Traction/RobotWeightLbs", SwerveSettings.ROBOT_WEIGHT_LBS.get());
+        // Traction limit, friction x g (m/s^2), and the drive current at the slip point (A).
+        Logger.recordOutput("Swerve/Traction/Limit", tractionLimit());
+        Logger.recordOutput("Swerve/Traction/SlipCurrentAtLimit", slipCurrentAtLimit());
+        // What is used: tractionUse of each (planned acceleration m/s^2, drive slip current A).
+        Logger.recordOutput("Swerve/Traction/PlannedAcceleration", plannedAccelerationLimit());
+        Logger.recordOutput("Swerve/Traction/DriveSlipCurrent", driveSlipCurrent());
     }
 }

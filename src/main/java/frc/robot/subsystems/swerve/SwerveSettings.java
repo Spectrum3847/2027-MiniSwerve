@@ -1,5 +1,8 @@
 package frc.robot.subsystems.swerve;
 
+import static org.wpilib.units.Units.Kilograms;
+import static org.wpilib.units.Units.Pounds;
+
 import frc.robot.config.Hardware;
 import frc.spectrumLib.robotsettings.BooleanSetting;
 import frc.spectrumLib.robotsettings.DoubleSetting;
@@ -46,9 +49,14 @@ final class SwerveSettings {
     /** Limit acceleration and steer rate with the setpoint generator (smoother, truer odometry). */
     static final BooleanSetting SETPOINT_GENERATOR = G.bool("setpointGenerator", true);
 
-    /** Largest wheel speed change the setpoint generator allows (m/s^2). */
+    /**
+     * Largest wheel speed change the setpoint generator plans (m/s^2). Default 30: above anything
+     * the robot can do, so the motors always get full power. Traction is protected by the drive
+     * slip current (stator and peak torque current at the point the wheels slip), not by this.
+     * Lower it only for a gentler drive.
+     */
     static final DoubleSetting MAX_DRIVE_ACCELERATION =
-            G.number("maxDriveAcceleration", 10.0, "m/s^2", 1, 30);
+            G.number("maxDriveAcceleration", 30.0, "m/s^2", 1, 60);
 
     /** Fastest module turn the setpoint generator plans (rad/s); MK4i free speed is about 29. */
     static final DoubleSetting MAX_STEER_VELOCITY =
@@ -110,6 +118,20 @@ final class SwerveSettings {
     static final DoubleSetting WHEEL_RADIUS_SPIN =
             G.number("wheelRadiusSpin", 1.5, "rad/s", 0.3, 4);
 
+    /**
+     * How fast the setpoint generator changes a module's turn rate (rad/s^2): the steer plan speeds
+     * up and slows down at this rate so the wheels land on their angle without overshooting.
+     */
+    static final DoubleSetting MAX_STEER_ACCELERATION =
+            G.number("maxSteerAcceleration", 300, "rad/s^2", 20, 1000);
+
+    /**
+     * Fraction of the computed traction to use (just under 1): the drive slip current and the
+     * planned acceleration are this much of the computed slip point. Raise toward 1 once the real
+     * slip point is measured; lower if the wheels spin.
+     */
+    static final DoubleSetting TRACTION_USE = G.number("tractionUse", 0.97, "", 0.5, 1.0);
+
     /** Driver top speed and turn rate. */
     static final DoubleSetting MAX_DRIVE_VELOCITY =
             G.number("maxDriveVelocity", 4.0, "m/s", 0.5, 5.0);
@@ -161,6 +183,21 @@ final class SwerveSettings {
     static final DoubleSetting STEER_EXPO_KA =
             G.number("steerExpoKa", 1.2 / Hardware.MK4iL2.STEER_RATIO, "V/(rps/s)", 0.001, 5);
 
-    /** Robot mass for the physics sim (kg). */
-    static final DoubleSetting SIM_MASS = G.number("simMass", 18.0, "kg", 5, 80);
+    /**
+     * The robot's weight ready to play, battery and bumpers on (lb). Weigh it. Sets the drive slip
+     * current and the sim's physics (with tireFriction). Placeholder until weighed.
+     */
+    static final DoubleSetting ROBOT_WEIGHT_LBS = G.number("robotWeightLbs", 55.0, "lb", 10, 175);
+
+    /** {@link #ROBOT_WEIGHT_LBS} in kilograms. */
+    static double robotMassKg() {
+        return Pounds.of(ROBOT_WEIGHT_LBS.get()).in(Kilograms);
+    }
+
+    /**
+     * Tire-to-carpet friction coefficient for this tread (about 1.1 for typical FRC tread on
+     * carpet; lower for worn or hard tread). With robotMass it sets how hard the robot can
+     * accelerate before the wheels slide.
+     */
+    static final DoubleSetting TIRE_FRICTION = G.number("tireFriction", 1.1, "", 0.3, 2.0);
 }

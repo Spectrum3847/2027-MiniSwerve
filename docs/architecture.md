@@ -241,3 +241,39 @@ How it fits here:
   the swerve's supply currents, internal resistance per battery over the season.
 - Code moves into `frc.spectrumLib` (reader driver plus a `BatteryTag` input source) and adds
   `com.fazecast:jSerialComm`. The UID-to-name map is a deploy file.
+
+## Simulation: rigid body and device faults
+
+The robot's physical description is configuration (Robot Settings), shared by the sim and the real
+robot: `swerve/robotWeightLbs` (weigh it ready to play, in pounds) and `swerve/tireFriction` (tread on carpet).
+They set the traction limit, friction x g, and the drive current at the slip point: the tire's
+share of friction x weight through the gearing plus what spins up the motor rotor, over its torque
+constant. `swerve/tractionUse` (default 0.97) takes just under both: the drive slip current
+(CTRE's SlipCurrent: stator limit and peak torque current, capped by `Hardware`) and the setpoint
+generator's planned acceleration. Logged under `Swerve/Traction/`. At the 55 lb placeholder on MK4i L2 Falcons
+the slip current is about 31 A. Measure the real slip point and raise `tractionUse` toward 1. Center-of-gravity height (weight transfer, tipping) can join them later.
+
+`SwervePhysicsSim` treats the robot as one rigid body. Each wheel pushes along its direction with
+its motor's torque and grips sideways with tire friction (both limited by friction on carpet, about
+1.1 g), and each wheel rolls with the robot's motion at that wheel. So a dead or coasting wheel rolls
+along, a misaligned wheel scrubs and fights the others, and pushing harder than the tires hold makes
+the robot slide, which wheel odometry cannot see. (The first sim moved each wheel on its own and fit
+the robot to them, which hid all of that.) Hard maneuvers now show real odometry drift: the drive
+script averages about 0.3 m with no acceleration cap and the 80 A slip current: on an 18 kg
+robot each tire grips about 48 N, which is only about 19 A on a Falcon through MK4i L2, so the
+motors can push far past grip. Measuring and setting the real slip current fixes that. Wheel spin (slip along a wheel) is not modeled, so sim odometry
+accuracy is not evidence about the real robot.
+
+Phoenix's simulator cannot disconnect one device, so `SimFaults` (sim only) does it in our code:
+`PhoenixDeviceSet` (connected, rebooted, config applies), the IO (frozen readings, ignored commands)
+and the physics (no torque) all ask it. Faults: UNPLUGGED (power and data lost; plugging back in
+reboots it), UNHEARD (frames lost, still obeys), failed config applies, reboots.
+
+`MINISWERVE_SIM_SCRIPT=faults` drives while unplugging a drive, a steer, a CANcoder, the Pigeon,
+making a drive unheard and rebooting a steer whose config then fails twice. Check it with
+`python tools/fault_summary.py logs/<log>.wpilog`: the robot must keep moving in every step and end
+with every module NORMAL (exit code 0).
+
+Known from the fault scenario: with the Pigeon out, heading comes from the wheels, which scrub, so
+odometry drifts (about 0.2 m over a 1.5 s outage while turning) and keeps that heading error when
+the gyro returns. The SystemCore/USB gyro as a second heading source, and the TagEKF, are the fix.
