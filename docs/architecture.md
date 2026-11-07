@@ -255,14 +255,19 @@ the slip current is about 31 A. Measure the real slip point and raise `tractionU
 
 `SwervePhysicsSim` treats the robot as one rigid body. Each wheel pushes along its direction with
 its motor's torque and grips sideways with tire friction (both limited by friction on carpet, about
-1.1 g), and each wheel rolls with the robot's motion at that wheel. So a dead or coasting wheel rolls
-along, a misaligned wheel scrubs and fights the others, and pushing harder than the tires hold makes
+1.1 g). Each wheel spins on its own (motor rotor through the gearing plus the wheel), tied to the
+ground only by the tire: tire force follows a grip curve of slip speed (peak at 0.1 m/s, falling to
+85% once sliding), along and across the wheel in one friction circle. Drive gearing passes 90% of
+motor torque with 0.1 N m of drag (typical values, not yet fitted). Physics runs in steps of at most
+1 ms and the wheel sub-steps further, so the stiff tire stays stable on heavy or grippy robots. So
+wheels spin when the motor gives more than the tire holds, a dead or coasting wheel rolls along, a misaligned wheel scrubs and fights the others, and pushing harder than the tires hold makes
 the robot slide, which wheel odometry cannot see. (The first sim moved each wheel on its own and fit
 the robot to them, which hid all of that.) Hard maneuvers now show real odometry drift: the drive
 script averages about 0.3 m with no acceleration cap and the 80 A slip current: on an 18 kg
 robot each tire grips about 48 N, which is only about 19 A on a Falcon through MK4i L2, so the
-motors can push far past grip. Measuring and setting the real slip current fixes that. Wheel spin (slip along a wheel) is not modeled, so sim odometry
-accuracy is not evidence about the real robot.
+motors can push far past grip. Measuring and setting the real slip current fixes that. With wheel
+spin the encoders see the spin, so sim odometry drift behaves like a real robot's: the drive script
+now ends 0.15 m off (mean 0.11 m, heading within 1.3 deg).
 
 Phoenix's simulator cannot disconnect one device, so `SimFaults` (sim only) does it in our code:
 `PhoenixDeviceSet` (connected, rebooted, config applies), the IO (frozen readings, ignored commands)
@@ -295,15 +300,16 @@ overshoot, wheel-speed tracking, sprint rise time, acceleration percentiles and 
 limit, real against sim. Change the physics, rerun, keep what shrinks the gaps.
 
 Fitted so far (FM q32 at TXMAN1, 30 s):
+- wheel spin: time at the drive current limit 0.1% vs real 0.9% (was 7% before wheel spin);
+- acceleration from wheel velocities, scored the same way on both sides: median 0.28 vs real
+  0.32 g. The Pigeon-based median (sim 0.41 vs real 0.28 g) compares an accelerometer with filtering
+  and vibration against sim velocity differences, so trust the wheel-based median; its p99 is noisy;
 - steer friction 0.3 N m per rad/s: overshoot 3.4 vs real 3.2 deg, settle 112 vs 100 ms;
 - tire friction about 0.9 (worn tread at TXMAN1): acceleration p99 0.91 vs real 0.89 g. Fresh tread
   is nearer 1.1, so `tireFriction` should be re-measured as tread wears; a match log can estimate it.
 
-Still off: median acceleration (sim 0.40 vs real 0.28 g) and time at the drive current limit (sim
-about 7% vs real about 1%). Both point at wheel spin, not modeled yet: a slipping wheel spins up
-fast, accelerates the robot less and draws less current. Next to build.
+Not fitted yet: gear losses (`-PgearEff`, `-PgearDrag`), robot mass and turning inertia, command
+latency, the tire curve's peak slip and sliding share, battery resistance, and load transfer.
 
-With scrub and 1 kHz physics the MiniSwerve drive script's odometry drift rose to about 0.4 m:
-steering under load is slower than the setpoint generator plans (20 rad/s, 300 rad/s^2), so wheels
-lag and slide. Fit the generator's steer limits to what the modules achieve under scrub. Physics added for it: Kraken/Falcon motor models, drive supply current
-limit, battery sag, tire scrub torque when steering, physics on its own 1 kHz thread.
+Physics so far: Kraken/Falcon motor models, drive supply current limit, battery sag, tire scrub
+torque when steering, wheel spin with a grip curve, gear losses, physics on its own 1 kHz thread.
