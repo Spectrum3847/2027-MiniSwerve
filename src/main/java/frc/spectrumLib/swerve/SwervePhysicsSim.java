@@ -28,16 +28,25 @@ import frc.spectrumLib.sim.MotorModel;
  */
 public final class SwervePhysicsSim {
     /** Battery open-circuit voltage (V), a charged battery. */
-    private static final double BATTERY_OPEN_VOLTS = 12.7;
+    private double batteryOpenVolts = 12.7;
 
-    /** Battery internal plus wiring resistance (ohm); voltage sags by this times total current. */
-    private static final double BATTERY_RESISTANCE = 0.025;
+    /**
+     * Battery internal plus wiring resistance (ohm); voltage sags by this times total current.
+     * Fitted from FM's 13 TXMAN1 matches (tools/battery_fit.py): 0.011 to 0.014, median 0.012.
+     */
+    private double batteryResistance = 0.012;
+
+    /** Battery voltage forced from outside (a real log's), or NaN to use the battery model. */
+    private double batteryOverride = Double.NaN;
+
+    /** Turning inertia as a share of mass times module radius squared (a box robot: about 0.6). */
+    private double inertiaFactor = 0.6;
 
     /** Lever arm of the tire contact patch against turning in place (m): sets steer scrub. */
     private static final double SCRUB_ARM = 0.012;
 
     /** Battery voltage now (V), sagged by last step's total current. */
-    private volatile double batteryVolts = BATTERY_OPEN_VOLTS;
+    private volatile double batteryVolts = 12.7;
 
     private double supplyAmps;
 
@@ -56,6 +65,27 @@ public final class SwervePhysicsSim {
     public synchronized void setGearLosses(double efficiency, double dragNm) {
         gearEfficiency = efficiency;
         gearDrag = dragNm;
+    }
+
+    /**
+     * Sets the battery model.
+     *
+     * @param openVolts open-circuit voltage (V)
+     * @param ohms internal plus wiring resistance
+     */
+    public synchronized void setBattery(double openVolts, double ohms) {
+        batteryOpenVolts = openVolts;
+        batteryResistance = ohms;
+    }
+
+    /** Uses this battery voltage instead of the model (a real log's), or NaN for the model. */
+    public synchronized void setBatteryOverride(double volts) {
+        batteryOverride = volts;
+    }
+
+    /** Turning inertia as a share of mass times module radius squared (default 0.6). */
+    public synchronized void setInertiaFactor(double factor) {
+        inertiaFactor = factor;
     }
 
     /** Wheel's own spin inertia (kg m^2): a 4 in tread wheel and hub. */
@@ -105,6 +135,7 @@ public final class SwervePhysicsSim {
     private double[] wheelAngle; // rad
     private double[] wheelOmega; // rad/s
     private double[] driveAmps;
+    private double[] steerAmpsNow;
     // Rigid-body robot velocity, in the robot frame.
     private double vx;
     private double vy;
@@ -156,6 +187,7 @@ public final class SwervePhysicsSim {
         wheelAngle = new double[n];
         wheelOmega = new double[n];
         driveAmps = new double[n];
+        steerAmpsNow = new double[n];
         driveName = new String[n];
         steerName = new String[n];
         encoderName = new String[n];
@@ -316,7 +348,10 @@ public final class SwervePhysicsSim {
                     !dead(encoderName[i]));
         }
         // The battery sags under everything drawn this step (drive and steer).
-        batteryVolts = Math.max(6.0, BATTERY_OPEN_VOLTS - BATTERY_RESISTANCE * supplyAmps);
+        batteryVolts =
+                Double.isNaN(batteryOverride)
+                        ? Math.max(6.0, batteryOpenVolts - batteryResistance * supplyAmps)
+                        : batteryOverride;
         // Rigid body in the robot frame (the frame turns with the robot).
         vx += (fx / robotMassKg + omega * vy) * dt;
         vy += (fy / robotMassKg - omega * vx) * dt;
@@ -352,7 +387,7 @@ public final class SwervePhysicsSim {
             r2 += mx[i] * mx[i] + my[i] * my[i];
         }
         // A box robot about as wide as its wheelbase: about 0.6 of mass times module radius^2.
-        return 0.6 * robotMassKg * r2 / mx.length;
+        return inertiaFactor * robotMassKg * r2 / mx.length;
     }
 
     /** One module's steering: motor current to motion. */
@@ -368,6 +403,7 @@ public final class SwervePhysicsSim {
                                 steerMotorOmega,
                                 batteryVolts,
                                 cfg.steerSupplyCurrentLimit());
+        steerAmpsNow[i] = steerAmps;
         supplyAmps +=
                 Math.max(0, steerMotor.supplyCurrent(steerAmps, steerMotorOmega, batteryVolts));
         double steerTorque =
@@ -427,6 +463,11 @@ public final class SwervePhysicsSim {
         // Odometry position error against truth (m).
         org.littletonrobotics.junction.Logger.recordOutput(
                 "Sim/OdometryError", Math.hypot(odometryX - x, odometryY - y));
+    }
+
+    /** Steer motor {@code i}'s stator current this step (A), after supply and battery limits. */
+    double steerCurrent(int i) {
+        return steerAmpsNow[i];
     }
 
     /** Drive motor {@code i}'s stator current this step (A). */

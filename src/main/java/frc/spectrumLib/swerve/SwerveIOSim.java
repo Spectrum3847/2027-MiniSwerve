@@ -50,6 +50,10 @@ public final class SwerveIOSim implements SwerveIO {
     private double heading;
     private double omega;
 
+    /** What a TalonFX runs on before its config arrives. */
+    private static final com.ctre.phoenix6.configs.TalonFXConfiguration UNCONFIGURED =
+            new com.ctre.phoenix6.configs.TalonFXConfiguration();
+
     private long tick;
     private double selfTime;
     private long resets;
@@ -150,7 +154,10 @@ public final class SwerveIOSim implements SwerveIO {
             double[] wheelForce,
             ModuleCommands commands) {
         for (int i = 0; i < n; i++) {
-            measuredSteerRps[i] = steer[i].velocity();
+            // An unheard steer motor's velocity signal is frozen at its last value.
+            if (!unheard(names[n + i])) {
+                measuredSteerRps[i] = steer[i].velocity();
+            }
         }
         requests.setModules(
                 angle, velocity, steerVelocityPlan, wheelForce, commands, measuredSteerRps, motors);
@@ -168,6 +175,13 @@ public final class SwerveIOSim implements SwerveIO {
                     steer[i].setControl(r);
                 }
             };
+
+    @Override
+    public void close() {
+        if (clock != null) {
+            clock.leave();
+        }
+    }
 
     @Override
     public void setNeutral() {
@@ -211,7 +225,7 @@ public final class SwerveIOSim implements SwerveIO {
         }
         if (!ok) {
             // A TalonFX that never got its config runs on defaults: no gains, so no torque.
-            m.configure(new com.ctre.phoenix6.configs.TalonFXConfiguration());
+            m.configure(UNCONFIGURED);
         } else if (d < n) {
             m.configure(SwervePhoenixConfigs.drive(cfg, d, driveBrake));
         } else {
@@ -235,7 +249,7 @@ public final class SwerveIOSim implements SwerveIO {
             h.steerConfigured[i] = configured[n + i];
             h.encoderConfigured[i] = configured[2 * n + i];
             double driveAmps = sim.driveCurrent(i);
-            double steerAmps = steer[i].statorCurrent();
+            double steerAmps = sim.steerCurrent(i);
             h.driveStatorCurrent[i] = driveAmps;
             h.steerStatorCurrent[i] = steerAmps;
             h.driveSupplyCurrent[i] =

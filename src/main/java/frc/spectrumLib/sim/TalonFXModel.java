@@ -80,6 +80,7 @@ public final class TalonFXModel {
     private boolean wasActive;
     private double position, velocity; // mechanism rotations, rps
     private double integral, lastVelocityError;
+    private boolean velocityErrorSeeded;
     private double statorAmps, motorVolts, closedLoopError;
 
     /**
@@ -127,6 +128,7 @@ public final class TalonFXModel {
     /** As {@code TalonFX.setControl}: the request's values are copied now. */
     public void setControl(ControlRequest r) {
         Kind before = kind;
+        boolean torqueBefore = torqueOutput;
         if (r instanceof NeutralOut) {
             kind = Kind.NEUTRAL;
         } else if (r instanceof CoastOut) {
@@ -160,9 +162,10 @@ public final class TalonFXModel {
                         false);
             }
         }
-        if (kind != before) {
+        // Phoenix resets closed-loop state on any control mode change, output type included.
+        if (kind != before || torqueOutput != torqueBefore) {
             integral = 0;
-            lastVelocityError = 0;
+            velocityErrorSeeded = false;
             expoStarted = expoStarted && kind == Kind.EXPO;
         }
     }
@@ -214,7 +217,7 @@ public final class TalonFXModel {
         boolean active = k != Kind.BRAKE && k != Kind.COAST;
         if (active && !wasActive) {
             integral = 0;
-            lastVelocityError = 0;
+            velocityErrorSeeded = false;
             expoStarted = false;
         }
         wasActive = active;
@@ -254,6 +257,10 @@ public final class TalonFXModel {
         double p, d, errorForI;
         if (k == Kind.VELOCITY) {
             double e = refVel - velocity;
+            if (!velocityErrorSeeded) {
+                lastVelocityError = e; // no derivative kick on the first step
+                velocityErrorSeeded = true;
+            }
             d = kD * (e - lastVelocityError) / dt;
             lastVelocityError = e;
             p = kP * e;

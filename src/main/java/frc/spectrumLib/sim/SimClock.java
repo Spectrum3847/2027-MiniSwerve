@@ -97,6 +97,14 @@ public final class SimClock {
             }
         }
 
+        /** This thread is done: the clock stops waiting for it. */
+        public void leave() {
+            synchronized (lock) {
+                participants.remove(this);
+                lock.notifyAll();
+            }
+        }
+
         /** Ticks so far (the participant's own view, between waits). */
         public long now() {
             synchronized (lock) {
