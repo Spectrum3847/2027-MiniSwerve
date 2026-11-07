@@ -171,9 +171,9 @@ public final class SpectrumDesktopSim implements DesktopSim {
     }
 
     @Override
-    public void cameras(Field field, String[] names, Transform3d[] robotToCamera) {
+    public boolean cameras(Field field, String[] names, Transform3d[] robotToCamera) {
         if (clock == null || physics == null) {
-            return; // Phoenix's simulator on the wall clock: no repeatable cameras
+            return false; // Phoenix's simulator on the wall clock: no repeatable cameras
         }
         SwervePhysicsSim truth = physics;
         for (int i = 0; i < names.length; i++) {
@@ -186,6 +186,7 @@ public final class SpectrumDesktopSim implements DesktopSim {
                             truth::fieldPose);
             clock.addStepper(camera::step);
         }
+        return true;
     }
 
     @Override

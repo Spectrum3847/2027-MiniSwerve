@@ -12,7 +12,7 @@ import org.wpilib.networktables.RawSubscriber;
  */
 public final class VisionIONetworkTables implements VisionIO {
     /** Frames held between loops per camera: half a second at 60 fps. */
-    private static final int QUEUE = 32;
+    public static final int QUEUE = 32;
 
     private final RawSubscriber[] subscribers;
     private final ByteArrayOutputStream buffer = new ByteArrayOutputStream(4096);

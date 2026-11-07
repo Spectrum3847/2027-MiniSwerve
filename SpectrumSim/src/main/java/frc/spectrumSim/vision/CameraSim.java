@@ -26,11 +26,24 @@ import org.wpilib.system.RobotController;
  * (0.005 + 0.005 r^2 m, as measured on the Jetson). Frames are exposed at the camera's frame rate
  * and arrive after its latency, all on the sim clock, with a seeded noise source: runs repeat.
  *
- * <p>No lens distortion, motion blur or occlusion yet.
+ * <p>No lens distortion, motion blur or occlusion yet. The bearing uses the corners' mean, which
+ * sits a little off the true center at oblique angles, as the fork's will if it does the same.
  */
 public final class CameraSim {
     /** AprilTag side (m): 6.5 in, the FRC tag's black square. */
     private static final double TAG_SIZE = 0.1651;
+
+    /**
+     * Corners in the tag's frame, OpenCV order as seen from the front: bottom-left, bottom-right,
+     * top-right, top-left.
+     */
+    private static final double[] CORNER_Y = {
+        -TAG_SIZE / 2, TAG_SIZE / 2, TAG_SIZE / 2, -TAG_SIZE / 2
+    };
+
+    private static final double[] CORNER_Z = {
+        -TAG_SIZE / 2, -TAG_SIZE / 2, TAG_SIZE / 2, TAG_SIZE / 2
+    };
 
     private static final double MAX_RANGE = 8.0;
     private static final double MAX_FACE_ANGLE = Math.toRadians(75);
@@ -148,12 +161,9 @@ public final class CameraSim {
         }
         // Corners in the tag's frame, OpenCV order as seen from the front: bottom-left,
         // bottom-right, top-right, top-left.
-        double h = TAG_SIZE / 2;
-        double[] cy = {-h, h, h, -h};
-        double[] cz = {-h, -h, h, h};
         for (int k = 0; k < 4; k++) {
             Translation3d corner =
-                    new Translation3d(0, cy[k], cz[k])
+                    new Translation3d(0, CORNER_Y[k], CORNER_Z[k])
                             .rotateBy(tag.getRotation())
                             .plus(tag.getTranslation());
             Translation3d c =
@@ -180,7 +190,8 @@ public final class CameraSim {
         frame.yaw[i] = Math.atan(dy);
         frame.pitch[i] = Math.atan2(dz, Math.hypot(1, dy));
         frame.range[i] = range + random.nextGaussian() * (0.005 + 0.005 * range * range);
-        // Decision margin: bigger tags in the image read cleaner (side length in pixels).
+        // Stand-in decision margin: the tag's side in pixels (bigger reads cleaner). Not on a real
+        // detector's scale: do not tune margin thresholds on sim.
         frame.margin[i] = Math.hypot(u[1] - u[0], v[1] - v[0]);
         for (int k = 0; k < 4; k++) {
             frame.corners[i * 8 + 2 * k] = u[k];

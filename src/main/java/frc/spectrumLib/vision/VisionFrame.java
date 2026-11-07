@@ -20,22 +20,32 @@ import java.nio.ByteOrder;
  *   i64 captureNanos when the image was exposed, on the robot's clock
  *                    (RobotController.getMonotonicTime, ns)
  * tag (50 bytes each):
- *   i16 id
- *   f32 yaw          bearing to the tag's center, camera frame, +left (rad)
+ *   i16 id           signed (a tag id fits)
+ *   f32 yaw          bearing to the tag's center, camera frame, +LEFT (rad)
  *   f32 pitch        bearing to the tag's center, +up (rad)
- *   f32 range        camera to tag center (m)
+ *   f32 range        straight-line distance, camera to the tag's center (m), from the pose solve
  *   f32 margin       detector decision margin (quality; higher is better)
- *   f32 x8 corners   pixel corners (u right, v down), OpenCV order: bottom-left,
- *                    bottom-right, top-right, top-left, as u0 v0 u1 v1 ...
+ *   f32 x8 corners   sub-pixel corners in the raw (distorted) image, u right, v down, OpenCV
+ *                    order: bottom-left, bottom-right, top-right, top-left, as u0 v0 u1 v1 ...
  * object (22 bytes each):
- *   i16 classId
+ *   i16 classId      signed
  *   f32 confidence   0..1
- *   f32 yaw, pitch   bearing to the box's bottom center (rad), as for tags
+ *   f32 yaw, pitch   bearing to the middle of the box's bottom edge (where the object meets the
+ *                    floor), as for tags (rad)
  *   f32 width, height box size as angles (rad)
  * </pre>
  *
- * <p>Camera frame: x out of the lens, y left, z up (WPILib's). A frame with no tags is still sent
- * (count 0): it says the camera is alive and saw nothing.
+ * <p>Camera frame: x out of the lens, y left, z up (WPILib's). <b>Yaw is +left: PhotonVision's own
+ * target yaw is +right, so negate it.</b> Bearings are undistorted (through the calibration). A
+ * frame with no tags is still sent (count 0): it says the camera is alive and saw nothing.
+ *
+ * <p>Publishing (the coprocessor): one raw value per frame, type string {@link #TYPE}, on {@link
+ * #topic}, with publisher options {@code PubSubOption.SEND_ALL} and {@code
+ * PubSubOption.periodic(0.005)} (or {@code NetworkTableInstance.flush()} after each frame). Without
+ * them NetworkTables merges frames sent faster than its 100 ms default flush, and the robot sees
+ * one frame in six at 60 fps. {@code captureNanos} is the exposure time on the robot's clock: the
+ * coprocessor's own time plus NetworkTables' server time offset ({@code
+ * NetworkTableInstance.getServerTimeOffset}, microseconds; convert to nanoseconds).
  *
  * <p>Decoding fills this object's arrays (no allocation), up to {@link #MAX} observations.
  */
@@ -77,19 +87,22 @@ public final class VisionFrame {
      * frame or is cut short (the caller skips it and counts it).
      */
     public int decode(byte[] bytes, int offset, int length) {
-        if (length < HEADER_BYTES) {
+        if (offset < 0 || length < HEADER_BYTES || offset > bytes.length - length) {
             return -1;
         }
         ByteBuffer b = ByteBuffer.wrap(bytes, offset, length).order(ByteOrder.LITTLE_ENDIAN);
-        int version = b.get() & 0xff;
-        kind = b.get() & 0xff;
-        int n = b.getShort() & 0xffff;
-        sequence = b.getInt() & 0xffffffffL;
-        captureNanos = b.getLong();
-        int each = kind == KIND_TAGS ? TAG_BYTES : kind == KIND_OBJECTS ? OBJECT_BYTES : -1;
+        // Check the whole header before changing this frame: a rejected frame leaves it as it was.
+        int version = b.get(offset) & 0xff;
+        int k = b.get(offset + 1) & 0xff;
+        int n = b.getShort(offset + 2) & 0xffff;
+        int each = k == KIND_TAGS ? TAG_BYTES : k == KIND_OBJECTS ? OBJECT_BYTES : -1;
         if (version != VERSION || each < 0 || length < HEADER_BYTES + n * each) {
             return -1;
         }
+        b.position(offset + 4);
+        kind = k;
+        sequence = b.getInt() & 0xffffffffL;
+        captureNanos = b.getLong();
         count = Math.min(n, MAX);
         for (int i = 0; i < n; i++) {
             if (i >= MAX) {
@@ -121,8 +134,12 @@ public final class VisionFrame {
         return HEADER_BYTES + count * (kind == KIND_TAGS ? TAG_BYTES : OBJECT_BYTES);
     }
 
-    /** Writes this frame into {@code out} at {@code offset}; returns the bytes written. */
+    /**
+     * Writes this frame into {@code out} at {@code offset}; returns the bytes written. At most
+     * {@link #MAX} observations ({@link #count} is clamped).
+     */
     public int encode(byte[] out, int offset) {
+        count = Math.max(0, Math.min(count, MAX));
         ByteBuffer b = ByteBuffer.wrap(out, offset, encodedLength()).order(ByteOrder.LITTLE_ENDIAN);
         b.put((byte) VERSION);
         b.put((byte) kind);

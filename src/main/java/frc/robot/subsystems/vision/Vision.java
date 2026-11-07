@@ -22,8 +22,11 @@ public final class Vision {
     /** A camera counts as gone after this long without a frame (s). */
     private static final double STALE_SECONDS = 0.5;
 
-    /** Frames decoded per camera per loop; more in one loop are logged but not used. */
-    private static final int FRAMES_PER_LOOP = 8;
+    /**
+     * Frames kept per camera per loop: as many as the NetworkTables queue holds, so every frame
+     * that arrives is used. (More than this in one loop cannot arrive.)
+     */
+    private static final int FRAMES_PER_LOOP = VisionIONetworkTables.QUEUE;
 
     private final VisionSettings.Camera[] cameras;
     private final Transform3d[] mounts;
@@ -36,6 +39,8 @@ public final class Vision {
     private final long[] badFrames;
     private final double[] lastFrameSeconds;
     private final Alert[] staleAlerts;
+    private final String[] keys;
+    private boolean expectFrames = true;
 
     /** Receives one decoded frame: camera index, its mount, the frame. */
     public interface FrameConsumer {
@@ -66,11 +71,23 @@ public final class Vision {
         badFrames = new long[n];
         lastFrameSeconds = new double[n];
         java.util.Arrays.fill(lastFrameSeconds, Double.NEGATIVE_INFINITY);
+        keys = new String[n];
+        for (int i = 0; i < n; i++) {
+            keys[i] = "Vision/" + names[i];
+        }
         staleAlerts = new Alert[n];
         for (int i = 0; i < n; i++) {
             staleAlerts[i] =
                     new Alert("Camera " + names[i] + " not sending frames", Alert.Level.MEDIUM);
         }
+    }
+
+    /**
+     * Whether frames should be arriving: false in a sim with no simulated cameras, so a silent
+     * camera is not an alert there.
+     */
+    public void expectFrames(boolean expect) {
+        expectFrames = expect;
     }
 
     /** Camera names, in the order {@link #forEachFrame} numbers them. */
@@ -93,8 +110,8 @@ public final class Vision {
             decoded[i] = 0;
             byte[] bytes = inputs.frames[i];
             int offset = 0;
-            while (offset < bytes.length) {
-                VisionFrame f = frames[i][Math.min(decoded[i], FRAMES_PER_LOOP - 1)];
+            while (offset < bytes.length && decoded[i] < FRAMES_PER_LOOP) {
+                VisionFrame f = frames[i][decoded[i]];
                 int used = f.decode(bytes, offset, bytes.length - offset);
                 if (used < 0) {
                     badFrames[i]++;
@@ -106,19 +123,17 @@ public final class Vision {
                 }
                 lastSequence[i] = f.sequence;
                 lastFrameSeconds[i] = now;
-                if (decoded[i] < FRAMES_PER_LOOP) {
-                    decoded[i]++;
-                }
+                decoded[i]++;
             }
             log(i, now);
         }
     }
 
     private void log(int i, double now) {
-        String key = "Vision/" + cameras[i].name();
+        String key = keys[i];
         boolean enabled = cameras[i].enabled().get();
         boolean stale = now - lastFrameSeconds[i] > STALE_SECONDS;
-        staleAlerts[i].set(enabled && stale);
+        staleAlerts[i].set(enabled && stale && expectFrames);
         // The camera is enabled and sent a frame within the last 0.5 s.
         Logger.recordOutput(key + "/Connected", enabled && !stale);
         // Frames skipped by the camera's own counter, since boot.

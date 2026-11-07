@@ -89,7 +89,9 @@ public class Robot extends SpectrumRobot {
             for (int i = 0; i < cameras.length; i++) {
                 mounts[i] = cameras[i].robotToCamera();
             }
-            desktopSim.cameras(Field.loadField(VisionSettings.FIELD), vision.names(), mounts);
+            vision.expectFrames(
+                    desktopSim.cameras(
+                            Field.loadField(VisionSettings.FIELD), vision.names(), mounts));
         }
         // The pilot only binds controls; the bindings keep it alive.
         new Pilot(swerve);

@@ -52,8 +52,9 @@ public interface DesktopSim {
      *
      * @param names camera names (their topics)
      * @param robotToCamera each camera's mount on the robot
+     * @return whether the cameras are simulated (not with Phoenix's wall-clock simulator)
      */
-    void cameras(
+    boolean cameras(
             org.wpilib.fields.Field field,
             String[] names,
             org.wpilib.math.geometry.Transform3d[] robotToCamera);

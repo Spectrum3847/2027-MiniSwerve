@@ -65,5 +65,26 @@ class VisionFrameTest {
         assertEquals(-1, g.decode(bytes, 0, bytes.length - 1)); // cut short
         bytes[0] = 2;
         assertEquals(-1, g.decode(bytes, 0, bytes.length)); // a version we do not know
+        assertEquals(-1, g.decode(bytes, 4, bytes.length)); // asks past the end: no exception
+        assertEquals(-1, g.decode(bytes, -1, 16));
+    }
+
+    @Test
+    void aRejectedFrameLeavesTheOldOneAsItWas() {
+        var f = new VisionFrame();
+        f.kind = VisionFrame.KIND_TAGS;
+        f.count = 1;
+        f.sequence = 9;
+        f.captureNanos = 1234;
+        byte[] good = new byte[f.encodedLength()];
+        f.encode(good, 0);
+        var g = new VisionFrame();
+        g.decode(good, 0, good.length);
+        byte[] bad = good.clone();
+        bad[0] = 3; // a newer version
+        bad[4] = 99; // and another sequence
+        assertEquals(-1, g.decode(bad, 0, bad.length));
+        assertEquals(9, g.sequence);
+        assertEquals(1234, g.captureNanos);
     }
 }
