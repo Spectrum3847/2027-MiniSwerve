@@ -24,6 +24,12 @@ final class SwerveSettings {
         G.number("magnetOffsetBR", 0.0, "rot", -1, 1),
     };
 
+    /**
+     * Swerve thread and signal rate (Hz), read at boot. 250 on a CANivore; one CAN 2.0 bus with 8
+     * Talons, 4 CANcoders and a Pigeon may need 100-200 (watch bus utilization).
+     */
+    static final DoubleSetting LOOP_HZ = G.number("loopHz", 250, "Hz", 50, 250);
+
     static final DoubleSetting WHEEL_RADIUS =
             G.number("wheelRadius", Hardware.MK4iL2.NOMINAL_WHEEL_RADIUS_METERS, "m", 0.04, 0.06);
 

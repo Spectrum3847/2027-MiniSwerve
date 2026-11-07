@@ -50,8 +50,12 @@ public final class SwerveIOPhoenix implements SwerveIO {
     private final BaseStatusSignal[] fast;
     private final BaseStatusSignal[] slow;
 
-    private final VelocityTorqueCurrentFOC driveRequest = new VelocityTorqueCurrentFOC(0);
-    private final PositionTorqueCurrentFOC steerRequest = new PositionTorqueCurrentFOC(0);
+    // UpdateFreqHz 0: send each setpoint once when we call setControl, as CTRE's swerve does,
+    // instead of Phoenix also repeating it on its own 100 Hz timer. Halves control traffic.
+    private final VelocityTorqueCurrentFOC driveRequest =
+            new VelocityTorqueCurrentFOC(0).withUpdateFreqHz(0);
+    private final PositionTorqueCurrentFOC steerRequest =
+            new PositionTorqueCurrentFOC(0).withUpdateFreqHz(0);
     private final NeutralOut neutral = new NeutralOut();
     private final double metersPerWheelRotation;
     private final SwervePhysicsSim sim;

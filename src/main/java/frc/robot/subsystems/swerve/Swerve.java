@@ -90,7 +90,7 @@ public final class Swerve implements Subsystem {
                         mx,
                         my,
                         SwerveSettings.MAX_WHEEL_VELOCITY.get(),
-                        RunMode.SWERVE_LOOP_PERIOD_SECONDS,
+                        1.0 / SwerveSettings.LOOP_HZ.get(),
                         RunMode.CURRENT == RunMode.Mode.REAL ? SWERVE_THREAD_PRIORITY : 0);
         if (io.hasHardware()) {
             thread.start();
@@ -133,7 +133,7 @@ public final class Swerve implements Subsystem {
                         SwerveSettings.STEER_KS.get(),
                         0,
                         0),
-                1.0 / RunMode.SWERVE_LOOP_PERIOD_SECONDS,
+                SwerveSettings.LOOP_HZ.get(),
                 new double[] {
                     ImuSettings.PIGEON_MOUNT_YAW.get(),
                     ImuSettings.PIGEON_MOUNT_PITCH.get(),

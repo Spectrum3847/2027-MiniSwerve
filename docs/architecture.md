@@ -7,7 +7,7 @@ How MiniSwerve's code fits together. Status marks: **built**, **next**, **planne
 | Thread | Rate | Owns | Status |
 |---|---|---|---|
 | Main | 100 Hz, RT priority 1 | settings, logging, wanted states, commands | built |
-| Swerve | 250 Hz, RT | module setpoints, device reads, sample queue (vision ingest planned) | built |
+| Swerve | 250 Hz (setting `swerve/loopHz`), RT | module setpoints, device reads, sample queue (vision ingest planned) | built |
 | Settings writer | on demand | saving Robot Settings to disk | built |
 
 The swerve thread never logs. It writes samples into preallocated ring buffers; the main loop
