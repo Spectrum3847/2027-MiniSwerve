@@ -58,6 +58,13 @@ final class SwerveSettings {
     static final DoubleSetting MAX_DRIVE_ACCELERATION =
             G.number("maxDriveAcceleration", 30.0, "m/s^2", 1, 60);
 
+    /**
+     * Also hold each wheel's planned speed-up to what its motor can give at its speed and the
+     * battery voltage (back-EMF, slip and supply current limits), so plans near top speed or on a
+     * sagging battery are ones the motors can follow.
+     */
+    static final BooleanSetting MOTOR_ACCELERATION_LIMIT = G.bool("motorAccelerationLimit", true);
+
     /** Fastest module turn the setpoint generator plans (rad/s); MK4i free speed is about 29. */
     static final DoubleSetting MAX_STEER_VELOCITY =
             G.number("maxSteerVelocity", 20.0, "rad/s", 2, 30);

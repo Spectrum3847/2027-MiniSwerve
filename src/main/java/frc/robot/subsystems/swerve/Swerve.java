@@ -168,6 +168,7 @@ public final class Swerve implements Subsystem {
                 SwerveConfigs.plannedAccelerationLimit(),
                 SwerveSettings.MAX_STEER_VELOCITY.get(),
                 SwerveSettings.MAX_STEER_ACCELERATION.get());
+        thread.setMotorLimit(SwerveConfigs.motorLimit(mx.length));
         SwerveConfigs.logTraction();
         if (io.hasHardware()) {
             thread.start();
@@ -223,6 +224,7 @@ public final class Swerve implements Subsystem {
             }
         }
         Logger.processInputs("Swerve", inputs);
+        thread.setBusVoltage(inputs.health.supplyVoltage);
         trust.update(inputs.health);
         if (trust.version() != sentModesVersion) {
             sentModesVersion = trust.version();
@@ -324,6 +326,11 @@ public final class Swerve implements Subsystem {
         Logger.recordOutput(
                 "Swerve/Request/Velocity",
                 new double[] {request.vx(), request.vy(), request.omega()});
+    }
+
+    /** Battery voltage at the drive motors (V, logged input); 0 when none is reporting. */
+    public double supplyVoltage() {
+        return inputs.health.supplyVoltage;
     }
 
     /** The Pigeon is connected and configured (logged input). */

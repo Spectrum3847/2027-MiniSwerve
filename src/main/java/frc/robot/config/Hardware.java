@@ -57,6 +57,15 @@ public final class Hardware {
         /** Falcon 500 with FOC torque constant (N m per A): 5.84 N m / 304 A stall. */
         public static final double DRIVE_KT = 5.84 / 304.0;
 
+        /** Falcon 500 with FOC stall torque at 12 V (N m). */
+        public static final double DRIVE_STALL_TORQUE = 5.84;
+
+        /** Falcon 500 with FOC stall current at 12 V (A). */
+        public static final double DRIVE_STALL_CURRENT = 304.0;
+
+        /** Falcon 500 with FOC free speed at 12 V (rpm). */
+        public static final double DRIVE_FREE_RPM = 6080.0;
+
         /** Nominal 4 in wheel (m). The calibrated radius is a Robot Setting. */
         public static final double NOMINAL_WHEEL_RADIUS_METERS = Inches.of(2).in(Meters);
     }

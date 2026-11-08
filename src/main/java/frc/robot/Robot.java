@@ -1,5 +1,6 @@
 package frc.robot;
 
+import frc.robot.config.BatterySettings;
 import frc.robot.opmodes.DemoTeleop;
 import frc.robot.opmodes.DoNothingAuto;
 import frc.robot.opmodes.DriveForwardAuto;
@@ -14,6 +15,7 @@ import frc.spectrumLib.battery.BatteryNames;
 import frc.spectrumLib.battery.BatteryTag;
 import frc.spectrumLib.battery.BatteryTagIO;
 import frc.spectrumLib.battery.BatteryTagIOSerial;
+import frc.spectrumLib.battery.BatteryVoltageCheck;
 import frc.spectrumLib.framework.DesktopSim;
 import frc.spectrumLib.framework.OpModeLoop;
 import frc.spectrumLib.framework.RobotLoop;
@@ -45,6 +47,7 @@ import org.wpilib.util.Alert.Level;
  *   <li>{@link RobotSettings#periodic()} - apply live tuning, log values (inputs)
  *   <li>{@link Swerve#updateInputs()} - drain 250 Hz samples, log, odometry
  *   <li>{@link BatteryTag#periodic} - which battery is in (NFC tag, logged inputs)
+ *   <li>{@link BatteryVoltageCheck#periodic} - low-battery warning at rest
  *   <li>vision, then localization
  *   <li>{@link OpModeLoop#run()} - the running OpMode's requests
  *   <li>{@link CommandScheduler#run()} - wanted-state requests and commands
@@ -60,6 +63,9 @@ public class Robot extends SpectrumRobot {
     private final Swerve swerve;
     private final Vision vision;
     private final BatteryTag battery;
+    private final BatteryVoltageCheck batteryVoltage =
+            new BatteryVoltageCheck(
+                    BatterySettings.LOW_VOLTS.get(), BatterySettings.SETTLE_SECONDS.get());
     private final Localization localization;
     private final SimScript simScript;
     private final DesktopSim desktopSim;
@@ -144,6 +150,10 @@ public class Robot extends SpectrumRobot {
         RobotSettings.periodic();
         swerve.updateInputs();
         battery.periodic(org.wpilib.driverstation.RobotState.isDisabled());
+        batteryVoltage.periodic(
+                swerve.supplyVoltage(),
+                org.wpilib.driverstation.RobotState.isDisabled(),
+                org.wpilib.system.Timer.getTimestamp());
         vision.periodic();
         localization.periodic(vision, org.wpilib.system.Timer.getTimestamp());
         opModeLoop.run();

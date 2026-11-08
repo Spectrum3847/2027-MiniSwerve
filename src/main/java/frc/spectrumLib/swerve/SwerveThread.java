@@ -24,6 +24,7 @@ public final class SwerveThread {
     private volatile double rotationLookahead;
     private volatile double maxDriveAcceleration = 10.0;
     private volatile double maxSteerVelocity = 20.0;
+    private volatile double busVoltage = 12.0;
     private volatile double maxSteerAcceleration =
             SwerveSetpointGenerator.DEFAULT_STEER_ACCELERATION;
     private final SwerveSetpointGenerator generator;
@@ -142,6 +143,24 @@ public final class SwerveThread {
         this.maxSteerVelocity = maxSteerVelocity;
         this.maxSteerAcceleration = maxSteerAcceleration;
         this.useSetpointGenerator = enabled;
+    }
+
+    /**
+     * Limits each wheel's planned speed-up to what its motor can give (null: off). Main thread, at
+     * boot.
+     */
+    public void setMotorLimit(DriveMotorLimit limit) {
+        generator.setMotorLimit(limit);
+    }
+
+    /**
+     * Battery voltage for the motor limit (V), from the main loop's logged inputs. Ignored unless
+     * between 6 and 16 V, so a bad reading never plans zero or wild acceleration.
+     */
+    public void setBusVoltage(double volts) {
+        if (volts >= 6.0 && volts <= 16.0) {
+            busVoltage = volts;
+        }
     }
 
     public long faults() {
@@ -284,6 +303,7 @@ public final class SwerveThread {
                 double topSpeed = limit(maxWheelVelocity, r.maxWheelVelocity(), 0.0);
                 double topAccel = limit(maxDriveAcceleration, r.maxDriveAcceleration(), 0.5);
                 if (useSetpointGenerator) {
+                    generator.setBusVoltage(busVoltage);
                     generator.generate(
                             chassis[0],
                             chassis[1],
