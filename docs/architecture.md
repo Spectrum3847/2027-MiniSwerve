@@ -489,20 +489,24 @@ pose and roll and pitch from the Pigeon (`Swerve/Health/Roll`, `Pitch`; read as 
 WPILib's frame by construction; flat while it is not connected). Height is not measured, so these
 stay on the carpet. Display only: nothing drives on them.
 
-In the sim the floor has height (SpectrumSim `field/Terrain`): bumps and ramps from a field file,
-`SpectrumSim/src/main/resources/fields/<name>.json`, picked with `SPECTRUM_SIM_TERRAIN` (default
-`flat`, so the other scripts are unchanged). `2026-rebuilt` has the four 2026 BUMPs from the Game
-Manual; their positions still need checking against the field drawings and CAD. A new game is a new
-file. Each step `TerrainContact` fits a plane through the floor heights under the wheels: the
-robot's height, roll and pitch, and gravity along the plane pulling it downhill. The Pigeon
-(model and Phoenix sim) reports that tilt, and the true pose is logged as `Sim/FieldPose3d`.
+In the sim the field is a file (SpectrumSim `field/FieldMap`):
+`SpectrumSim/src/main/resources/fields/<name>.json`, picked with `SPECTRUM_SIM_FIELD` (default
+`empty`, the bare walls, so the other scripts are unchanged). It gives the field's size, its solid
+elements, and the floor's bumps (`Terrain`). `2026-rebuilt` (welded) and `2026-rebuilt-andymark`
+come from the FE-2026 rev B drawings: HUBs and TRENCH posts as solid boxes, and BUMPs as the
+GE-26100 profile (44.40 in deep, 15 deg ramps from a 0.61 in lip to a 6.51 in ridge). A new game is
+a new file.
 
-`MINISWERVE_SIM_SCRIPT=bump` with `SPECTRUM_SIM_TERRAIN=2026-rebuilt SPECTRUM_SIM_START=2.5,2.511,0`
-crosses a BUMP and back: the robot rises 10 cm, -15 deg pitch climbing and +15 deg coming down, in
-both `Sim/FieldPose3d` and `Pose/Robot3d`; replay matches. Not modeled yet: suspension or bounce
-(the robot sits on the best-fit plane, not on three wheels), wheels measuring distance along the
-slope rather than across the floor (a few cm of odometry error per bump on a real robot), and
-cameras tilting with the robot.
+Each 1 ms step `TerrainContact` fits a plane through the floor under the wheels: the robot's height,
+roll and pitch; gravity along the plane, pulling it downhill; the tires pressing in with cos(tilt)
+of the weight; and each wheel rolling the floor's length rather than its footprint (1 / cos 15 deg
+on a ramp), so encoders over-count across a bump as on a real robot. The Pigeon (model and Phoenix
+sim) reports the tilt, the cameras see from the tilted 3D pose, and the true pose is logged as
+`Sim/FieldPose3d`.
+
+`MINISWERVE_SIM_SCRIPT=bump` with `SPECTRUM_SIM_FIELD=2026-rebuilt SPECTRUM_SIM_START=2.5,2.511,0`
+crosses a BUMP and back. Not modeled yet: suspension or bounce (the robot sits on the best-fit
+plane, not on three wheels), towers, depots, outposts and trench arms.
 
 ## Field walls and bumper contact
 

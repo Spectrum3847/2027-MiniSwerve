@@ -135,7 +135,7 @@ final class SimScripts {
     };
 
     /**
-     * Over a bump and back: run with {@code SPECTRUM_SIM_TERRAIN=2026-rebuilt} and {@code
+     * Over a bump and back: run with {@code SPECTRUM_SIM_FIELD=2026-rebuilt} and {@code
      * SPECTRUM_SIM_START=2.5,2.511,0} to cross a 2026 BUMP, then watch {@code Sim/FieldPose3d} and
      * {@code Pose/Robot3d} in AdvantageScope's 3D field.
      */

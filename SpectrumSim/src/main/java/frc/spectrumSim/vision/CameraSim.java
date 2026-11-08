@@ -7,7 +7,6 @@ import java.util.Random;
 import java.util.function.Supplier;
 import org.wpilib.fields.Field;
 import org.wpilib.fields.FieldTag;
-import org.wpilib.math.geometry.Pose2d;
 import org.wpilib.math.geometry.Pose3d;
 import org.wpilib.math.geometry.Transform3d;
 import org.wpilib.math.geometry.Translation3d;
@@ -74,7 +73,7 @@ public final class CameraSim {
     private final Model model;
     private final int[] tagId;
     private final Pose3d[] tagPose;
-    private final Supplier<Pose2d> truePose;
+    private final Supplier<Pose3d> truePose;
     private final RawPublisher publisher;
     private final Random random;
     private final ArrayDeque<Pending> inFlight = new ArrayDeque<>();
@@ -87,15 +86,15 @@ public final class CameraSim {
     private record Pending(long dueNanos, byte[] bytes) {}
 
     /**
-     * @param truePose the robot's true pose on the field (sim truth), read on the sim clock's
-     *     thread
+     * @param truePose the robot's true pose on the field in 3D (sim truth: tilted and raised on
+     *     bumps, so the camera tilts with it), read on the sim clock's thread
      */
     public CameraSim(
             String name,
             Transform3d robotToCamera,
             Model model,
             Field field,
-            Supplier<Pose2d> truePose) {
+            Supplier<Pose3d> truePose) {
         this.name = name;
         this.robotToCamera = robotToCamera;
         this.model = model;
@@ -164,7 +163,7 @@ public final class CameraSim {
 
     /** What the camera sees now. */
     private void capture(long nowNanos) {
-        Pose3d camera = new Pose3d(truePose.get()).transformBy(robotToCamera);
+        Pose3d camera = truePose.get().transformBy(robotToCamera);
         frame.sequence = sequence++;
         frame.captureNanos = nowNanos;
         frame.count = 0;

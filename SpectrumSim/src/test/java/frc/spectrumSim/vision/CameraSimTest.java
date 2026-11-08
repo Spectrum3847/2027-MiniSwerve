@@ -29,7 +29,10 @@ class CameraSimTest {
                         new Transform3d(0, 0, 0.3, new Rotation3d()),
                         model,
                         field,
-                        () -> new Pose2d(2, 2, new org.wpilib.math.geometry.Rotation2d()));
+                        () ->
+                                new Pose3d(
+                                        new Pose2d(
+                                                2, 2, new org.wpilib.math.geometry.Rotation2d())));
         var sub =
                 NetworkTableInstance.getDefault()
                         .getRawTopic(VisionFrame.topic("simtest"))

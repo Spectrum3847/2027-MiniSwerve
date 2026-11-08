@@ -37,6 +37,16 @@ class TerrainContactTest {
     }
 
     @Test
+    void aWheelOnARampRollsTheFloorsLength() {
+        TerrainContact c = new TerrainContact(MX, MY);
+        c.update(RAMP, 1.0, 0, 0);
+        double slope = Math.toRadians(15);
+        assertEquals(1 / Math.cos(slope), c.stretch(0, 1, 0), 1e-6); // along the ramp
+        assertEquals(1, c.stretch(0, 0, 1), 1e-6); // across it
+        assertEquals(Math.cos(slope), c.normalShare(), 1e-9);
+    }
+
+    @Test
     void flatFloorIsFlat() {
         TerrainContact c = new TerrainContact(MX, MY);
         c.update(Terrain.FLAT, 3, 3, 1);

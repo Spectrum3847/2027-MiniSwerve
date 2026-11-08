@@ -1,0 +1,89 @@
+{
+  "name": "2026 REBUILT, AndyMark perimeter",
+  "source": "FE-2026 rev B field drawings: sheets 5-6, AndyMark perimeter (650.12 x 316.64, HUB centers 181.56 from each wall, trench post 12.00 beside each BUMP); BUMP from GE-26100. Towers, depots, outposts and trench arms not modeled.",
+  "units": "in",
+  "length": 650.12,
+  "width": 316.64,
+  "bumps": [
+    {
+      "x": 181.56,
+      "y": 98.32,
+      "length": 44.4,
+      "width": 73.0,
+      "height": 6.51,
+      "rampDeg": 15,
+      "edge": 0.61
+    },
+    {
+      "x": 181.56,
+      "y": 218.32,
+      "length": 44.4,
+      "width": 73.0,
+      "height": 6.51,
+      "rampDeg": 15,
+      "edge": 0.61
+    },
+    {
+      "x": 468.56,
+      "y": 98.32,
+      "length": 44.4,
+      "width": 73.0,
+      "height": 6.51,
+      "rampDeg": 15,
+      "edge": 0.61
+    },
+    {
+      "x": 468.56,
+      "y": 218.32,
+      "length": 44.4,
+      "width": 73.0,
+      "height": 6.51,
+      "rampDeg": 15,
+      "edge": 0.61
+    }
+  ],
+  "elements": [
+    {
+      "name": "trench post",
+      "x": 181.56,
+      "y": 55.82,
+      "length": 47.0,
+      "width": 12.0
+    },
+    {
+      "name": "trench post",
+      "x": 181.56,
+      "y": 260.82,
+      "length": 47.0,
+      "width": 12.0
+    },
+    {
+      "name": "hub",
+      "x": 181.56,
+      "y": 158.32,
+      "length": 47.0,
+      "width": 47.0
+    },
+    {
+      "name": "trench post",
+      "x": 468.56,
+      "y": 55.82,
+      "length": 47.0,
+      "width": 12.0
+    },
+    {
+      "name": "trench post",
+      "x": 468.56,
+      "y": 260.82,
+      "length": 47.0,
+      "width": 12.0
+    },
+    {
+      "name": "hub",
+      "x": 468.56,
+      "y": 158.32,
+      "length": 47.0,
+      "width": 47.0
+    }
+  ]
+}

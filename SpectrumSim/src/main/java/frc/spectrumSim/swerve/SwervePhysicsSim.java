@@ -322,9 +322,29 @@ public final class SwervePhysicsSim {
         // wheel's own. The tire, not a rolling constraint, ties it to the ground.
         double wheelInertia = driveMotor.rotorInertia() * g2 + WHEEL_INERTIA;
         double inertiaEff = robotInertia();
+        // The floor under the wheels: on a ramp, gravity pulls the robot downhill, the tires press
+        // into the floor with less than the full weight, and each wheel rolls the floor's length
+        // (longer than the ground it covers). Weight transfer follows the tire forces only:
+        // gravity acts at the center of gravity, no moment.
+        boolean onTerrain = arena != null && arena.terrain().bumps() > 0;
+        double gax = 0, gay = 0, roll = 0, pitch = 0, z = 0, normal = 1;
+        if (onTerrain) {
+            double c0 = Math.cos(arena.startHeading), s0 = Math.sin(arena.startHeading);
+            terrainContact.update(
+                    arena.terrain(),
+                    arena.startX + truthX * c0 - truthY * s0,
+                    arena.startY + truthX * s0 + truthY * c0,
+                    arena.startHeading + truthHeading);
+            gax = terrainContact.ax();
+            gay = terrainContact.ay();
+            roll = terrainContact.roll();
+            pitch = terrainContact.pitch();
+            z = terrainContact.height();
+            normal = terrainContact.normalShare();
+        }
         // Each tire grips in proportion to its share of the weight, which shifts as the robot
         // accelerates (last step's acceleration: the loads lag it by one step).
-        loads.update(robotMassKg, cogHeight, lastAx, lastAy);
+        loads.update(robotMassKg * normal, cogHeight, lastAx, lastAy);
         double gripMax = 0;
         for (int i = 0; i < n; i++) {
             gripMax = Math.max(gripMax, tireFriction * loads.load(i));
@@ -358,7 +378,10 @@ public final class SwervePhysicsSim {
             // The robot's velocity at this wheel, along and across the wheel.
             double cvx = vx - omega * my[i];
             double cvy = vy + omega * mx[i];
-            double along = cvx * c + cvy * sn;
+            // Along the wheel, the tire covers the floor's length: more than the footprint on a
+            // slope.
+            double stretch = onTerrain ? terrainContact.stretch(i, c, sn) : 1;
+            double along = (cvx * c + cvy * sn) * stretch;
             double across = -cvx * sn + cvy * c;
             double driveMotorOmega =
                     wheelOmega[i] * cfg.driveRatio() + steerOmega[i] * cfg.coupleRatio();
@@ -395,6 +418,8 @@ public final class SwervePhysicsSim {
                 push += p / wheelSteps;
                 side += sd / wheelSteps;
             }
+            // The push is along the sloped floor: only its level part moves the robot across it.
+            push /= stretch;
             double wfx = push * c - side * sn;
             double wfy = push * sn + side * c;
             fx += wfx;
@@ -428,22 +453,6 @@ public final class SwervePhysicsSim {
                 loadSnapshot[i] = loads.load(i);
                 liftSnapshot[i] = loads.lifted(i);
             }
-        }
-        // The floor under the wheels: on a ramp, gravity pulls the robot downhill. (Weight transfer
-        // above follows the tire forces only: gravity acts at the center of gravity, no moment.)
-        double gax = 0, gay = 0, roll = 0, pitch = 0, z = 0;
-        if (arena != null && arena.terrain().bumps() > 0) {
-            double c0 = Math.cos(arena.startHeading), s0 = Math.sin(arena.startHeading);
-            terrainContact.update(
-                    arena.terrain(),
-                    arena.startX + truthX * c0 - truthY * s0,
-                    arena.startY + truthX * s0 + truthY * c0,
-                    arena.startHeading + truthHeading);
-            gax = terrainContact.ax();
-            gay = terrainContact.ay();
-            roll = terrainContact.roll();
-            pitch = terrainContact.pitch();
-            z = terrainContact.height();
         }
         // Rigid body in the robot frame (the frame turns with the robot).
         vx += (fx / robotMassKg + gax + omega * vy) * dt;
@@ -736,6 +745,25 @@ public final class SwervePhysicsSim {
                 sx + truthX * c0 - truthY * s0,
                 sy + truthX * s0 + truthY * c0,
                 Rotation2d.fromRadians(sh + truthHeading));
+    }
+
+    /**
+     * The robot's true pose on the field in 3D: {@link #fieldPose} raised and tilted by the floor
+     * under it (sim truth, for the cameras).
+     */
+    public org.wpilib.math.geometry.Pose3d fieldPose3d() {
+        Pose2d p = fieldPose();
+        double z, roll, pitch;
+        synchronized (loadSnapshot) {
+            z = tiltSnapshot[0];
+            roll = tiltSnapshot[1];
+            pitch = tiltSnapshot[2];
+        }
+        return new org.wpilib.math.geometry.Pose3d(
+                p.getX(),
+                p.getY(),
+                z,
+                new org.wpilib.math.geometry.Rotation3d(roll, pitch, p.getRotation().getRadians()));
     }
 
     public double truthX() {

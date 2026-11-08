@@ -1,31 +1,25 @@
 package frc.spectrumSim.field;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-
 /**
- * The floor's height across the field, so the sim robot rides over bumps and ramps. Built from a
- * field file ({@code fields/<name>.json} on the classpath, or a path), so a new game's field is a
- * new file, not new code. Each bump is a box footprint (center, length along its heading, width
- * across) whose top rises from both ends at its ramp angle and is capped at its height: a 2026
- * BUMP, a flat platform with ramps, or a ridge.
+ * The floor's height across the field, so the sim robot rides over bumps and ramps. Each bump is a
+ * box footprint (center, length along its heading, width across) whose top starts at {@code edge}
+ * above the carpet at both ends, rises at its ramp angle, and is capped at its height: a 2026 BUMP
+ * (a ridge with a small lip at each ramp's foot), a flat platform with ramps, or a single step.
+ * Loaded from a field file by {@link FieldMap}.
  *
  * <p>Field frame (m). Steps too steep to drive up belong in {@link Arena} as walls, not here.
- * Allocation-free lookups; immutable after loading, so safe from any thread.
+ * Allocation-free lookups; immutable, so safe from any thread.
  */
 public final class Terrain {
-    /** One bump: center, unit heading, half sizes, height, rise per meter of ramp. */
-    private final double[] cx, cy, cos, sin, halfLength, halfWidth, height, slope;
+    /** One bump: center, unit heading, half sizes, height, rise per meter of ramp, lip height. */
+    private final double[] cx, cy, cos, sin, halfLength, halfWidth, height, slope, edge;
 
     /** A flat floor. */
     public static final Terrain FLAT = new Terrain(new double[0][]);
 
     /**
-     * @param bumps each {x, y, length, width, height, rampDeg, headingDeg}
+     * @param bumps each {x, y, length, width, height, rampDeg, headingDeg, edge} (m, deg); edge is
+     *     the height of each ramp's foot above the carpet
      */
     public Terrain(double[][] bumps) {
         int n = bumps.length;
@@ -37,6 +31,7 @@ public final class Terrain {
         halfWidth = new double[n];
         height = new double[n];
         slope = new double[n];
+        edge = new double[n];
         for (int i = 0; i < n; i++) {
             double[] b = bumps[i];
             cx[i] = b[0];
@@ -47,6 +42,7 @@ public final class Terrain {
             slope[i] = Math.tan(Math.toRadians(b[5]));
             cos[i] = Math.cos(Math.toRadians(b[6]));
             sin[i] = Math.sin(Math.toRadians(b[6]));
+            edge[i] = b.length > 7 ? b[7] : 0;
         }
     }
 
@@ -58,7 +54,7 @@ public final class Terrain {
             double along = Math.abs(dx * cos[i] + dy * sin[i]);
             double across = Math.abs(-dx * sin[i] + dy * cos[i]);
             if (along < halfLength[i] && across < halfWidth[i]) {
-                z = Math.max(z, Math.min(height[i], (halfLength[i] - along) * slope[i]));
+                z = Math.max(z, Math.min(height[i], edge[i] + (halfLength[i] - along) * slope[i]));
             }
         }
         return z;
@@ -67,54 +63,5 @@ public final class Terrain {
     /** Bumps in this terrain. */
     public int bumps() {
         return cx.length;
-    }
-
-    /**
-     * Loads a field: {@code flat}, a name under {@code fields/} on the classpath (e.g. {@code
-     * 2026-rebuilt}), or a path to a JSON file.
-     */
-    public static Terrain load(String name) {
-        if (name == null || name.isBlank() || "flat".equals(name)) {
-            return FLAT;
-        }
-        try (InputStream in = open(name)) {
-            JsonNode bumps = new ObjectMapper().readTree(in).path("bumps");
-            double[][] b = new double[bumps.size()][];
-            for (int i = 0; i < b.length; i++) {
-                JsonNode j = bumps.get(i);
-                b[i] =
-                        new double[] {
-                            req(j, "x"),
-                            req(j, "y"),
-                            req(j, "length"),
-                            req(j, "width"),
-                            req(j, "height"),
-                            req(j, "rampDeg"),
-                            j.path("headingDeg").asDouble(0)
-                        };
-            }
-            return new Terrain(b);
-        } catch (IOException e) {
-            throw new IllegalArgumentException("Cannot read terrain " + name + ": " + e, e);
-        }
-    }
-
-    private static InputStream open(String name) throws IOException {
-        InputStream in = Terrain.class.getResourceAsStream("/fields/" + name + ".json");
-        if (in != null) {
-            return in;
-        }
-        Path p = Path.of(name);
-        if (Files.isRegularFile(p)) {
-            return Files.newInputStream(p);
-        }
-        throw new IOException("no fields/" + name + ".json and no such file");
-    }
-
-    private static double req(JsonNode j, String key) {
-        if (!j.path(key).isNumber()) {
-            throw new IllegalArgumentException("bump needs a number " + key + ": " + j);
-        }
-        return j.path(key).asDouble();
     }
 }

@@ -25,6 +25,15 @@ final class TerrainContact {
     private double pitch;
     private double ax;
     private double ay;
+    private double normalShare = 1;
+
+    /** Floor slope under each wheel, robot frame: rise per meter forward and left. */
+    private final double[] wheelSlopeX;
+
+    private final double[] wheelSlopeY;
+
+    /** Distance for the slope under a wheel, by central difference (m). */
+    private static final double PROBE = 0.01;
 
     TerrainContact(double[] mx, double[] my) {
         this.mx = mx.clone();
@@ -36,6 +45,8 @@ final class TerrainContact {
         }
         sumX2 = sx > 0 ? sx : 1;
         sumY2 = sy > 0 ? sy : 1;
+        wheelSlopeX = new double[mx.length];
+        wheelSlopeY = new double[mx.length];
     }
 
     /** Fits the floor under the wheels for the robot at a field pose (m, rad). */
@@ -44,7 +55,16 @@ final class TerrainContact {
         double mean = 0, alongX = 0, alongY = 0;
         int n = mx.length;
         for (int i = 0; i < n; i++) {
-            double z = terrain.height(x + mx[i] * c - my[i] * s, y + mx[i] * s + my[i] * c);
+            double wx = x + mx[i] * c - my[i] * s;
+            double wy = y + mx[i] * s + my[i] * c;
+            double z = terrain.height(wx, wy);
+            // Field-frame slope under the wheel, turned into the robot frame.
+            double sx =
+                    (terrain.height(wx + PROBE, wy) - terrain.height(wx - PROBE, wy)) / (2 * PROBE);
+            double sy =
+                    (terrain.height(wx, wy + PROBE) - terrain.height(wx, wy - PROBE)) / (2 * PROBE);
+            wheelSlopeX[i] = sx * c + sy * s;
+            wheelSlopeY[i] = -sx * s + sy * c;
             mean += z;
             alongX += z * mx[i];
             alongY += z * my[i];
@@ -61,6 +81,23 @@ final class TerrainContact {
         double norm = Math.sqrt(1 + gx * gx + gy * gy);
         ax = -GRAVITY * gx / norm;
         ay = -GRAVITY * gy / norm;
+        normalShare = 1 / norm;
+    }
+
+    /**
+     * How much longer the floor is than its footprint under wheel {@code i} along a robot-frame
+     * direction (cos, sin): 1 on flat floor, 1 / cos 15 deg on a 2026 BUMP ramp driven straight. A
+     * wheel rolls the floor's length, so its encoder counts this much more than the robot moves
+     * across the field.
+     */
+    double stretch(int i, double c, double s) {
+        double rise = wheelSlopeX[i] * c + wheelSlopeY[i] * s;
+        return Math.sqrt(1 + rise * rise);
+    }
+
+    /** Share of the weight pressing straight into the floor plane: cos of the tilt. */
+    double normalShare() {
+        return normalShare;
     }
 
     /** Height of the floor plane under the robot's center (m). */
