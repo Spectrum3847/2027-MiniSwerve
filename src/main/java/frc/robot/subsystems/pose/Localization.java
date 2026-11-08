@@ -90,7 +90,10 @@ public final class Localization {
     private double markTime;
     private long loops;
 
+    private final Swerve swerve;
+
     public Localization(Swerve swerve, Vision vision, Field field) {
+        this.swerve = swerve;
         var locations = swerve.moduleLocations();
         ekf = new TagEkf(locations, PoseSettings.noise());
         double[] adaptive = PoseSettings.adaptive();
@@ -319,6 +322,8 @@ public final class Localization {
         Pose2d robot = ekf.getPose();
         // The robot's pose on the field: TagEKF's, what the robot drives on.
         Logger.recordOutput("Pose/Robot", robot);
+        // The same pose tilted by the Pigeon's roll and pitch, for AdvantageScope's 3D field.
+        Logger.recordOutput("Pose/Robot3d", swerve.pose3d(robot));
         // TagEKF has a pose (two checked multi-tag frames agreed).
         Logger.recordOutput("Pose/Seeded", ekf.isSeeded());
         // TagEKF's standard deviations: x, y (m), heading (rad).

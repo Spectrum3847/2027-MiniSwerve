@@ -13,6 +13,8 @@ robot.
   `run` task); both put SpectrumSim on the classpath. A launch without it stops at boot saying so
   rather than run with no physics.
 - Environment: `SPECTRUM_SIM_FIELD` (`empty`, the default: the field's walls; `none`: open floor),
+  `SPECTRUM_SIM_TERRAIN` (the floor's bumps: `flat`, the default; a field name such as
+  `2026-rebuilt`; or a path to a field JSON, see `src/main/resources/fields/README.md`),
   `SPECTRUM_SIM_START` (robot start on the field, `x,y,degrees`, default `2,2,0`),
   `SPECTRUM_SIM_ROBOTS` (other robots, `;`-separated: `parked:x,y,deg`, `shuttle:x1,y1,x2,y2,speed`,
   `defender:x,y,speed`),

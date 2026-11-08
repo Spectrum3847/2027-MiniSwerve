@@ -1,0 +1,45 @@
+package frc.spectrumSim.swerve;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import frc.spectrumSim.field.Terrain;
+import org.junit.jupiter.api.Test;
+
+class TerrainContactTest {
+    private static final double H = 0.25;
+    private static final double[] MX = {H, H, -H, -H};
+    private static final double[] MY = {H, -H, H, -H};
+
+    /** A 15 degree ramp rising toward +x from x = 0, wide in y. */
+    private static final Terrain RAMP = new Terrain(new double[][] {{5, 0, 10, 10, 5, 15, 0}});
+
+    @Test
+    void facingUpARampIsNoseUpAndPulledBack() {
+        TerrainContact c = new TerrainContact(MX, MY);
+        c.update(RAMP, 1.0, 0, 0);
+        double slope = Math.toRadians(15);
+        assertEquals(-slope, c.pitch(), 1e-9); // nose up is negative pitch (WPILib)
+        assertEquals(0, c.roll(), 1e-9);
+        assertEquals(1.0 * Math.tan(slope), c.height(), 1e-9);
+        assertEquals(-9.81 * Math.sin(slope), c.ax(), 1e-9);
+        assertEquals(0, c.ay(), 1e-9);
+    }
+
+    @Test
+    void sidewaysOnARampRollsTowardTheLowSide() {
+        TerrainContact c = new TerrainContact(MX, MY);
+        // Facing +y: the ramp rises to the robot's right, so the left side is low.
+        c.update(RAMP, 1.0, 0, Math.PI / 2);
+        assertTrue(c.roll() < 0, "roll " + c.roll());
+        assertEquals(0, c.pitch(), 1e-9);
+        assertTrue(c.ay() > 0, "pulled left, downhill");
+    }
+
+    @Test
+    void flatFloorIsFlat() {
+        TerrainContact c = new TerrainContact(MX, MY);
+        c.update(Terrain.FLAT, 3, 3, 1);
+        assertEquals(0, c.height() + c.roll() + c.pitch() + c.ax() + c.ay(), 0);
+    }
+}

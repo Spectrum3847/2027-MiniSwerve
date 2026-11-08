@@ -10,6 +10,15 @@ public final class SwerveHealth {
     public final boolean[] encoderConnected;
     public boolean pigeonConnected;
 
+    /**
+     * The robot's tilt from the Pigeon (rad), in WPILib's {@code Rotation3d} convention: roll about
+     * forward (positive: left side up), pitch about left (positive: nose down). 0 while the Pigeon
+     * is not connected.
+     */
+    public double roll;
+
+    public double pitch;
+
     /** Each device took its config (at boot, or on a later background retry). */
     public final boolean[] driveConfigured;
 

@@ -481,6 +481,29 @@ Against FM q32 (`simReplay -Pparams="cog=..."`), raising the center of gravity f
 wheel-acceleration p90 from 0.82 to 0.92 g (real 1.08) and slows sprints slightly; match data is too
 mixed with contact to fit the height, so measure it.
 
+## 3D pose and field terrain
+
+AdvantageScope's 3D field draws a `Pose3d` tilted and raised, so the robot is logged in 3D as well
+as 2D: `Pose/Robot3d` (TagEKF) and `Swerve/Odometry/Pose3d` take x, y and heading from their 2D
+pose and roll and pitch from the Pigeon (`Swerve/Health/Roll`, `Pitch`; read as its quaternion,
+WPILib's frame by construction; flat while it is not connected). Height is not measured, so these
+stay on the carpet. Display only: nothing drives on them.
+
+In the sim the floor has height (SpectrumSim `field/Terrain`): bumps and ramps from a field file,
+`SpectrumSim/src/main/resources/fields/<name>.json`, picked with `SPECTRUM_SIM_TERRAIN` (default
+`flat`, so the other scripts are unchanged). `2026-rebuilt` has the four 2026 BUMPs from the Game
+Manual; their positions still need checking against the field drawings and CAD. A new game is a new
+file. Each step `TerrainContact` fits a plane through the floor heights under the wheels: the
+robot's height, roll and pitch, and gravity along the plane pulling it downhill. The Pigeon
+(model and Phoenix sim) reports that tilt, and the true pose is logged as `Sim/FieldPose3d`.
+
+`MINISWERVE_SIM_SCRIPT=bump` with `SPECTRUM_SIM_TERRAIN=2026-rebuilt SPECTRUM_SIM_START=2.5,2.511,0`
+crosses a BUMP and back: the robot rises 10 cm, -15 deg pitch climbing and +15 deg coming down, in
+both `Sim/FieldPose3d` and `Pose/Robot3d`; replay matches. Not modeled yet: suspension or bounce
+(the robot sits on the best-fit plane, not on three wheels), wheels measuring distance along the
+slope rather than across the floor (a few cm of odometry error per bump on a real robot), and
+cameras tilting with the robot.
+
 ## Field walls and bumper contact
 
 The sim robot drives on an FRC field (SpectrumSim `field/`): the four walls, 16.54 x 8.07 m, as

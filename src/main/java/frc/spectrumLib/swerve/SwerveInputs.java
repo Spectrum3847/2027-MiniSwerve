@@ -151,6 +151,9 @@ public final class SwerveInputs implements LoggableInputs {
         t.put("Health/SteerConnected", h.steerConnected);
         t.put("Health/EncoderConnected", h.encoderConnected);
         t.put("Health/PigeonConnected", h.pigeonConnected);
+        // Robot tilt from the Pigeon (rad, WPILib Rotation3d): roll left-side-up, pitch nose-down.
+        t.put("Health/Roll", h.roll);
+        t.put("Health/Pitch", h.pitch);
         // Each device took its config (boot or a later retry).
         t.put("Health/DriveConfigured", h.driveConfigured);
         t.put("Health/SteerConfigured", h.steerConfigured);
@@ -229,6 +232,8 @@ public final class SwerveInputs implements LoggableInputs {
         copy(t.get("Health/SteerConnected", h.steerConnected), h.steerConnected);
         copy(t.get("Health/EncoderConnected", h.encoderConnected), h.encoderConnected);
         h.pigeonConnected = t.get("Health/PigeonConnected", h.pigeonConnected);
+        h.roll = t.get("Health/Roll", h.roll);
+        h.pitch = t.get("Health/Pitch", h.pitch);
         copy(t.get("Health/DriveConfigured", h.driveConfigured), h.driveConfigured);
         copy(t.get("Health/SteerConfigured", h.steerConfigured), h.steerConfigured);
         copy(t.get("Health/EncoderConfigured", h.encoderConfigured), h.encoderConfigured);

@@ -92,6 +92,8 @@ public final class SwerveIOSim implements SwerveIO {
     private final double[] steerRotorRps;
     private double heading;
     private double omega;
+    private volatile double roll;
+    private volatile double pitch;
 
     /** What a TalonFX runs on before its config arrives. */
     private static final com.ctre.phoenix6.configs.TalonFXConfiguration UNCONFIGURED =
@@ -322,6 +324,8 @@ public final class SwerveIOSim implements SwerveIO {
         java.util.Arrays.fill(h.driveSupplyVoltage, volts);
         java.util.Arrays.fill(h.steerSupplyVoltage, volts);
         h.pigeonConnected = !unheard("Pigeon") && configured[3 * n];
+        h.roll = h.pigeonConnected ? roll : 0;
+        h.pitch = h.pigeonConnected ? pitch : 0;
         h.timesync = false;
         h.deviceResets = resets;
         h.signalsSet = true;
@@ -363,7 +367,10 @@ public final class SwerveIOSim implements SwerveIO {
         }
 
         @Override
-        public void senseGyro(double heading, double omega, double batteryVolts) {
+        public void senseGyro(
+                double heading, double omega, double roll, double pitch, double batteryVolts) {
+            SwerveIOSim.this.roll = roll;
+            SwerveIOSim.this.pitch = pitch;
             SwerveIOSim.this.heading = heading;
             SwerveIOSim.this.omega = omega;
         }

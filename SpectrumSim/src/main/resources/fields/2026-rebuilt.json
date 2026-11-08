@@ -1,0 +1,10 @@
+{
+  "name": "2026 REBUILT",
+  "source": "2026 Game Manual 5.2, 5.4, 5.5: field 651.2 x 317.7 in; BUMPs 73.0 in wide, 44.4 in deep, 6.513 in tall, 15 degree ramps toward each zone, either side of each 47 in HUB. HUB centers from the welded field (4.626 m from each alliance wall). Check positions against the field drawings and CAD.",
+  "bumps": [
+    {"x": 4.626, "y": 2.511, "length": 1.128, "width": 1.854, "height": 0.1654, "rampDeg": 15, "headingDeg": 0},
+    {"x": 4.626, "y": 5.559, "length": 1.128, "width": 1.854, "height": 0.1654, "rampDeg": 15, "headingDeg": 0},
+    {"x": 11.915, "y": 2.511, "length": 1.128, "width": 1.854, "height": 0.1654, "rampDeg": 15, "headingDeg": 0},
+    {"x": 11.915, "y": 5.559, "length": 1.128, "width": 1.854, "height": 0.1654, "rampDeg": 15, "headingDeg": 0}
+  ]
+}

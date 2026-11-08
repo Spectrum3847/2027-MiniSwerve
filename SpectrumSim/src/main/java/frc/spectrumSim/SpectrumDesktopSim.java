@@ -8,6 +8,7 @@ import frc.spectrumLib.swerve.SwerveIO;
 import frc.spectrumLib.swerve.SwerveSimSpec;
 import frc.spectrumSim.field.Arena;
 import frc.spectrumSim.field.SimRobot;
+import frc.spectrumSim.field.Terrain;
 import frc.spectrumSim.swerve.PhoenixSwerveSim;
 import frc.spectrumSim.swerve.SwerveIOSim;
 import frc.spectrumSim.swerve.SwervePhysicsSim;
@@ -116,6 +117,8 @@ public final class SpectrumDesktopSim implements DesktopSim {
             }
         }
         Arena arena = Arena.emptyField(s[0], s[1], Math.toRadians(s[2]));
+        // The floor's bumps: flat (default), a field name under fields/, or a JSON path.
+        arena.setTerrain(Terrain.load(System.getenv("SPECTRUM_SIM_TERRAIN")));
         String robots = System.getenv("SPECTRUM_SIM_ROBOTS");
         if (robots != null && !robots.isBlank()) {
             for (String r : robots.split(";")) {
