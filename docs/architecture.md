@@ -237,6 +237,14 @@ roll; SystemCore IMU `MountOrientation` and yaw.
 - **Heading hold** (`swerve/headingHold`, off): captures a heading only after the robot settles,
   corrects only while translating, at most `headingHoldMaxCorrection`, and accepts a new heading
   when the error jumps past `headingHoldReleaseDeg` (a hit) instead of steering back.
+- **Reboot jumps** (`SampleGuard`): a rebooted TalonFX reports rotor rotations until reconfigured
+  and a rebooted Pigeon restarts its yaw at zero, so a reading jumps in one sample. Any reading
+  that moves farther than the robot can in one sample is stale for that sample
+  (`Swerve/Thread/RejectedJumps`): odometry re-primes that module, heading comes from the wheels
+  for that sample, and field-relative driving holds its heading until the main loop's offset
+  follows the new yaw. Sim faults script: error added by a steer reboot 0.86 m to under 2 mm.
+  Driver seeding and vision only move offsets and the estimator, never device readings, so they
+  are untouched; never reset a device's own position or yaw.
 - **CANivore timesync**: when the bus is CAN FD (a CANivore), controls and signals use Phoenix
   timesync automatically (`Swerve/Health/Timesync`). Sample timestamps are the mean of the signals'
   own timestamps on every bus.

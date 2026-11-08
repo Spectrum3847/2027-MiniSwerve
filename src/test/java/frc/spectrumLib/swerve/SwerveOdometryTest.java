@@ -38,6 +38,24 @@ class SwerveOdometryTest {
         assertEquals(0.01, odo.x(), 1e-9);
     }
 
+    @Test
+    void headingSurvivesEverythingRebootingAtOnce() {
+        SwerveOdometry odo = new SwerveOdometry(MX, MY);
+        odo.resetPose(0, 0, 0.5);
+        SwerveSample s = fresh();
+        s.yaw = 1.0;
+        odo.update(s, true);
+        double before = odo.heading();
+        // Brownout: every reading rejected for one sample, and the gyro's yaw restarts at zero.
+        java.util.Arrays.fill(s.moduleOk, false);
+        s.yaw = 0.0;
+        odo.update(s, false);
+        java.util.Arrays.fill(s.moduleOk, true);
+        odo.update(s, true);
+        assertEquals(0.5, before, 1e-12);
+        assertEquals(before, odo.heading(), 1e-12);
+    }
+
     private static void drive(
             SwerveOdometry odo, SwerveSample s, double vx, double vy, double w, double seconds) {
         double[] speed = new double[4];

@@ -8,6 +8,9 @@ package frc.spectrumLib.swerve;
  * samples come from the log. It never logs (AdvantageKit is main-thread only) and allocates nothing
  * per cycle. Faults are counted and the last message kept, for the main loop to log.
  *
+ * <p>Over 400 lines: one cycle's path (read, guard, plan, send) is kept in one file so the 250 Hz
+ * code can be read top to bottom.
+ *
  * <p>Index: {@link #start} | {@link #setRequest} | {@link #run} | {@link #computeTargets}
  */
 public final class SwerveThread {
@@ -97,7 +100,31 @@ public final class SwerveThread {
         robotFy = new double[n];
         commands = ModuleCommands.allNormal(n);
         generator = new SwerveSetpointGenerator(mx, my);
+        guard =
+                new SampleGuard(
+                        n,
+                        2 * maxWheelVelocity,
+                        MAX_REAL_STEER_RATE,
+                        MAX_REAL_YAW_RATE,
+                        periodSeconds);
     }
+
+    /** Fastest a module really turns (rad/s, MK4i free speed ~29) with margin, for the guard. */
+    private static final double MAX_REAL_STEER_RATE = 40;
+
+    /** Fastest the robot really spins (rad/s) with margin, for the guard. */
+    private static final double MAX_REAL_YAW_RATE = 25;
+
+    private final SampleGuard guard;
+
+    /**
+     * After a yaw jump (Pigeon reboot), new requests to wait for before trusting the yaw for
+     * field-relative driving again: the main loop's heading offset must first follow the new yaw.
+     * Two, since the first may have been built before the main loop saw the jump.
+     */
+    private int yawHoldRequests;
+
+    private DriveRequest lastSeenRequest;
 
     /** Starts the loop on its own daemon thread. Call once, during robot init. */
     public void start() {
@@ -177,6 +204,11 @@ public final class SwerveThread {
         return lastFault;
     }
 
+    /** Readings rejected as impossible jumps (device reboots), since boot. */
+    public long rejectedJumps() {
+        return guard.rejected();
+    }
+
     /** Cycles in a row with stale or failed signals. */
     public long staleCycles() {
         return staleCycles;
@@ -195,6 +227,11 @@ public final class SwerveThread {
         while (running) {
             try {
                 io.waitForSample(sample);
+                guard.check(sample);
+                if (guard.yawJumped()) {
+                    yawHoldRequests = 2;
+                    lastSeenRequest = request;
+                }
                 staleCycles = sample.allGood ? 0 : staleCycles + 1;
                 // Late signals never stop the drivetrain (AGENTS.md "Finish the match"): a module
                 // whose readings are stale is planned from its last target instead.
@@ -263,7 +300,14 @@ public final class SwerveThread {
 
         // Keep the held heading current in every mode, so a gyro dropout right after the robot
         // was pushed or spun (neutral, X lock, robot-relative) holds today's heading.
-        if (sample.gyroOk && r.useGyro()) {
+        if (r != lastSeenRequest) {
+            lastSeenRequest = r;
+            if (yawHoldRequests > 0) {
+                yawHoldRequests--;
+            }
+        }
+        boolean yawUsable = sample.gyroOk && yawHoldRequests == 0;
+        if (yawUsable && r.useGyro()) {
             heldHeading = sample.yaw + r.headingOffset();
         }
         switch (r.mode()) {
@@ -294,7 +338,7 @@ public final class SwerveThread {
                     double heading;
                     if (!r.useGyro()) {
                         heading = r.headingOffset();
-                    } else if (sample.gyroOk) {
+                    } else if (yawUsable) {
                         heading = sample.yaw + r.headingOffset();
                     } else if (Double.isNaN(heldHeading)) {
                         heading = sample.yaw + r.headingOffset(); // no fresh yaw seen yet

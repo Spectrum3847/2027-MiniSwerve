@@ -226,6 +226,7 @@ public final class Swerve implements Subsystem {
             inputs.threadFaults = thread.faults();
             inputs.lastThreadFault = thread.lastFault();
             inputs.staleCycles = thread.staleCycles();
+            inputs.rejectedJumps = thread.rejectedJumps();
             if (RobotLoop.everySeconds(0.1)) {
                 io.updateHealth(inputs.health);
             }

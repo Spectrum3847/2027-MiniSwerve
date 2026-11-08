@@ -33,6 +33,9 @@ public final class SwerveInputs implements LoggableInputs {
      */
     public long staleCycles;
 
+    /** Readings the swerve thread rejected as impossible jumps (device reboots), since boot. */
+    public long rejectedJumps;
+
     public SwerveInputs(int modules, int maxSamplesPerLoop) {
         this.modules = modules;
         samples = new SwerveSample[maxSamplesPerLoop];
@@ -183,6 +186,8 @@ public final class SwerveInputs implements LoggableInputs {
         t.put("Thread/DroppedSamples", droppedSamples);
         // Swerve thread cycles that threw, since boot.
         t.put("Thread/Faults", threadFaults);
+        // Readings rejected as jumps no robot can make, e.g. a device reboot, since boot (count).
+        t.put("Thread/RejectedJumps", rejectedJumps);
         // Last swerve thread exception message.
         t.put("Thread/LastFault", lastThreadFault);
     }
@@ -245,6 +250,7 @@ public final class SwerveInputs implements LoggableInputs {
         copy(t.get("Health/SteerSupplyVoltage", h.steerSupplyVoltage), h.steerSupplyVoltage);
         droppedSamples = t.get("Thread/DroppedSamples", droppedSamples);
         threadFaults = t.get("Thread/Faults", threadFaults);
+        rejectedJumps = t.get("Thread/RejectedJumps", rejectedJumps);
         lastThreadFault = t.get("Thread/LastFault", lastThreadFault);
     }
 

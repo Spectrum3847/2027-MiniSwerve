@@ -115,7 +115,10 @@ public final class SwerveOdometry {
             modulesUsed += weight[i] > 0 ? 1 : 0;
         }
         if (Double.isNaN(slip) && !gyroGood) {
-            // Nothing trustworthy moved us this sample: hold the pose.
+            // Nothing trustworthy moved us this sample: hold the pose. Take any yaw change as no
+            // turn, so a jump here (everything rebooting at once) does not move the heading when
+            // the gyro is good again.
+            yawOffset -= SwerveMath.angleModulus(s.yaw - lastYaw);
             lastYaw = s.yaw;
             usedGyro = false;
             java.util.Arrays.fill(robotVelocity, 0.0);
