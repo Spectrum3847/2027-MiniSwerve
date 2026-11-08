@@ -1,0 +1,3 @@
+# Battery tag UID,battery name (as written on the battery). The name written on the tag wins;
+# this names tags that have none. Same format as SpectrumBatteryLogger's batteries.csv.
+D7A89B9E,test-tag-1

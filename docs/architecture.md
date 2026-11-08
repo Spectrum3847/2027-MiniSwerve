@@ -333,27 +333,38 @@ scaled or miscalibrated camera shows up before it reaches the EKF.
 Output: a tool reads the log and writes proposed values into `deploy/settings/*.json` for review
 (the same pull-back-to-git path as Robot Settings), never applied silently.
 
-## Planned: battery identity (NFC tags)
+## Battery identity (NFC tags)
 
 From [SpectrumBatteryLogger](https://github.com/Spectrum3847/SpectrumBatteryLogger): every battery
 carries an NFC sticker, and a PN532 reader on USB (CH340, `/dev/ttyUSB0`) sits against it when the
-battery is installed, so every log records which battery the robot ran on. Proven so far on a
-laptop and a Pi 4 (300/300 reads, about 30 ms each, tag present at power-up read first time, name
-read from the tag's NDEF text record). Still open, and the test robots are where to prove them:
-the SystemCore image itself, read range through the battery wrap near metal, reads with the
-drivetrain running, and battery swaps while disabled.
+battery is installed, so every log records which battery the robot ran on. The code is in
+`frc.spectrumLib.battery` (see its README). Proven so far on a laptop and a Pi 4 (300/300 reads,
+about 30 ms each, tag present at power-up read first time). **Not yet run on SystemCore**: still to
+prove there are the CH340 driver in its kernel, the robot program's permission to open
+`/dev/ttyUSB0`, jSerialComm's native library loading, read range through the battery wrap near
+metal, reads with the drivetrain running, and swaps while disabled.
 
-How it fits here:
+How it fits:
 
-- The reader runs on its own daemon thread (serial I/O never on the main loop or swerve thread):
-  once at boot, then every 2 s while disabled. The main loop logs the result.
-- Battery UID and tag name are AdvantageKit **inputs** (`Battery/TagUID`, `Battery/TagName`), not
-  outputs, so replay and anything that reacts to the battery (an alert for a battery flagged as
-  weak, per-battery current limits) see the same value.
+- `BatteryTagIOSerial` reads on its own low-priority daemon thread (serial I/O never on the main
+  loop or swerve thread): once at boot, then every 2 s while disabled. It only publishes a
+  snapshot; the main loop logs it.
+- The reading is AdvantageKit **inputs** (`Battery/TagUID`, `Battery/TagName`, `Battery/TagPresent`,
+  `Battery/ReaderConnected`, `Battery/Reads`, `Battery/Error`, `Battery/SecondsSinceRead`,
+  `Battery/ListName`), so replay and anything that reacts
+  to the battery (the pre-match same-battery check, per-battery limits) see the same value.
+  The list name is an input too, so replay names the battery as the robot did. Outputs:
+  `Battery/Name` (tag name, else the list's name, else the UID) and `Battery/Swaps` (a swap through
+  "no tag" counts). The reader polls only while disabled, so in a match the reading is the
+  pre-match one; `SecondsSinceRead` says how old.
+- Finish the match: no reader, no tag or an unnamed battery is a LOW alert and nothing else. A
+  reader that stops answering is reopened every 2 s; a serial library that cannot load is retried
+  every 30 s.
+- The name written on the tag (a phone app writes it) wins; `src/main/deploy/batteries.csv`
+  (`UID,name`, the logger's format) names tags without one. The robot never writes it.
+- Sim reads a fixed battery `SIM00001` "sim-battery"; replay reads the log.
 - Per-battery history comes from the logs: voltage sag under load, energy used per match, and with
   the swerve's supply currents, internal resistance per battery over the season.
-- Code moves into `frc.spectrumLib` (reader driver plus a `BatteryTag` input source) and adds
-  `com.fazecast:jSerialComm`. The UID-to-name map is a deploy file.
 
 ## Simulation: rigid body and device faults
 
