@@ -43,6 +43,14 @@ public final class PhoenixBackground {
     private static final Map<String, StatusCode> RESULTS = new ConcurrentHashMap<>();
     private static final Map<String, Integer> PENDING = new ConcurrentHashMap<>();
 
+    /** The last exception a call (or its onDone) threw, by name, for logs. */
+    private static final Map<String, String> THROWN = new ConcurrentHashMap<>();
+
+    /** The last exception the call {@code name} threw, or "" if none has. */
+    public static String thrown(String name) {
+        return THROWN.getOrDefault(name, "");
+    }
+
     /**
      * Queues a blocking Phoenix call. It is tried up to five times until it returns OK.
      *
@@ -56,16 +64,34 @@ public final class PhoenixBackground {
         THREAD.execute(
                 () -> {
                     StatusCode code = StatusCode.StatusCodeNotInitialized;
-                    for (int t = 0; t < TRIES; t++) {
-                        code = call.get();
-                        if (code.isOK()) {
-                            break;
+                    try {
+                        for (int t = 0; t < TRIES; t++) {
+                            try {
+                                code = call.get();
+                            } catch (RuntimeException | LinkageError e) {
+                                // A throwing call is a failed try, not the end of this device:
+                                // record it and try again (here, then from the device's poll).
+                                code = StatusCode.GeneralError;
+                                THROWN.put(name, e.toString());
+                            }
+                            if (code != null && code.isOK()) {
+                                break;
+                            }
                         }
-                    }
-                    RESULTS.put(name, code);
-                    PENDING.computeIfPresent(name, (k, v) -> v > 1 ? v - 1 : null);
-                    if (onDone != null) {
-                        onDone.accept(code.isOK());
+                    } finally {
+                        // Always finish: a call left pending would never be queued again.
+                        if (code == null) {
+                            code = StatusCode.GeneralError;
+                        }
+                        RESULTS.put(name, code);
+                        PENDING.computeIfPresent(name, (k, v) -> v > 1 ? v - 1 : null);
+                        if (onDone != null) {
+                            try {
+                                onDone.accept(code.isOK());
+                            } catch (RuntimeException e) {
+                                THROWN.put(name, "onDone: " + e);
+                            }
+                        }
                     }
                 });
     }

@@ -128,6 +128,11 @@ public final class ModuleTrust {
 
     /** Modules not in {@link ModuleMode#NORMAL}, for alerts; empty when all are. */
     public String degradedSummary(String[] names) {
+        // Built only when a mode changes; called every loop.
+        if (summaryVersion == version && summary != null) {
+            return summary;
+        }
+        summaryVersion = version;
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < n; i++) {
             if (mode[i] != ModuleMode.NORMAL) {
@@ -137,6 +142,10 @@ public final class ModuleTrust {
                 sb.append(names[i]).append(' ').append(mode[i]);
             }
         }
-        return sb.toString();
+        summary = sb.toString();
+        return summary;
     }
+
+    private int summaryVersion;
+    private String summary;
 }

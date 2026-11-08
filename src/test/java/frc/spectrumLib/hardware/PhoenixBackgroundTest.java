@@ -39,4 +39,25 @@ class PhoenixBackgroundTest {
         assertEquals(3, tries.get());
         assertTrue(PhoenixBackground.result("test").isOK());
     }
+
+    @Test
+    void aThrowingCallStillFinishesAndCanBeQueuedAgain() throws Exception {
+        CountDownLatch done = new CountDownLatch(1);
+        boolean[] result = {true};
+        PhoenixBackground.run(
+                "throws",
+                () -> {
+                    throw new IllegalStateException("bad config");
+                },
+                ok -> {
+                    result[0] = ok;
+                    done.countDown();
+                });
+        assertTrue(done.await(2, TimeUnit.SECONDS));
+        Thread.sleep(20);
+        assertFalse(result[0]);
+        assertFalse(PhoenixBackground.pending("throws"), "not stuck pending");
+        assertFalse(PhoenixBackground.result("throws").isOK());
+        assertTrue(PhoenixBackground.thrown("throws").contains("bad config"));
+    }
 }

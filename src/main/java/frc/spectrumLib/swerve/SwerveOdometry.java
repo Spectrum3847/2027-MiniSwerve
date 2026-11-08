@@ -25,6 +25,11 @@ public final class SwerveOdometry {
     private final double[] vxm;
     private final double[] vym;
 
+    /** Whether each module's previous sample was fresh, and this sample's weights. */
+    private final boolean[] lastFresh;
+
+    private final double[] used;
+
     private double x;
     private double y;
     private double heading;
@@ -45,6 +50,8 @@ public final class SwerveOdometry {
         residual = new double[n];
         vxm = new double[n];
         vym = new double[n];
+        lastFresh = new boolean[n];
+        used = new double[n];
     }
 
     /** Puts the robot at a pose; the next sample's yaw becomes this heading. */
@@ -76,6 +83,9 @@ public final class SwerveOdometry {
         if (!primed) {
             System.arraycopy(s.distance, 0, lastDistance, 0, n);
             System.arraycopy(s.angle, 0, lastAngle, 0, n);
+            for (int i = 0; i < n; i++) {
+                lastFresh[i] = s.moduleOk[i];
+            }
             lastYaw = s.yaw;
             if (Double.isNaN(yawOffset)) {
                 yawOffset = heading - s.yaw;
@@ -91,11 +101,18 @@ public final class SwerveOdometry {
             dy[i] = d * Math.sin(a);
             lastDistance[i] = s.distance[i];
             lastAngle[i] = s.angle[i];
+            // A module's travel counts only between two fresh samples: the first fresh one after a
+            // dropout carries everything it moved while unheard, all in one sample, so it only
+            // re-primes the module.
+            boolean fresh = s.moduleOk[i];
+            used[i] = fresh && lastFresh[i] ? (weight == null ? 1.0 : weight[i]) : 0.0;
+            lastFresh[i] = fresh;
         }
+        weight = used;
         slip = SwerveMath.toChassisVelocities(dx, dy, mx, my, weight, twist, residual);
         modulesUsed = 0;
         for (int i = 0; i < n; i++) {
-            modulesUsed += weight == null || weight[i] > 0 ? 1 : 0;
+            modulesUsed += weight[i] > 0 ? 1 : 0;
         }
         if (Double.isNaN(slip) && !gyroGood) {
             // Nothing trustworthy moved us this sample: hold the pose.

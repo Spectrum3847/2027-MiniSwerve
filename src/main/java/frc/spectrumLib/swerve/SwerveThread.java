@@ -25,6 +25,10 @@ public final class SwerveThread {
     private volatile double maxDriveAcceleration = 10.0;
     private volatile double maxSteerVelocity = 20.0;
     private volatile double busVoltage = 12.0;
+
+    /** Last field heading used (rad), held and advanced while the gyro's samples are stale. */
+    private double heldHeading = Double.NaN;
+
     private volatile double maxSteerAcceleration =
             SwerveSetpointGenerator.DEFAULT_STEER_ACCELERATION;
     private final SwerveSetpointGenerator generator;
@@ -46,6 +50,8 @@ public final class SwerveThread {
     private volatile String lastFault = "";
     private volatile long cycles;
     private volatile long staleCycles;
+    private Class<?> lastFaultClass;
+    private String lastFaultMessage;
     private int faultsInRow;
 
     /** Failing cycles in a row the motors hold their last setpoint before going neutral. */
@@ -201,7 +207,14 @@ public final class SwerveThread {
             } catch (RuntimeException e) {
                 faults++;
                 faultsInRow++;
-                lastFault = e.toString();
+                // Reword only when the fault changes: a persistent bug would otherwise build a
+                // string every cycle.
+                if (e.getClass() != lastFaultClass
+                        || !java.util.Objects.equals(e.getMessage(), lastFaultMessage)) {
+                    lastFaultClass = e.getClass();
+                    lastFaultMessage = e.getMessage();
+                    lastFault = e.toString();
+                }
                 // A bug in our own code, not a device fault. The motors keep their last setpoint,
                 // so a one-off keeps the robot driving. The one exception to "Finish the match":
                 // if no command can be computed for 0.1 s, holding the last one would drive
@@ -248,6 +261,11 @@ public final class SwerveThread {
         double c = 1.0;
         double s = 0.0;
 
+        // Keep the held heading current in every mode, so a gyro dropout right after the robot
+        // was pushed or spun (neutral, X lock, robot-relative) holds today's heading.
+        if (sample.gyroOk && r.useGyro()) {
+            heldHeading = sample.yaw + r.headingOffset();
+        }
         switch (r.mode()) {
             case NEUTRAL -> {
                 System.arraycopy(sample.angle, 0, angle, 0, n);
@@ -269,9 +287,21 @@ public final class SwerveThread {
                 double vx = r.vx();
                 double vy = r.vy();
                 if (r.fieldRelative()) {
-                    // With the gyro down, the main loop sends the odometry heading itself.
-                    double heading =
-                            r.useGyro() ? sample.yaw + r.headingOffset() : r.headingOffset();
+                    // With the gyro down, the main loop sends the odometry heading itself. Between
+                    // the gyro dropping and the main loop noticing (up to ~0.1 s), this sample's
+                    // yaw is stale and extrapolated: hold the last fresh heading and advance it by
+                    // the turn rate we are commanding instead.
+                    double heading;
+                    if (!r.useGyro()) {
+                        heading = r.headingOffset();
+                    } else if (sample.gyroOk) {
+                        heading = sample.yaw + r.headingOffset();
+                    } else if (Double.isNaN(heldHeading)) {
+                        heading = sample.yaw + r.headingOffset(); // no fresh yaw seen yet
+                    } else {
+                        heading = heldHeading + lastOmega * dt;
+                    }
+                    heldHeading = heading;
                     // Aim with the heading the robot will have when the modules get there: the
                     // steer and drive loops lag, and a spinning robot turns meanwhile.
                     if (r.useGyro() && sample.gyroOk) {

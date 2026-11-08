@@ -49,6 +49,7 @@ public final class SwerveIOPhoenix implements SwerveIO {
     private final StatusSignal<?> yawRate;
     private final BaseStatusSignal[] fast;
     private final BaseStatusSignal[] slow;
+    private final PacedSignals paced;
 
     private final double metersPerWheelRotation;
 
@@ -179,13 +180,23 @@ public final class SwerveIOPhoenix implements SwerveIO {
                             drive[i].getSupplyVoltage(),
                             steer[i].getFault_FusedSensorOutOfSync(),
                             steer[i].getFault_RemoteSensorDataInvalid(),
-                            encoder[i].getFault_BadMagnet()));
+                            encoder[i].getFault_BadMagnet(),
+                            steer[i].getSupplyVoltage()));
         }
         yaw = pigeon.getYaw();
         yawRate = pigeon.getAngularVelocityZWorld();
         fastList.add(yaw);
         fastList.add(yawRate);
         fast = fastList.toArray(new BaseStatusSignal[0]);
+        // One group per device (drive, steer per module, then the Pigeon), so a silent device
+        // stops pacing the thread without slowing the others.
+        int[][] groups = new int[2 * n + 1][];
+        for (int i = 0; i < n; i++) {
+            groups[2 * i] = new int[] {4 * i, 4 * i + 1};
+            groups[2 * i + 1] = new int[] {4 * i + 2, 4 * i + 3};
+        }
+        groups[2 * n] = new int[] {4 * n, 4 * n + 1};
+        paced = new PacedSignals(fast, groups);
         slow = slowList.toArray(new BaseStatusSignal[0]);
         devices.setSignals(
                 () ->
@@ -210,8 +221,11 @@ public final class SwerveIOPhoenix implements SwerveIO {
         simPacer = pacer;
     }
 
-    /** Slow signals per module: 3 currents x2 motors, 2 temps, voltage, 3 faults. */
-    private static final int SLOW_PER_MODULE = 10;
+    /**
+     * Slow signals per module: stator and supply current for both motors, 2 temps, drive voltage, 3
+     * faults, steer voltage.
+     */
+    private static final int SLOW_PER_MODULE = 11;
 
     /** Applies a drive's whole config with the neutral mode wanted now. */
     private com.ctre.phoenix6.StatusCode applyDriveConfig(int i) {
@@ -230,7 +244,7 @@ public final class SwerveIOPhoenix implements SwerveIO {
             good = BaseStatusSignal.refreshAll(fast).isOK();
             pacer.accept(start);
         } else {
-            good = BaseStatusSignal.waitForAll(2.0 / cfg.signalHz(), fast).isOK();
+            good = paced.waitForSample(2.0 / cfg.signalHz());
         }
         out.allGood = good;
         // Capture time: the mean over fresh signals of their own timestamps (system receive time on
@@ -338,12 +352,14 @@ public final class SwerveIOPhoenix implements SwerveIO {
             h.fusedOk[i] =
                     slow[b + 7].getValueAsDouble() == 0 && slow[b + 8].getValueAsDouble() == 0;
             h.magnetOk[i] = slow[b + 9].getValueAsDouble() == 0;
+            h.driveSupplyVoltage[i] = slow[b + 6].getValueAsDouble();
+            h.steerSupplyVoltage[i] = slow[b + 10].getValueAsDouble();
         }
         // Highest reading among connected drive motors: one unplugged motor must not freeze it.
         double volts = Double.NaN;
         for (int i = 0; i < n; i++) {
             if (h.driveConnected[i]) {
-                double v = slow[i * SLOW_PER_MODULE + 6].getValueAsDouble();
+                double v = h.driveSupplyVoltage[i];
                 volts = Double.isNaN(volts) ? v : Math.max(volts, v);
             }
         }

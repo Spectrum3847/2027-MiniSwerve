@@ -104,12 +104,30 @@ class SwerveThreadTest {
         RecordingIO io = new RecordingIO();
         SwerveThread t = thread(io);
         t.sampleForTest().yaw = Math.PI / 2; // robot faces field +y
+        t.sampleForTest().gyroOk = true;
         java.util.Arrays.fill(t.sampleForTest().angle, -Math.PI / 2);
         t.computeTargets(DriveRequest.velocity(1, 0, 0, true, 0, true));
         for (int i = 0; i < 4; i++) {
             // Field +x is the robot's right.
             assertEquals(-Math.PI / 2, io.angle[i], 1e-6);
             assertEquals(1.0, io.velocity[i], 1e-6);
+        }
+    }
+
+    @Test
+    void aStaleGyroSampleHoldsTheLastHeadingInsteadOfItsYaw() {
+        RecordingIO io = new RecordingIO();
+        SwerveThread t = thread(io);
+        t.sampleForTest().yaw = Math.PI / 2;
+        t.sampleForTest().gyroOk = true;
+        java.util.Arrays.fill(t.sampleForTest().angle, -Math.PI / 2);
+        t.computeTargets(DriveRequest.velocity(1, 0, 0, true, 0, true));
+        // The gyro drops before the main loop notices: its yaw keeps extrapolating, wrongly.
+        t.sampleForTest().gyroOk = false;
+        t.sampleForTest().yaw = Math.PI;
+        t.computeTargets(DriveRequest.velocity(1, 0, 0, true, 0, true));
+        for (int i = 0; i < 4; i++) {
+            assertEquals(-Math.PI / 2, io.angle[i], 1e-6);
         }
     }
 

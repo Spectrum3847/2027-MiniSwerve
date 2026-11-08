@@ -10,6 +10,34 @@ class SwerveOdometryTest {
     private static final double[] MY = {H, -H, H, -H};
 
     /** Drives a chassis velocity for {@code seconds} as 250 Hz samples. */
+    /** A sample with every module reporting fresh readings. */
+    private static SwerveSample fresh() {
+        SwerveSample s = new SwerveSample(4);
+        java.util.Arrays.fill(s.moduleOk, true);
+        return s;
+    }
+
+    @Test
+    void aModuleBackFromADropoutDoesNotMoveThePose() {
+        SwerveOdometry odo = new SwerveOdometry(MX, MY);
+        SwerveSample s = fresh();
+        odo.update(s, true);
+        s.moduleOk[0] = false;
+        odo.update(s, true);
+        // Unheard for a while; when it comes back its reading carries 0.6 m of travel at once.
+        s.distance[0] = 0.6;
+        s.moduleOk[0] = true;
+        odo.update(s, true);
+        assertEquals(0.0, odo.x(), 1e-12);
+        assertEquals(0.0, odo.y(), 1e-12);
+        // From then on it counts again.
+        for (int i = 0; i < 4; i++) {
+            s.distance[i] += 0.01;
+        }
+        odo.update(s, true);
+        assertEquals(0.01, odo.x(), 1e-9);
+    }
+
     private static void drive(
             SwerveOdometry odo, SwerveSample s, double vx, double vy, double w, double seconds) {
         double[] speed = new double[4];
@@ -29,7 +57,7 @@ class SwerveOdometryTest {
     @Test
     void straightLine() {
         SwerveOdometry odo = new SwerveOdometry(MX, MY);
-        SwerveSample s = new SwerveSample(4);
+        SwerveSample s = fresh();
         odo.update(s, true);
         drive(odo, s, 1.0, 0, 0, 2.0);
         assertEquals(2.0, odo.x(), 1e-9);
@@ -39,7 +67,7 @@ class SwerveOdometryTest {
     @Test
     void headingResetRotatesTheFrame() {
         SwerveOdometry odo = new SwerveOdometry(MX, MY);
-        SwerveSample s = new SwerveSample(4);
+        SwerveSample s = fresh();
         odo.update(s, true);
         odo.resetPose(0, 0, Math.PI / 2);
         drive(odo, s, 1.0, 0, 0, 1.0);
@@ -50,7 +78,7 @@ class SwerveOdometryTest {
     @Test
     void driveWhileSpinningStaysOnTheLine() {
         SwerveOdometry odo = new SwerveOdometry(MX, MY);
-        SwerveSample s = new SwerveSample(4);
+        SwerveSample s = fresh();
         odo.update(s, true);
         // Field-relative 1 m/s along x while spinning 2 rad/s, via robot-frame velocities.
         double[] speed = new double[4];
@@ -76,7 +104,7 @@ class SwerveOdometryTest {
     @Test
     void aBadModuleIsLeftOut() {
         SwerveOdometry odo = new SwerveOdometry(MX, MY);
-        SwerveSample s = new SwerveSample(4);
+        SwerveSample s = fresh();
         odo.update(s, true);
         double[] weight = {1, 1, 1, 0};
         for (int k = 0; k < 250; k++) {
