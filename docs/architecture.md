@@ -350,9 +350,13 @@ How it fits:
   loop or swerve thread): once at boot, then every 2 s while disabled. It only publishes a
   snapshot; the main loop logs it.
 - The reading is AdvantageKit **inputs** (`Battery/TagUID`, `Battery/TagName`, `Battery/TagPresent`,
-  `Battery/ReaderConnected`, `Battery/Reads`, `Battery/Error`), so replay and anything that reacts
+  `Battery/ReaderConnected`, `Battery/Reads`, `Battery/Error`, `Battery/SecondsSinceRead`,
+  `Battery/ListName`), so replay and anything that reacts
   to the battery (the pre-match same-battery check, per-battery limits) see the same value.
-  Outputs: `Battery/Name` (tag name, else the list's name, else the UID) and `Battery/Swaps`.
+  The list name is an input too, so replay names the battery as the robot did. Outputs:
+  `Battery/Name` (tag name, else the list's name, else the UID) and `Battery/Swaps` (a swap through
+  "no tag" counts). The reader polls only while disabled, so in a match the reading is the
+  pre-match one; `SecondsSinceRead` says how old.
 - Finish the match: no reader, no tag or an unnamed battery is a LOW alert and nothing else. A
   reader that stops answering is reopened every 2 s; a serial library that cannot load is retried
   every 30 s.

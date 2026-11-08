@@ -23,6 +23,10 @@ public final class BatteryTag {
     private final Alert unnamed = new Alert("", Alert.Level.LOW);
 
     private String lastUid = "";
+
+    /** The last non-empty UID seen, so a swap through "no tag" still counts. */
+    private String lastBatteryUid = "";
+
     private String lastTagName = "";
     private String lastError = "";
     private String name = "";
@@ -45,11 +49,15 @@ public final class BatteryTag {
      */
     public void periodic(boolean disabled) {
         io.updateInputs(inputs, disabled);
+        inputs.listName = names.name(inputs.uid);
         Logger.processInputs("Battery", inputs);
 
         if (!inputs.uid.equals(lastUid) || !inputs.tagName.equals(lastTagName)) {
-            if (!inputs.uid.isEmpty() && !lastUid.isEmpty() && !inputs.uid.equals(lastUid)) {
-                swaps++;
+            if (!inputs.uid.isEmpty()) {
+                if (!lastBatteryUid.isEmpty() && !inputs.uid.equals(lastBatteryUid)) {
+                    swaps++;
+                }
+                lastBatteryUid = inputs.uid;
             }
             lastUid = inputs.uid;
             lastTagName = inputs.tagName;
@@ -61,10 +69,10 @@ public final class BatteryTag {
             noReader.setText("Battery tag reader not answering: " + inputs.error);
         }
 
-        noReader.set(!inputs.readerConnected);
+        // Quiet while the reader thread makes its first attempt at boot.
+        noReader.set(!inputs.readerConnected && !inputs.error.equals(BatteryTagIOSerial.STARTING));
         noTag.set(inputs.readerConnected && inputs.reads > 0 && !inputs.tagPresent);
-        unnamed.set(
-                inputs.tagPresent && inputs.tagName.isEmpty() && names.name(inputs.uid).isEmpty());
+        unnamed.set(inputs.tagPresent && inputs.tagName.isEmpty() && inputs.listName.isEmpty());
 
         // Battery in the robot: tag name, else the list's name, else the UID; "" if unknown.
         Logger.recordOutput("Battery/Name", name);
@@ -79,8 +87,12 @@ public final class BatteryTag {
         if (!inputs.tagName.isEmpty()) {
             return inputs.tagName;
         }
-        String listed = names.name(inputs.uid);
-        return listed.isEmpty() ? inputs.uid : listed;
+        return inputs.listName.isEmpty() ? inputs.uid : inputs.listName;
+    }
+
+    /** Times a different battery replaced the one before, since boot. */
+    public int swaps() {
+        return swaps;
     }
 
     /** The battery's tag UID, or "" if no tag is known. */
@@ -93,7 +105,10 @@ public final class BatteryTag {
         return name;
     }
 
-    /** Whether a battery tag is being read now. */
+    /**
+     * Whether the last read found a tag. The reader polls only while disabled, so during a match
+     * this is the pre-match read (see {@link BatteryTagInputs#secondsSinceRead}).
+     */
     public boolean identified() {
         return inputs.readerConnected && inputs.tagPresent;
     }

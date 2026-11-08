@@ -37,10 +37,16 @@ public final class BatteryTagIOSerial implements BatteryTagIO {
             String uid,
             String tagName,
             long reads,
-            String error) {}
+            String error,
+            long readNanos) {}
 
-    private volatile Snapshot latest = new Snapshot(false, false, "", "", 0, "starting");
+    private volatile Snapshot latest = new Snapshot(false, false, "", "", 0, STARTING, 0);
+
+    /** The error reported until the reader thread's first attempt finishes. */
+    static final String STARTING = "starting";
+
     private volatile boolean mayRead;
+    private long lastReadNanos;
     private final Supplier<Optional<String>> findPort;
     private final PortOpener open;
     private long reads;
@@ -76,11 +82,24 @@ public final class BatteryTagIOSerial implements BatteryTagIO {
         inputs.tagName = s.tagName();
         inputs.reads = s.reads();
         inputs.error = s.error();
+        // Elapsed wall time, as a logged input: replay reads it back rather than recomputing it.
+        inputs.secondsSinceRead =
+                s.readNanos() == 0 ? -1 : (System.nanoTime() - s.readNanos()) * 1e-9;
     }
 
     private void run() {
-        while (true) {
-            sleep(cycle());
+        while (!Thread.currentThread().isInterrupted()) {
+            int waitMillis;
+            try {
+                waitMillis = cycle();
+            } catch (Throwable t) {
+                // Never let the thread die silently: the robot would keep showing the last read.
+                disconnected("reader thread: " + t);
+                waitMillis = POLL_MILLIS;
+            }
+            if (!sleep(waitMillis)) {
+                return;
+            }
         }
     }
 
@@ -96,6 +115,9 @@ public final class BatteryTagIOSerial implements BatteryTagIO {
             // jSerialComm's native library did not load on this machine.
             disconnected("serial library unavailable: " + e);
             return NATIVE_RETRY_MILLIS;
+        } catch (RuntimeException e) {
+            disconnected("listing serial ports: " + e);
+            return POLL_MILLIS;
         }
         if (port.isEmpty()) {
             disconnected("no reader on USB");
@@ -127,6 +149,7 @@ public final class BatteryTagIOSerial implements BatteryTagIO {
     void read(Pn532 reader) throws Exception {
         Optional<TagInfo> tag = reader.readTag(READ_TIMEOUT_MILLIS, true);
         reads++;
+        lastReadNanos = System.nanoTime();
         latest =
                 new Snapshot(
                         true,
@@ -134,11 +157,20 @@ public final class BatteryTagIOSerial implements BatteryTagIO {
                         tag.map(TagInfo::uidHex).orElse(""),
                         tag.map(TagInfo::name).map(String::strip).orElse(""),
                         reads,
-                        "");
+                        "",
+                        lastReadNanos);
     }
 
     private void disconnected(String error) {
-        latest = new Snapshot(false, false, "", "", reads, error == null ? "unknown" : error);
+        latest =
+                new Snapshot(
+                        false,
+                        false,
+                        "",
+                        "",
+                        reads,
+                        error == null ? "unknown" : error,
+                        lastReadNanos);
     }
 
     /** Returns false if interrupted (the thread should stop). */
