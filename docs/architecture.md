@@ -225,6 +225,12 @@ roll; SystemCore IMU `MountOrientation` and yaw.
   toward the request as far as every wheel's acceleration allows (`maxDriveAcceleration`), and
   turns modules at most `maxSteerVelocity`. That turn rate goes to the steer motors as a velocity
   feedforward.
+- **Motor acceleration limit** (`swerve/motorAccelerationLimit`, on; team 254's idea): a wheel
+  speeding up is also held to what its motor can give at its speed and the battery voltage
+  (`DriveMotorLimit`: back-EMF, the drive slip current, the supply current limit, robot weight).
+  So near top speed or on a sagging battery the plan is one the motors can follow, and the
+  wheels stay on their setpoints. Braking stays at the traction limit (back-EMF helps it). The
+  voltage is `Swerve/Health/SupplyVoltage`: the highest among connected drive motors.
 - **Rotation lookahead** (`swerve/rotationLookahead`, 0.04 s): field-relative requests are aimed
   with heading + yaw rate x lookahead, so driving while spinning goes straight. Sim: sideways drift
   over the spin-and-drive step fell from 0.61 m to 0.07 m. Tune on the robot.
@@ -365,6 +371,32 @@ How it fits:
 - Sim reads a fixed battery `SIM00001` "sim-battery"; replay reads the log.
 - Per-battery history comes from the logs: voltage sag under load, energy used per match, and with
   the swerve's supply currents, internal resistance per battery over the season.
+- Low battery: `BatteryVoltageCheck` judges the voltage only after `battery/settleSeconds` (3 s)
+  disabled, so normal sag under load never trips it. Below `battery/lowVolts` (12.3 V) it raises a
+  MEDIUM alert that stays up through the match. `Battery/RestingVoltage` with `Battery/Name` gives
+  each battery's resting voltage history.
+
+## Planned (from other teams' code)
+
+Decided after reading the reports in Other Team's Code Collection (`analysis/`). In order of when:
+
+- **Drive to pose and auto steps that check sensors** (254, 1678, 2910, 6328): with the auto setup.
+  Each step has a success check, a timeout and a fallback (retry, skip, re-localize).
+- **Collision and stall detection on paths** (1678 speed check, 3256 pause with hysteresis, 6328
+  `BeachedUtil`): with the auto and pathfinding work. Commanded vs measured speed, odometry slip,
+  Pigeon pitch/roll; pause the path or replan, and raise odometry noise in TagEKF while slipping.
+- **Rejecting tags after fast spins** (254 rejects single tags if yaw rate passed 5 rad/s in the
+  last 0.3 s): our exposure and latency are short, so the window and rate come from testing on
+  the robot, not 254's numbers; it may not be needed at all.
+- **Pit self-test in test mode** (6328, 2046, 2910): spin each module and check direction, speed
+  and current; CANcoder against rotor; gyro drift at rest; frames from every camera. Pass/fail as
+  logged inputs and alerts, so inversions and offsets are caught before a match.
+- **Game-piece pickup** (6328, 1678), once object detection exists: a tracker per piece, re-rank
+  with hysteresis, ban a spot after a failed pickup, success from the intake sensor.
+- **Sim sweeps**, after the above: run the sim scripts headless many times with random seeds,
+  camera dropouts and defenders; report pose error and auto success rate as regression numbers.
+
+Not doing: a physical coast/brake switch (2910); `CoastOnDisable` covers it.
 
 ## Simulation: rigid body and device faults
 

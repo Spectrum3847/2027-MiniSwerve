@@ -339,7 +339,15 @@ public final class SwerveIOPhoenix implements SwerveIO {
                     slow[b + 7].getValueAsDouble() == 0 && slow[b + 8].getValueAsDouble() == 0;
             h.magnetOk[i] = slow[b + 9].getValueAsDouble() == 0;
         }
-        h.supplyVoltage = slow[6].getValueAsDouble();
+        // Highest reading among connected drive motors: one unplugged motor must not freeze it.
+        double volts = Double.NaN;
+        for (int i = 0; i < n; i++) {
+            if (h.driveConnected[i]) {
+                double v = slow[i * SLOW_PER_MODULE + 6].getValueAsDouble();
+                volts = Double.isNaN(volts) ? v : Math.max(volts, v);
+            }
+        }
+        h.supplyVoltage = Double.isNaN(volts) ? 0.0 : volts;
         h.pigeonConnected = devices.connected(pigeonIndex) && devices.configured(pigeonIndex);
         h.timesync = timesync;
         h.deviceResets = devices.resets();

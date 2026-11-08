@@ -10,7 +10,8 @@ package frc.spectrumLib.swerve;
  *   <li>Move the chassis setpoint from last cycle's toward the request by the largest fraction
  *       {@code s} that keeps every wheel's speed change within {@code maxDriveAcceleration * dt}
  *       (bisection; s = 0 always fits). Acceleration, braking and reversing through zero are all
- *       limited the same way.
+ *       limited the same way. With a {@link DriveMotorLimit}, a wheel speeding up is also held to
+ *       what its motor can give at its speed and the battery voltage.
  *   <li>Turn each module toward its new direction (the short way) by at most {@code
  *       maxSteerVelocity * dt}; that turn rate is the steer velocity feedforward.
  * </ol>
@@ -65,6 +66,20 @@ public final class SwerveSetpointGenerator {
         turnAtZero = new double[n];
         requestDir = new double[n];
         reachable = new double[n];
+        speedUpDelta = new double[n];
+    }
+
+    /**
+     * Also limits each wheel's speed-up to what its motor can give (null: only the configured
+     * acceleration). Swerve thread, between cycles.
+     */
+    public void setMotorLimit(DriveMotorLimit limit) {
+        motorLimit = limit;
+    }
+
+    /** Battery voltage the motor limit uses this cycle (V). Swerve thread, before generate. */
+    public void setBusVoltage(double volts) {
+        busVolts = volts;
     }
 
     /**
@@ -168,6 +183,14 @@ public final class SwerveSetpointGenerator {
         // 2. Largest step toward the request that every wheel's acceleration allows.
         double maxDelta = maxDriveAcceleration * dt;
         maxTurnStep = maxSteerVelocity * dt;
+        for (int i = 0; i < n; i++) {
+            speedUpDelta[i] =
+                    motorLimit == null
+                            ? maxDelta
+                            : Math.min(
+                                    maxDelta,
+                                    motorLimit.maxSpeedUp(lastVelocity[i], busVolts) * dt);
+        }
         // How far each wheel is from the direction it already has to point (s = 0): the step may
         // not make any wheel turn further than it can this cycle, unless it is already behind, and
         // then only not worse. So the robot's direction never outruns its wheels.
@@ -231,8 +254,7 @@ public final class SwerveSetpointGenerator {
             double v = along(pvx, pvy, pw, i, angle[i]);
             // Turning the wheel also changes its speed along where it points; keep that change
             // within the acceleration limit too. What is stored is exactly what is sent.
-            velocity[i] =
-                    Math.max(lastVelocity[i] - maxDelta, Math.min(lastVelocity[i] + maxDelta, v));
+            velocity[i] = step(lastVelocity[i], v, maxDelta, speedUpDelta[i]);
             lastAngle[i] = angle[i];
             lastVelocity[i] = velocity[i];
         }
@@ -250,7 +272,10 @@ public final class SwerveSetpointGenerator {
                 continue; // a passive wheel's speed is not ours to limit
             }
             // Same quantity as the stored speed, so s = 0 always fits and the check is linear in s.
-            if (Math.abs(along(cx, cy, cw, i, lastAngle[i]) - lastVelocity[i]) > maxDelta + 1e-9) {
+            double v = along(cx, cy, cw, i, lastAngle[i]);
+            // The same two limits step() applies: any change, and growth in the speed's size.
+            if (Math.abs(v - lastVelocity[i]) > maxDelta + 1e-9
+                    || Math.abs(v) - Math.abs(lastVelocity[i]) > speedUpDelta[i] + 1e-9) {
                 return false;
             }
             if (turnNeeded(cx, cy, cw, i) > Math.max(reachable[i], turnAtZero[i]) + 1e-9) {
@@ -260,6 +285,22 @@ public final class SwerveSetpointGenerator {
         return true;
     }
 
+    /**
+     * Moves from {@code last} toward {@code target} by at most {@code maxDelta}, and at most {@code
+     * speedUp} while the speed's size grows.
+     */
+    private static double step(double last, double target, double maxDelta, double speedUp) {
+        double v = Math.max(last - maxDelta, Math.min(last + maxDelta, target));
+        double cap = Math.abs(last) + speedUp;
+        if (Math.abs(v) > cap) {
+            v = Math.copySign(cap, v);
+        }
+        return v;
+    }
+
+    private DriveMotorLimit motorLimit;
+    private double busVolts = 12.0;
+    private final double[] speedUpDelta;
     private boolean[] pushing;
     private double maxTurnStep;
     private final double[] turnAtZero;

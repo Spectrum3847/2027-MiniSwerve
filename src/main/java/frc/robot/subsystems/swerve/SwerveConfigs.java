@@ -2,6 +2,7 @@ package frc.robot.subsystems.swerve;
 
 import frc.robot.config.Hardware;
 import frc.robot.config.ImuSettings;
+import frc.spectrumLib.swerve.DriveMotorLimit;
 import frc.spectrumLib.swerve.PhoenixSwerveConfig;
 import org.littletonrobotics.junction.Logger;
 
@@ -108,6 +109,23 @@ final class SwerveConfigs {
         return Math.min(
                 SwerveSettings.MAX_DRIVE_ACCELERATION.get(),
                 SwerveSettings.TRACTION_USE.get() * tractionLimit());
+    }
+
+    /** Each drive motor's speed-up limit for the setpoint generator, or null when turned off. */
+    static DriveMotorLimit motorLimit(int wheels) {
+        if (!SwerveSettings.MOTOR_ACCELERATION_LIMIT.get()) {
+            return null;
+        }
+        return new DriveMotorLimit(
+                Hardware.MK4iL2.DRIVE_STALL_TORQUE,
+                Hardware.MK4iL2.DRIVE_STALL_CURRENT,
+                Hardware.MK4iL2.DRIVE_FREE_RPM,
+                Hardware.MK4iL2.DRIVE_RATIO,
+                SwerveSettings.WHEEL_RADIUS.get(),
+                driveSlipCurrent(),
+                Hardware.DRIVE_SUPPLY_LIMIT_AMPS,
+                SwerveSettings.robotMassKg(),
+                wheels);
     }
 
     private static final double GRAVITY = 9.81;

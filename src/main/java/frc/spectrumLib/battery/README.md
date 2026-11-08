@@ -10,6 +10,7 @@ at 3b351b1 (the driver files are its code with the package changed; fix bugs the
 | `BatteryTagIO` | Where readings come from; `fixed(uid, name)` for sim, `NONE` for replay |
 | `BatteryTagIOSerial` | The real reader on a low-priority daemon thread: reads at boot, then every 2 s while disabled; reports and retries a missing reader |
 | `BatteryTagInputs` | Logged inputs under `Battery/`: reader connected, tag present, UID, tag name, reads, error, age of the last read, list name |
+| `BatteryVoltageCheck` | Low-battery warning judged at rest (disabled a few seconds); logs the resting voltage |
 | `BatteryNames` | The team list `UID,name` (deploy `batteries.csv`) for tags with no name written on them |
 | `Pn532` | Minimal PN532 driver over HSU (UART): find one ISO14443A tag, read an NTAG's name |
 | `Pn532Transport` | Byte pipe to the reader (serial, or a fake in tests) |
