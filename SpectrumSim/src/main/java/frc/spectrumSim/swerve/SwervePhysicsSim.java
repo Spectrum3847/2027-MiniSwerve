@@ -113,7 +113,7 @@ public final class SwervePhysicsSim {
     private static final double WHEEL_INERTIA = 0.0005;
 
     /** The field the robot drives on, or null for open floor with no walls. */
-    private Arena arena;
+    private volatile Arena arena;
 
     private final Arena.Body body = new Arena.Body();
     private volatile int contacts;
@@ -344,7 +344,7 @@ public final class SwervePhysicsSim {
         }
         // Each tire grips in proportion to its share of the weight, which shifts as the robot
         // accelerates (last step's acceleration: the loads lag it by one step).
-        loads.update(robotMassKg * normal, cogHeight, lastAx, lastAy);
+        loads.update(robotMassKg, cogHeight, lastAx, lastAy, normal);
         double gripMax = 0;
         for (int i = 0; i < n; i++) {
             gripMax = Math.max(gripMax, tireFriction * loads.load(i));
@@ -752,18 +752,26 @@ public final class SwervePhysicsSim {
      * under it (sim truth, for the cameras).
      */
     public org.wpilib.math.geometry.Pose3d fieldPose3d() {
-        Pose2d p = fieldPose();
-        double z, roll, pitch;
+        double x, y, h, z, roll, pitch;
+        // One snapshot, taken after the step's collisions: pose and tilt from the same step.
         synchronized (loadSnapshot) {
+            x = truthSnapshot[0];
+            y = truthSnapshot[1];
+            h = truthSnapshot[2];
             z = tiltSnapshot[0];
             roll = tiltSnapshot[1];
             pitch = tiltSnapshot[2];
         }
+        Arena a = arena;
+        double sx = a != null ? a.startX : 0;
+        double sy = a != null ? a.startY : 0;
+        double sh = a != null ? a.startHeading : 0;
+        double c0 = Math.cos(sh), s0 = Math.sin(sh);
         return new org.wpilib.math.geometry.Pose3d(
-                p.getX(),
-                p.getY(),
+                sx + x * c0 - y * s0,
+                sy + x * s0 + y * c0,
                 z,
-                new org.wpilib.math.geometry.Rotation3d(roll, pitch, p.getRotation().getRadians()));
+                new org.wpilib.math.geometry.Rotation3d(roll, pitch, sh + h));
     }
 
     public double truthX() {

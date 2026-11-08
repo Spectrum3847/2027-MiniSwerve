@@ -47,6 +47,17 @@ class TerrainContactTest {
     }
 
     @Test
+    void theLipAddsNoSlope() {
+        // A ramp with a 2 cm lip at its foot: a wheel right on the lip sees the ramp's slope, not
+        // the step's.
+        Terrain lipped = new Terrain(new double[][] {{5, 0, 10, 10, 5, 15, 0, 0.02}});
+        TerrainContact c = new TerrainContact(MX, MY);
+        c.update(lipped, H + 0.001, 0, 0); // back wheels 1 mm onto the ramp, on the lip
+        assertEquals(1 / Math.cos(Math.toRadians(15)), c.stretch(0, 1, 0), 1e-6);
+        assertEquals(1 / Math.cos(Math.toRadians(15)), c.stretch(2, 1, 0), 1e-6);
+    }
+
+    @Test
     void flatFloorIsFlat() {
         TerrainContact c = new TerrainContact(MX, MY);
         c.update(Terrain.FLAT, 3, 3, 1);

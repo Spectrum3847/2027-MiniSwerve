@@ -60,6 +60,35 @@ public final class Terrain {
         return z;
     }
 
+    /**
+     * The floor's slope at a field point (rise per meter along field x and y) into {@code out}.
+     * Exact, not differenced: the lip at a ramp's foot and a bump's side faces are steps of no
+     * length, so they add no slope (the plane fit under the wheels still lifts the robot over
+     * them).
+     */
+    public void slope(double x, double y, double[] out) {
+        double z = 0, gx = 0, gy = 0;
+        for (int i = 0; i < cx.length; i++) {
+            double dx = x - cx[i], dy = y - cy[i];
+            double signedAlong = dx * cos[i] + dy * sin[i];
+            double along = Math.abs(signedAlong);
+            double across = Math.abs(-dx * sin[i] + dy * cos[i]);
+            if (along < halfLength[i] && across < halfWidth[i]) {
+                double ramp = edge[i] + (halfLength[i] - along) * slope[i];
+                double h = Math.min(height[i], ramp);
+                if (h > z) {
+                    z = h;
+                    // On a ramp the floor falls away from the middle; on the cap it is level.
+                    double s = ramp < height[i] ? -Math.signum(signedAlong) * slope[i] : 0;
+                    gx = s * cos[i];
+                    gy = s * sin[i];
+                }
+            }
+        }
+        out[0] = gx;
+        out[1] = gy;
+    }
+
     /** Bumps in this terrain. */
     public int bumps() {
         return cx.length;

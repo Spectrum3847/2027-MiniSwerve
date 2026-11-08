@@ -32,8 +32,7 @@ final class TerrainContact {
 
     private final double[] wheelSlopeY;
 
-    /** Distance for the slope under a wheel, by central difference (m). */
-    private static final double PROBE = 0.01;
+    private final double[] fieldSlope = new double[2];
 
     TerrainContact(double[] mx, double[] my) {
         this.mx = mx.clone();
@@ -59,10 +58,9 @@ final class TerrainContact {
             double wy = y + mx[i] * s + my[i] * c;
             double z = terrain.height(wx, wy);
             // Field-frame slope under the wheel, turned into the robot frame.
-            double sx =
-                    (terrain.height(wx + PROBE, wy) - terrain.height(wx - PROBE, wy)) / (2 * PROBE);
-            double sy =
-                    (terrain.height(wx, wy + PROBE) - terrain.height(wx, wy - PROBE)) / (2 * PROBE);
+            terrain.slope(wx, wy, fieldSlope);
+            double sx = fieldSlope[0];
+            double sy = fieldSlope[1];
             wheelSlopeX[i] = sx * c + sy * s;
             wheelSlopeY[i] = -sx * s + sy * c;
             mean += z;
