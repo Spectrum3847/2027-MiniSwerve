@@ -80,7 +80,6 @@ public final class Arena {
                 startHeading);
     }
 
-    /** Adds another robot (partner or opponent). Before the sim starts. */
     private Terrain terrain = Terrain.FLAT;
 
     /** Sets the floor's bumps and ramps (default flat). */
@@ -93,6 +92,7 @@ public final class Arena {
         return terrain;
     }
 
+    /** Adds another robot (partner or opponent). Before the sim starts. */
     public void add(SimRobot robot) {
         robots.add(robot);
     }

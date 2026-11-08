@@ -134,7 +134,6 @@ final class SimScripts {
         new SimScript.Step(0.5, "stop", 0, 0, 0),
     };
 
-    /** The script with this name, or null. */
     /**
      * Over a bump and back: run with {@code SPECTRUM_SIM_TERRAIN=2026-rebuilt} and {@code
      * SPECTRUM_SIM_START=2.5,2.511,0} to cross a 2026 BUMP, then watch {@code Sim/FieldPose3d} and
@@ -148,6 +147,7 @@ final class SimScripts {
         new SimScript.Step(1.0, "stop", 0, 0, 0),
     };
 
+    /** The script with this name, or null. */
     static SimScript.Step[] byName(String name) {
         return switch (name) {
             case "drive" -> DRIVE;

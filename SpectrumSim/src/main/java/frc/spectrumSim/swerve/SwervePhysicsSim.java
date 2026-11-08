@@ -606,8 +606,11 @@ public final class SwervePhysicsSim {
      * odometry; robot logic must never read it.
      */
     public void logTruth(double odometryX, double odometryY) {
-        double x, y, truthH;
+        double x, y, truthH, z, roll, pitch;
         synchronized (loadSnapshot) {
+            z = tiltSnapshot[0];
+            roll = tiltSnapshot[1];
+            pitch = tiltSnapshot[2];
             x = truthSnapshot[0];
             y = truthSnapshot[1];
             truthH = truthSnapshot[2];
@@ -631,12 +634,6 @@ public final class SwervePhysicsSim {
                             arena.startX + x * c0 - y * s0,
                             arena.startY + x * s0 + y * c0,
                             Rotation2d.fromRadians(arena.startHeading + truthH)));
-            double z, roll, pitch;
-            synchronized (loadSnapshot) {
-                z = tiltSnapshot[0];
-                roll = tiltSnapshot[1];
-                pitch = tiltSnapshot[2];
-            }
             // The robot's true pose on the field in 3D: height and tilt from the floor's bumps.
             org.littletonrobotics.junction.Logger.recordOutput(
                     "Sim/FieldPose3d",
