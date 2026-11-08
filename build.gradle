@@ -101,6 +101,9 @@ dependencies {
     // RobotSettings reads JSON with Jackson; WPILib 2027 does not ship it.
     implementation 'com.fasterxml.jackson.core:jackson-databind:2.19.2'
 
+    // Battery NFC tag reader (PN532 on USB serial); bundles natives for SystemCore and desktops.
+    implementation 'com.fazecast:jSerialComm:2.11.0'
+
     errorprone 'com.google.errorprone:error_prone_core:2.50.0'
 
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.1'

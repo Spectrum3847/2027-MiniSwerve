@@ -10,6 +10,10 @@ import frc.robot.subsystems.pose.Localization;
 import frc.robot.subsystems.swerve.Swerve;
 import frc.robot.subsystems.vision.Vision;
 import frc.robot.subsystems.vision.VisionSettings;
+import frc.spectrumLib.battery.BatteryNames;
+import frc.spectrumLib.battery.BatteryTag;
+import frc.spectrumLib.battery.BatteryTagIO;
+import frc.spectrumLib.battery.BatteryTagIOSerial;
 import frc.spectrumLib.framework.DesktopSim;
 import frc.spectrumLib.framework.OpModeLoop;
 import frc.spectrumLib.framework.RobotLoop;
@@ -40,6 +44,8 @@ import org.wpilib.util.Alert.Level;
  *   <li>{@link RobotLoop#next()} - loop counter
  *   <li>{@link RobotSettings#periodic()} - apply live tuning, log values (inputs)
  *   <li>{@link Swerve#updateInputs()} - drain 250 Hz samples, log, odometry
+ *   <li>{@link BatteryTag#periodic} - which battery is in (NFC tag, logged inputs)
+ *   <li>vision, then localization
  *   <li>{@link OpModeLoop#run()} - the running OpMode's requests
  *   <li>{@link CommandScheduler#run()} - wanted-state requests and commands
  *   <li>{@link Swerve#applyWantedState()} - wanted state to the swerve thread
@@ -53,6 +59,7 @@ public class Robot extends SpectrumRobot {
     private final Alert mainThreadPriorityAlert = new Alert("", Level.MEDIUM);
     private final Swerve swerve;
     private final Vision vision;
+    private final BatteryTag battery;
     private final Localization localization;
     private final SimScript simScript;
     private final DesktopSim desktopSim;
@@ -95,6 +102,11 @@ public class Robot extends SpectrumRobot {
             }
             vision.expectFrames(desktopSim.cameras(field, vision.names(), mounts));
         }
+        battery =
+                new BatteryTag(
+                        batteryReader(),
+                        BatteryNames.load(
+                                Filesystem.getDeployDirectory().toPath().resolve("batteries.csv")));
         // The pilot only binds controls; the bindings keep it alive.
         new Pilot(swerve);
         registerOpModes();
@@ -108,6 +120,18 @@ public class Robot extends SpectrumRobot {
         }
     }
 
+    /**
+     * The battery tag reader: the USB NFC reader on the robot, a fixed sim battery on the desktop,
+     * the log in replay.
+     */
+    private static BatteryTagIO batteryReader() {
+        return switch (RunMode.CURRENT) {
+            case REAL -> new BatteryTagIOSerial();
+            case SIM -> BatteryTagIO.fixed("SIM00001", "sim-battery");
+            case REPLAY -> BatteryTagIO.NONE;
+        };
+    }
+
     @Override
     public void robotPeriodic() {
         if (desktopSim != null) {
@@ -119,6 +143,7 @@ public class Robot extends SpectrumRobot {
         }
         RobotSettings.periodic();
         swerve.updateInputs();
+        battery.periodic(org.wpilib.driverstation.RobotState.isDisabled());
         vision.periodic();
         localization.periodic(vision, org.wpilib.system.Timer.getTimestamp());
         opModeLoop.run();
