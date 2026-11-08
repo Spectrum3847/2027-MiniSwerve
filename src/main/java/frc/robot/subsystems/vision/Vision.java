@@ -39,7 +39,23 @@ public final class Vision {
     private final long[] badFrames;
     private final double[] lastFrameSeconds;
     private final Alert[] staleAlerts;
-    private final String[] keys;
+    private final long[] restarts;
+
+    /** Log keys per camera, built once so the loop builds no strings. */
+    private final String[] connectedKey;
+
+    private final String[] droppedKey;
+    private final String[] badKey;
+    private final String[] latencyKey;
+    private final String[] tagsKey;
+    private final String[] restartsKey;
+
+    /**
+     * A sequence number this far below the last one means the camera's process restarted (its
+     * counter began again), not a late frame.
+     */
+    private static final long RESTART_JUMP = 50;
+
     private boolean expectFrames = true;
 
     /** Receives one decoded frame: camera index, its mount, the frame. */
@@ -71,9 +87,21 @@ public final class Vision {
         badFrames = new long[n];
         lastFrameSeconds = new double[n];
         java.util.Arrays.fill(lastFrameSeconds, Double.NEGATIVE_INFINITY);
-        keys = new String[n];
+        restarts = new long[n];
+        connectedKey = new String[n];
+        droppedKey = new String[n];
+        badKey = new String[n];
+        latencyKey = new String[n];
+        tagsKey = new String[n];
+        restartsKey = new String[n];
         for (int i = 0; i < n; i++) {
-            keys[i] = "Vision/" + names[i];
+            String key = "Vision/" + names[i];
+            connectedKey[i] = key + "/Connected";
+            droppedKey[i] = key + "/DroppedFrames";
+            badKey[i] = key + "/BadFrames";
+            latencyKey[i] = key + "/LatencyMs";
+            tagsKey[i] = key + "/Tags";
+            restartsKey[i] = key + "/Restarts";
         }
         staleAlerts = new Alert[n];
         for (int i = 0; i < n; i++) {
@@ -118,6 +146,12 @@ public final class Vision {
                     break; // the rest of this loop's bytes cannot be framed
                 }
                 offset += used;
+                if (f.sequence < lastSequence[i] - RESTART_JUMP) {
+                    // The camera restarted and counts from the start again: count gaps from
+                    // here, or every drop would hide until the new count passed the old one.
+                    restarts[i]++;
+                    lastSequence[i] = -1;
+                }
                 if (lastSequence[i] >= 0 && f.sequence > lastSequence[i] + 1) {
                     dropped[i] += f.sequence - lastSequence[i] - 1;
                 }
@@ -131,22 +165,23 @@ public final class Vision {
     }
 
     private void log(int i, double now) {
-        String key = keys[i];
         boolean enabled = cameras[i].enabled().get();
         boolean stale = now - lastFrameSeconds[i] > STALE_SECONDS;
         staleAlerts[i].set(enabled && stale && expectFrames);
         // The camera is enabled and sent a frame within the last 0.5 s.
-        Logger.recordOutput(key + "/Connected", enabled && !stale);
+        Logger.recordOutput(connectedKey[i], enabled && !stale);
         // Frames skipped by the camera's own counter, since boot.
-        Logger.recordOutput(key + "/DroppedFrames", dropped[i]);
+        Logger.recordOutput(droppedKey[i], dropped[i]);
         // Frames that could not be decoded (wrong version or cut short), since boot.
-        Logger.recordOutput(key + "/BadFrames", badFrames[i]);
+        Logger.recordOutput(badKey[i], badFrames[i]);
+        // Times the camera's frame counter started over (its process restarted), since boot.
+        Logger.recordOutput(restartsKey[i], restarts[i]);
         if (decoded[i] > 0) {
             VisionFrame last = frames[i][decoded[i] - 1];
             // Newest frame's age when the loop read it: exposure to robot code (ms).
-            Logger.recordOutput(key + "/LatencyMs", (now * 1e9 - last.captureNanos) * 1e-6);
+            Logger.recordOutput(latencyKey[i], (now * 1e9 - last.captureNanos) * 1e-6);
             // Tags in the newest frame.
-            Logger.recordOutput(key + "/Tags", last.count);
+            Logger.recordOutput(tagsKey[i], last.count);
         }
     }
 

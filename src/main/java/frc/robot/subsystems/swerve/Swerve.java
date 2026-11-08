@@ -60,7 +60,12 @@ public final class Swerve implements Subsystem {
     /** Sim steer friction (N m per rad/s at the module), fitted to FM's real steer overshoot. */
     private static final double SIM_STEER_FRICTION = 0.3;
 
-    private static final int MAX_SAMPLES_PER_LOOP = 16;
+    /**
+     * Samples taken per main loop: 0.5 s at 250 Hz, so a long stall (GC, a settings reload) loses
+     * none; memory is no concern on SystemCore. The queue holds 1 s.
+     */
+    private static final int MAX_SAMPLES_PER_LOOP = 128;
+
     private static final int SWERVE_THREAD_PRIORITY = 1;
 
     private final ModuleTrust trust = new ModuleTrust("Swerve/Modules", MODULES);
@@ -94,6 +99,8 @@ public final class Swerve implements Subsystem {
     private String lastDegraded = "";
     private int sentModesVersion = -1;
     private final Alert threadFaultAlert = new Alert("", Level.HIGH);
+    private final Alert droppedAlert = new Alert("", Level.MEDIUM);
+    private long alertedDropped;
     private final Alert gyroAlert =
             new Alert("Swerve: Pigeon down, heading from wheels only", Level.HIGH);
 
@@ -118,7 +125,7 @@ public final class Swerve implements Subsystem {
         maxDriveVelocity = SwerveSettings.MAX_DRIVE_VELOCITY.get();
         maxAngularVelocity = SwerveSettings.MAX_ANGULAR_VELOCITY.get();
         odometry = new SwerveOdometry(mx, my);
-        queue = new SampleQueue(64, MODULES);
+        queue = new SampleQueue(2 * MAX_SAMPLES_PER_LOOP, MODULES);
         if (RunMode.hasHardware()) {
             sim =
                     desktopSim != null
@@ -219,6 +226,7 @@ public final class Swerve implements Subsystem {
             inputs.threadFaults = thread.faults();
             inputs.lastThreadFault = thread.lastFault();
             inputs.staleCycles = thread.staleCycles();
+            inputs.rejectedJumps = thread.rejectedJumps();
             if (RobotLoop.everySeconds(0.1)) {
                 io.updateHealth(inputs.health);
             }
@@ -323,9 +331,16 @@ public final class Swerve implements Subsystem {
         state.setCurrent(wanted);
         // The request sent to the swerve thread: vx, vy (m/s), omega (rad/s).
         Logger.recordOutput("Swerve/Request/Mode", request.mode());
-        Logger.recordOutput(
-                "Swerve/Request/Velocity",
-                new double[] {request.vx(), request.vy(), request.omega()});
+        Logger.recordOutput("Swerve/Request/Velocity", requestVelocity(request));
+    }
+
+    private final double[] requestVelocityLog = new double[3];
+
+    private double[] requestVelocity(DriveRequest r) {
+        requestVelocityLog[0] = r.vx();
+        requestVelocityLog[1] = r.vy();
+        requestVelocityLog[2] = r.omega();
+        return requestVelocityLog;
     }
 
     /** Battery voltage at the drive motors (V, logged input); 0 when none is reporting. */
@@ -381,6 +396,12 @@ public final class Swerve implements Subsystem {
             disconnectedAlert.setText("Swerve degraded, still driving: " + degraded);
         }
         disconnectedAlert.set(!degraded.isEmpty());
+        if (inputs.droppedSamples != alertedDropped) {
+            alertedDropped = inputs.droppedSamples;
+            droppedAlert.setText(
+                    "Swerve samples dropped (main loop stalled): " + inputs.droppedSamples);
+        }
+        droppedAlert.set(inputs.droppedSamples > 0);
         if (inputs.threadFaults > 0 && !threadFaultAlert.get()) {
             threadFaultAlert.setText("Swerve thread faults: " + inputs.lastThreadFault);
         }

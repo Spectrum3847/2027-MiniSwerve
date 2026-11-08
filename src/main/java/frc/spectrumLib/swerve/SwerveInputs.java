@@ -27,8 +27,14 @@ public final class SwerveInputs implements LoggableInputs {
 
     public String lastThreadFault = "";
 
-    /** Swerve thread cycles in a row with stale or failed signals (it goes neutral at 5). */
+    /**
+     * Swerve thread cycles in a row with stale or failed signals (logged only: stale modules are
+     * planned from their last target).
+     */
     public long staleCycles;
+
+    /** Readings the swerve thread rejected as impossible jumps (device reboots), since boot. */
+    public long rejectedJumps;
 
     public SwerveInputs(int modules, int maxSamplesPerLoop) {
         this.modules = modules;
@@ -39,23 +45,66 @@ public final class SwerveInputs implements LoggableInputs {
         health = new SwerveHealth(modules);
     }
 
-    // Allocates its arrays each main loop (100 Hz, not the 250 Hz thread): AdvantageKit copies
-    // what it is given anyway, and the arrays must match this loop's sample count.
+    /** One set of log arrays sized for a sample count. */
+    private static final class LogArrays {
+        final double[] ts;
+        final double[] yaw;
+        final double[] yawRate;
+        final boolean[] good;
+        final boolean[] gyroOk;
+        final double[] fraction;
+        final boolean[] moduleOk;
+        final double[] distance;
+        final double[] velocity;
+        final double[] angle;
+        final double[] targetAngle;
+        final double[] targetVelocity;
+
+        LogArrays(int n, int modules) {
+            ts = new double[n];
+            yaw = new double[n];
+            yawRate = new double[n];
+            good = new boolean[n];
+            gyroOk = new boolean[n];
+            fraction = new double[n];
+            moduleOk = new boolean[n * modules];
+            distance = new double[n * modules];
+            velocity = new double[n * modules];
+            angle = new double[n * modules];
+            targetAngle = new double[n * modules];
+            targetVelocity = new double[n * modules];
+        }
+    }
+
+    /**
+     * Log arrays by sample count, made the first time a count is seen and reused after: the logged
+     * arrays must match this loop's count, and AdvantageKit copies what it is given.
+     */
+    private LogArrays[] byCount;
+
+    // Main thread only (toLog runs inside Logger.processInputs).
     @Override
     public void toLog(LogTable t) {
         int n = count;
-        double[] ts = new double[n];
-        double[] yaw = new double[n];
-        double[] yawRate = new double[n];
-        boolean[] good = new boolean[n];
-        boolean[] gyroOk = new boolean[n];
-        double[] fraction = new double[n];
-        boolean[] moduleOk = new boolean[n * modules];
-        double[] distance = new double[n * modules];
-        double[] velocity = new double[n * modules];
-        double[] angle = new double[n * modules];
-        double[] targetAngle = new double[n * modules];
-        double[] targetVelocity = new double[n * modules];
+        if (byCount == null) {
+            byCount = new LogArrays[samples.length + 1];
+        }
+        if (byCount[n] == null) {
+            byCount[n] = new LogArrays(n, modules);
+        }
+        LogArrays a = byCount[n];
+        double[] ts = a.ts;
+        double[] yaw = a.yaw;
+        double[] yawRate = a.yawRate;
+        boolean[] good = a.good;
+        boolean[] gyroOk = a.gyroOk;
+        double[] fraction = a.fraction;
+        boolean[] moduleOk = a.moduleOk;
+        double[] distance = a.distance;
+        double[] velocity = a.velocity;
+        double[] angle = a.angle;
+        double[] targetAngle = a.targetAngle;
+        double[] targetVelocity = a.targetVelocity;
         for (int s = 0; s < n; s++) {
             SwerveSample x = samples[s];
             ts[s] = x.timestamp;
@@ -130,10 +179,15 @@ public final class SwerveInputs implements LoggableInputs {
         t.put("Health/SteerDeviceTemp", h.steerDeviceTemp);
         // Supply voltage at the drive motors (V).
         t.put("Health/SupplyVoltage", h.supplyVoltage);
+        // Supply voltage at each drive and steer motor (V), FL FR BL BR: wiring drop per motor.
+        t.put("Health/DriveSupplyVoltage", h.driveSupplyVoltage);
+        t.put("Health/SteerSupplyVoltage", h.steerSupplyVoltage);
         // Samples dropped because the main loop fell behind, since boot.
         t.put("Thread/DroppedSamples", droppedSamples);
         // Swerve thread cycles that threw, since boot.
         t.put("Thread/Faults", threadFaults);
+        // Readings rejected as jumps no robot can make, e.g. a device reboot, since boot (count).
+        t.put("Thread/RejectedJumps", rejectedJumps);
         // Last swerve thread exception message.
         t.put("Thread/LastFault", lastThreadFault);
     }
@@ -192,8 +246,11 @@ public final class SwerveInputs implements LoggableInputs {
         copy(t.get("Health/DriveDeviceTemp", h.driveDeviceTemp), h.driveDeviceTemp);
         copy(t.get("Health/SteerDeviceTemp", h.steerDeviceTemp), h.steerDeviceTemp);
         h.supplyVoltage = t.get("Health/SupplyVoltage", h.supplyVoltage);
+        copy(t.get("Health/DriveSupplyVoltage", h.driveSupplyVoltage), h.driveSupplyVoltage);
+        copy(t.get("Health/SteerSupplyVoltage", h.steerSupplyVoltage), h.steerSupplyVoltage);
         droppedSamples = t.get("Thread/DroppedSamples", droppedSamples);
         threadFaults = t.get("Thread/Faults", threadFaults);
+        rejectedJumps = t.get("Thread/RejectedJumps", rejectedJumps);
         lastThreadFault = t.get("Thread/LastFault", lastThreadFault);
     }
 

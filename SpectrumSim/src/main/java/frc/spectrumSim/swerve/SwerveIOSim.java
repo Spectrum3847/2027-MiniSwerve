@@ -318,6 +318,9 @@ public final class SwerveIOSim implements SwerveIO {
             h.magnetOk[i] = true;
         }
         h.supplyVoltage = volts;
+        // No wiring resistance modeled: every motor sees the battery.
+        java.util.Arrays.fill(h.driveSupplyVoltage, volts);
+        java.util.Arrays.fill(h.steerSupplyVoltage, volts);
         h.pigeonConnected = !unheard("Pigeon") && configured[3 * n];
         h.timesync = false;
         h.deviceResets = resets;

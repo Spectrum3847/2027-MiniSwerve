@@ -49,8 +49,13 @@ public final class SwerveHealth {
 
     public final double[] steerDeviceTemp;
 
-    /** Volts at the drive motors. */
+    /** Volts at the drive motors: the highest among connected drive motors, 0 if none. */
     public double supplyVoltage;
+
+    /** Volts at each motor, per module: differences show voltage drop in the wiring to a motor. */
+    public final double[] driveSupplyVoltage;
+
+    public final double[] steerSupplyVoltage;
 
     public SwerveHealth(int modules) {
         driveConnected = new boolean[modules];
@@ -67,5 +72,7 @@ public final class SwerveHealth {
         steerSupplyCurrent = new double[modules];
         driveDeviceTemp = new double[modules];
         steerDeviceTemp = new double[modules];
+        driveSupplyVoltage = new double[modules];
+        steerSupplyVoltage = new double[modules];
     }
 }

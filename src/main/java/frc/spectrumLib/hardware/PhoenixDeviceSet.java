@@ -99,8 +99,14 @@ public final class PhoenixDeviceSet {
 
     private static boolean tryHard(Supplier<StatusCode> call) {
         for (int t = 0; t < BOOT_TRIES; t++) {
-            if (call.get().isOK()) {
-                return true;
+            try {
+                StatusCode code = call.get();
+                if (code != null && code.isOK()) {
+                    return true;
+                }
+            } catch (RuntimeException | LinkageError e) {
+                // Left unconfigured; poll() retries it in the background through the match.
+                System.err.println("Phoenix config threw at boot: " + e);
             }
         }
         return false;

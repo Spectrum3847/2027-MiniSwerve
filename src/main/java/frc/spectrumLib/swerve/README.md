@@ -25,6 +25,8 @@ Phoenix (`toSwerveModuleVelocities`, `optimize`, `cosineScale`, `TorqueCurrentFO
 | `SwerveRequests` | Module targets to Phoenix control requests, shared by `SwerveIOPhoenix` and SpectrumSim's sim IO |
 | `SimulatedSwerve` | A drivetrain in the desktop sim: its IO and true-pose logging (SpectrumSim implements it) |
 | `SwerveSimSpec` | The physical drivetrain the desktop sim models (motors, mass, tires, module positions) |
+| `SampleGuard` | Marks a reading stale for one sample when it jumps farther than the robot can move (a device reboot) |
+| `PacedSignals` | Paces the swerve thread on the devices that answer; a silent device stops being waited on and rejoins when it returns |
 | `PhoenixSwerveConfig` | IDs, inverts, ratios, offsets, limits, gains for `SwerveIOPhoenix` |
 | `SwerveHealth` | Currents, temperatures, connected flags (slow rate) |
 | `SwerveInputs` | AdvantageKit inputs: drained samples and health |
