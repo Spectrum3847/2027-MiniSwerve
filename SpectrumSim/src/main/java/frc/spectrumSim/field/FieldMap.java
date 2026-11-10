@@ -37,7 +37,7 @@ public record FieldMap(double length, double width, Terrain terrain, List<Convex
                         default ->
                                 throw new IllegalArgumentException("units are m or in: " + units);
                     };
-            JsonNode bumps = root.path("bumps");
+            JsonNode bumps = list(root, "bumps");
             double[][] b = new double[bumps.size()][];
             for (int i = 0; i < b.length; i++) {
                 JsonNode j = bumps.get(i);
@@ -54,7 +54,7 @@ public record FieldMap(double length, double width, Terrain terrain, List<Convex
                         };
             }
             List<ConvexPolygon> elements = new ArrayList<>();
-            for (JsonNode j : root.path("elements")) {
+            for (JsonNode j : list(root, "elements")) {
                 elements.add(
                         ConvexPolygon.box(
                                 k * req(j, "x"),
@@ -80,6 +80,15 @@ public record FieldMap(double length, double width, Terrain terrain, List<Convex
             return Files.newInputStream(p);
         }
         throw new IOException("no fields/" + name + ".json and no such file");
+    }
+
+    /** An optional list: missing is empty (a flat floor, an open field); anything else is wrong. */
+    private static JsonNode list(JsonNode root, String key) {
+        JsonNode j = root.path(key);
+        if (j.isMissingNode() || j.isArray()) {
+            return j;
+        }
+        throw new IllegalArgumentException("field file " + key + " must be a list: " + j);
     }
 
     private static double req(JsonNode j, String key) {

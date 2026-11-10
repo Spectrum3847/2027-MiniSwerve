@@ -113,11 +113,17 @@ public final class SpectrumDesktopSim implements DesktopSim {
             for (int i = 0; i < 3; i++) {
                 s[i] = Double.parseDouble(p[i].trim());
             }
-            if (s[0] < 0.5 || s[0] > length - 0.5 || s[1] < 0.5 || s[1] > width - 0.5) {
-                throw new IllegalArgumentException(
-                        "SPECTRUM_SIM_START " + start + " is not on the field, clear of the walls");
-            }
         }
+        // The default start too: a small field file may not reach (2, 2).
+        checkOnField(
+                s[0],
+                s[1],
+                length,
+                width,
+                (start == null || start.isBlank() ? "The default start " : "SPECTRUM_SIM_START ")
+                        + s[0]
+                        + ","
+                        + s[1]);
         double heading = Math.toRadians(s[2]);
         Arena arena =
                 map != null
@@ -126,14 +132,14 @@ public final class SpectrumDesktopSim implements DesktopSim {
         String robots = System.getenv("SPECTRUM_SIM_ROBOTS");
         if (robots != null && !robots.isBlank()) {
             for (String r : robots.split(";")) {
-                arena.add(robot(r.trim()));
+                arena.add(robot(r.trim(), length, width));
             }
         }
         return arena;
     }
 
-    /** One other robot from {@code kind:numbers}. */
-    static SimRobot robot(String spec) {
+    /** One other robot from {@code kind:numbers}, checked against a field this size (m). */
+    static SimRobot robot(String spec, double length, double width) {
         String[] kv = spec.split(":", 2);
         String[] p = kv.length > 1 ? kv[1].split(",") : new String[0];
         double[] v = new double[p.length];
@@ -153,9 +159,9 @@ public final class SpectrumDesktopSim implements DesktopSim {
             throw new IllegalArgumentException(
                     "SPECTRUM_SIM_ROBOTS: " + kv[0] + " takes " + need + " numbers: " + spec);
         }
-        checkOnField(v[0], v[1], spec);
+        checkOnField(v[0], v[1], length, width, spec);
         if (kv[0].equals("shuttle")) {
-            checkOnField(v[2], v[3], spec);
+            checkOnField(v[2], v[3], length, width, spec);
         }
         return switch (kv[0]) {
             case "parked" -> other(v[0], v[1], Math.toRadians(v[2]), SimRobot.parked());
@@ -167,8 +173,8 @@ public final class SpectrumDesktopSim implements DesktopSim {
         };
     }
 
-    private static void checkOnField(double x, double y, String what) {
-        if (x < 0.5 || x > Arena.FIELD_LENGTH - 0.5 || y < 0.5 || y > Arena.FIELD_WIDTH - 0.5) {
+    private static void checkOnField(double x, double y, double length, double width, String what) {
+        if (x < 0.5 || x > length - 0.5 || y < 0.5 || y > width - 0.5) {
             throw new IllegalArgumentException(what + " is not on the field, clear of the walls");
         }
     }

@@ -71,12 +71,13 @@ final class TerrainContact {
         double gx = alongX / sumX2;
         double gy = alongY / sumY2;
         height = mean / n;
-        // WPILib Rotation3d: floor rising ahead (nose up) is negative pitch; left side up is
-        // positive roll.
-        pitch = -Math.atan(gx);
-        roll = Math.atan(gy);
-        // Gravity along the plane, as a robot-frame acceleration: downhill.
+        // WPILib Rotation3d (roll about x, then pitch about y, extrinsic): floor rising ahead (nose
+        // up) is negative pitch; left side up is positive roll. These turn the robot's up axis
+        // onto the plane's normal (-gx, -gy, 1) / norm exactly, diagonal slopes included.
         double norm = Math.sqrt(1 + gx * gx + gy * gy);
+        pitch = -Math.atan(gx);
+        roll = Math.asin(gy / norm);
+        // Gravity along the plane, as a robot-frame acceleration: downhill.
         ax = -GRAVITY * gx / norm;
         ay = -GRAVITY * gy / norm;
         normalShare = 1 / norm;

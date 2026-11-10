@@ -467,6 +467,19 @@ public final class SwervePhysicsSim {
         if (arena != null) {
             collide(inertiaEff, dt);
         }
+        if (onTerrain) {
+            // Tilt at the step's final pose (after collisions), so the published pose, the gyro
+            // and the cameras agree; gravity above used the tilt at the step's start.
+            double c0 = Math.cos(arena.startHeading), s0 = Math.sin(arena.startHeading);
+            terrainContact.update(
+                    arena.terrain(),
+                    arena.startX + truthX * c0 - truthY * s0,
+                    arena.startY + truthX * s0 + truthY * c0,
+                    arena.startHeading + truthHeading);
+            roll = terrainContact.roll();
+            pitch = terrainContact.pitch();
+            z = terrainContact.height();
+        }
         synchronized (loadSnapshot) {
             truthSnapshot[0] = truthX;
             truthSnapshot[1] = truthY;

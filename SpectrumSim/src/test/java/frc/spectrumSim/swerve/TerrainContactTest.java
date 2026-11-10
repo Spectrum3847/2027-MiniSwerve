@@ -58,6 +58,24 @@ class TerrainContactTest {
     }
 
     @Test
+    void diagonalRampTurnsUpOntoThePlaneNormal() {
+        // Facing 30 deg off the ramp's rise: it slopes both ahead and to the side.
+        TerrainContact c = new TerrainContact(MX, MY);
+        double heading = Math.toRadians(30);
+        c.update(RAMP, 1.0, 0, heading);
+        var up =
+                new org.wpilib.math.geometry.Translation3d(0, 0, 1)
+                        .rotateBy(new org.wpilib.math.geometry.Rotation3d(c.roll(), c.pitch(), 0));
+        // The ramp's normal in the robot frame: rise tan 15 deg along field x.
+        double s = Math.tan(Math.toRadians(15));
+        double gx = s * Math.cos(heading), gy = -s * Math.sin(heading);
+        double norm = Math.sqrt(1 + gx * gx + gy * gy);
+        assertEquals(-gx / norm, up.getX(), 1e-9);
+        assertEquals(-gy / norm, up.getY(), 1e-9);
+        assertEquals(1 / norm, up.getZ(), 1e-9);
+    }
+
+    @Test
     void flatFloorIsFlat() {
         TerrainContact c = new TerrainContact(MX, MY);
         c.update(Terrain.FLAT, 3, 3, 1);

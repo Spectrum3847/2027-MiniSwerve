@@ -374,7 +374,14 @@ public final class SwerveIOPhoenix implements SwerveIO {
         h.supplyVoltage = Double.isNaN(volts) ? 0.0 : volts;
         h.pigeonConnected = devices.connected(pigeonIndex) && devices.configured(pigeonIndex);
         int q = n * SLOW_PER_MODULE;
-        if (h.pigeonConnected) {
+        // A stale or failed quaternion read would log a wrong tilt: all four must be OK.
+        h.tiltOk =
+                h.pigeonConnected
+                        && slow[q].getStatus().isOK()
+                        && slow[q + 1].getStatus().isOK()
+                        && slow[q + 2].getStatus().isOK()
+                        && slow[q + 3].getStatus().isOK();
+        if (h.tiltOk) {
             var tilt =
                     new org.wpilib.math.geometry.Rotation3d(
                             new org.wpilib.math.geometry.Quaternion(
