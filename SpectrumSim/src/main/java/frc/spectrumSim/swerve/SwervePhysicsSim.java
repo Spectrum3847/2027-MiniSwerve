@@ -113,7 +113,7 @@ public final class SwervePhysicsSim {
     private static final double WHEEL_INERTIA = 0.0005;
 
     /** The field the robot drives on, or null for open floor with no walls. */
-    private Arena arena;
+    private volatile Arena arena;
 
     private final Arena.Body body = new Arena.Body();
     private volatile int contacts;
@@ -143,6 +143,12 @@ public final class SwervePhysicsSim {
     private double lastAy;
 
     private final WheelLoads loads;
+
+    /** The floor under the wheels: tilt, height, gravity along a ramp. */
+    private final TerrainContact terrainContact;
+
+    /** Height, roll, pitch as of the last step, for the main thread. */
+    private final double[] tiltSnapshot = new double[3];
 
     /**
      * Sets the center of gravity's height (m), for weight transfer: a high one unloads the front
@@ -213,6 +219,7 @@ public final class SwervePhysicsSim {
         this.mx = mx.clone();
         this.my = my.clone();
         loads = new WheelLoads(mx, my);
+        terrainContact = new TerrainContact(mx, my);
         loadLog = new double[mx.length];
         liftLog = new boolean[mx.length];
         loadSnapshot = new double[mx.length];
@@ -315,9 +322,29 @@ public final class SwervePhysicsSim {
         // wheel's own. The tire, not a rolling constraint, ties it to the ground.
         double wheelInertia = driveMotor.rotorInertia() * g2 + WHEEL_INERTIA;
         double inertiaEff = robotInertia();
+        // The floor under the wheels: on a ramp, gravity pulls the robot downhill, the tires press
+        // into the floor with less than the full weight, and each wheel rolls the floor's length
+        // (longer than the ground it covers). Weight transfer follows the tire forces only:
+        // gravity acts at the center of gravity, no moment.
+        boolean onTerrain = arena != null && arena.terrain().bumps() > 0;
+        double gax = 0, gay = 0, roll = 0, pitch = 0, z = 0, normal = 1;
+        if (onTerrain) {
+            double c0 = Math.cos(arena.startHeading), s0 = Math.sin(arena.startHeading);
+            terrainContact.update(
+                    arena.terrain(),
+                    arena.startX + truthX * c0 - truthY * s0,
+                    arena.startY + truthX * s0 + truthY * c0,
+                    arena.startHeading + truthHeading);
+            gax = terrainContact.ax();
+            gay = terrainContact.ay();
+            roll = terrainContact.roll();
+            pitch = terrainContact.pitch();
+            z = terrainContact.height();
+            normal = terrainContact.normalShare();
+        }
         // Each tire grips in proportion to its share of the weight, which shifts as the robot
         // accelerates (last step's acceleration: the loads lag it by one step).
-        loads.update(robotMassKg, cogHeight, lastAx, lastAy);
+        loads.update(robotMassKg, cogHeight, lastAx, lastAy, normal);
         double gripMax = 0;
         for (int i = 0; i < n; i++) {
             gripMax = Math.max(gripMax, tireFriction * loads.load(i));
@@ -351,7 +378,10 @@ public final class SwervePhysicsSim {
             // The robot's velocity at this wheel, along and across the wheel.
             double cvx = vx - omega * my[i];
             double cvy = vy + omega * mx[i];
-            double along = cvx * c + cvy * sn;
+            // Along the wheel, the tire covers the floor's length: more than the footprint on a
+            // slope.
+            double stretch = onTerrain ? terrainContact.stretch(i, c, sn) : 1;
+            double along = (cvx * c + cvy * sn) * stretch;
             double across = -cvx * sn + cvy * c;
             double driveMotorOmega =
                     wheelOmega[i] * cfg.driveRatio() + steerOmega[i] * cfg.coupleRatio();
@@ -388,6 +418,8 @@ public final class SwervePhysicsSim {
                 push += p / wheelSteps;
                 side += sd / wheelSteps;
             }
+            // The push is along the sloped floor: only its level part moves the robot across it.
+            push /= stretch;
             double wfx = push * c - side * sn;
             double wfy = push * sn + side * c;
             fx += wfx;
@@ -423,8 +455,8 @@ public final class SwervePhysicsSim {
             }
         }
         // Rigid body in the robot frame (the frame turns with the robot).
-        vx += (fx / robotMassKg + omega * vy) * dt;
-        vy += (fy / robotMassKg - omega * vx) * dt;
+        vx += (fx / robotMassKg + gax + omega * vy) * dt;
+        vy += (fy / robotMassKg + gay - omega * vx) * dt;
         omega += torque / inertiaEff * dt;
         double h = truthHeading;
         double ch = Math.cos(h);
@@ -435,13 +467,29 @@ public final class SwervePhysicsSim {
         if (arena != null) {
             collide(inertiaEff, dt);
         }
+        if (onTerrain) {
+            // Tilt at the step's final pose (after collisions), so the published pose, the gyro
+            // and the cameras agree; gravity above used the tilt at the step's start.
+            double c0 = Math.cos(arena.startHeading), s0 = Math.sin(arena.startHeading);
+            terrainContact.update(
+                    arena.terrain(),
+                    arena.startX + truthX * c0 - truthY * s0,
+                    arena.startY + truthX * s0 + truthY * c0,
+                    arena.startHeading + truthHeading);
+            roll = terrainContact.roll();
+            pitch = terrainContact.pitch();
+            z = terrainContact.height();
+        }
         synchronized (loadSnapshot) {
             truthSnapshot[0] = truthX;
             truthSnapshot[1] = truthY;
             truthSnapshot[2] = truthHeading;
+            tiltSnapshot[0] = z;
+            tiltSnapshot[1] = roll;
+            tiltSnapshot[2] = pitch;
         }
         if (!dead("Pigeon")) {
-            devices.senseGyro(truthHeading, omega, batteryVolts);
+            devices.senseGyro(truthHeading, omega, roll, pitch, batteryVolts);
         }
     }
 
@@ -580,8 +628,11 @@ public final class SwervePhysicsSim {
      * odometry; robot logic must never read it.
      */
     public void logTruth(double odometryX, double odometryY) {
-        double x, y, truthH;
+        double x, y, truthH, z, roll, pitch;
         synchronized (loadSnapshot) {
+            z = tiltSnapshot[0];
+            roll = tiltSnapshot[1];
+            pitch = tiltSnapshot[2];
             x = truthSnapshot[0];
             y = truthSnapshot[1];
             truthH = truthSnapshot[2];
@@ -605,6 +656,15 @@ public final class SwervePhysicsSim {
                             arena.startX + x * c0 - y * s0,
                             arena.startY + x * s0 + y * c0,
                             Rotation2d.fromRadians(arena.startHeading + truthH)));
+            // The robot's true pose on the field in 3D: height and tilt from the floor's bumps.
+            org.littletonrobotics.junction.Logger.recordOutput(
+                    "Sim/FieldPose3d",
+                    new org.wpilib.math.geometry.Pose3d(
+                            arena.startX + x * c0 - y * s0,
+                            arena.startY + x * s0 + y * c0,
+                            z,
+                            new org.wpilib.math.geometry.Rotation3d(
+                                    roll, pitch, arena.startHeading + truthH)));
             // Walls, field elements and robots the bumpers touched in the last physics step.
             org.littletonrobotics.junction.Logger.recordOutput("Sim/Contacts", contacts);
             Pose2d[] others;
@@ -698,6 +758,33 @@ public final class SwervePhysicsSim {
                 sx + truthX * c0 - truthY * s0,
                 sy + truthX * s0 + truthY * c0,
                 Rotation2d.fromRadians(sh + truthHeading));
+    }
+
+    /**
+     * The robot's true pose on the field in 3D: {@link #fieldPose} raised and tilted by the floor
+     * under it (sim truth, for the cameras).
+     */
+    public org.wpilib.math.geometry.Pose3d fieldPose3d() {
+        double x, y, h, z, roll, pitch;
+        // One snapshot, taken after the step's collisions: pose and tilt from the same step.
+        synchronized (loadSnapshot) {
+            x = truthSnapshot[0];
+            y = truthSnapshot[1];
+            h = truthSnapshot[2];
+            z = tiltSnapshot[0];
+            roll = tiltSnapshot[1];
+            pitch = tiltSnapshot[2];
+        }
+        Arena a = arena;
+        double sx = a != null ? a.startX : 0;
+        double sy = a != null ? a.startY : 0;
+        double sh = a != null ? a.startHeading : 0;
+        double c0 = Math.cos(sh), s0 = Math.sin(sh);
+        return new org.wpilib.math.geometry.Pose3d(
+                sx + x * c0 - y * s0,
+                sy + x * s0 + y * c0,
+                z,
+                new org.wpilib.math.geometry.Rotation3d(roll, pitch, sh + h));
     }
 
     public double truthX() {

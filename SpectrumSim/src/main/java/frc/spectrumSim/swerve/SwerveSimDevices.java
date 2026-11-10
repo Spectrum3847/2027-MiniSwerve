@@ -35,5 +35,5 @@ interface SwerveSimDevices {
             boolean encoderAlive);
 
     /** Writes the robot's heading (rad) and turn rate (rad/s) to the gyro. */
-    void senseGyro(double heading, double omega, double batteryVolts);
+    void senseGyro(double heading, double omega, double roll, double pitch, double batteryVolts);
 }

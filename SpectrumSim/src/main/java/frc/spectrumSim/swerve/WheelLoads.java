@@ -45,6 +45,15 @@ final class WheelLoads {
      * @param ay robot-frame acceleration left (m/s^2)
      */
     void update(double massKg, double cogHeight, double ax, double ay) {
+        update(massKg, cogHeight, ax, ay, 1.0);
+    }
+
+    /**
+     * Splits the weight on a tilted floor: only {@code normalShare} (cos of the tilt) of the weight
+     * presses into the floor; the shift from acceleration uses the full mass.
+     */
+    void update(double massKg, double cogHeight, double ax, double ay, double normalShare) {
+        weightShare = normalShare;
         int n = mx.length;
         // Moments about the floor: the weight's share stays mg / n per wheel, and the tire forces
         // acting below the center of gravity shift m a h of load from the front (or left) wheels
@@ -56,7 +65,7 @@ final class WheelLoads {
                             * cogHeight
                             * (ax * mx[i] / (sumX2 > 0 ? sumX2 : 1)
                                     + ay * my[i] / (sumY2 > 0 ? sumY2 : 1));
-            double l = massKg * GRAVITY / n - shift;
+            double l = massKg * GRAVITY * weightShare / n - shift;
             lifted[i] = l < 0;
             load[i] = Math.max(0, l);
             total += load[i];
@@ -73,7 +82,7 @@ final class WheelLoads {
         }
         // Several wheels up: the rest share the weight, in proportion to what they carried.
         if (total > 0) {
-            double scale = massKg * GRAVITY / total;
+            double scale = massKg * GRAVITY * weightShare / total;
             for (int i = 0; i < n; i++) {
                 load[i] *= scale;
             }
@@ -93,7 +102,9 @@ final class WheelLoads {
             }
         }
         // Rows: sum N = W, sum N mx = -m h ax, sum N my = -m h ay. Cramer's rule.
-        double w = massKg * GRAVITY, px = -massKg * cogHeight * ax, py = -massKg * cogHeight * ay;
+        double w = massKg * GRAVITY * weightShare,
+                px = -massKg * cogHeight * ax,
+                py = -massKg * cogHeight * ay;
         double a1 = mx[k[0]], a2 = mx[k[1]], a3 = mx[k[2]];
         double b1 = my[k[0]], b2 = my[k[1]], b3 = my[k[2]];
         double det = (a2 * b3 - a3 * b2) - (a1 * b3 - a3 * b1) + (a1 * b2 - a2 * b1);
@@ -114,6 +125,9 @@ final class WheelLoads {
     }
 
     private final int[] three = new int[3];
+
+    /** Share of the weight pressing into the floor this update: cos of the tilt. */
+    private double weightShare = 1;
 
     /** Wheel {@code i}'s load on the floor (N). */
     double load(int i) {

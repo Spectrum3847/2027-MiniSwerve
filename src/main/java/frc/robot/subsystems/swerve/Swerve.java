@@ -27,6 +27,8 @@ import org.wpilib.driverstation.Alliance;
 import org.wpilib.driverstation.MatchState;
 import org.wpilib.driverstation.RobotState;
 import org.wpilib.math.geometry.Pose2d;
+import org.wpilib.math.geometry.Pose3d;
+import org.wpilib.math.geometry.Rotation3d;
 import org.wpilib.math.geometry.Translation2d;
 import org.wpilib.math.util.Units;
 import org.wpilib.util.Alert.Level;
@@ -348,6 +350,20 @@ public final class Swerve implements Subsystem {
         return inputs.health.supplyVoltage;
     }
 
+    /**
+     * The pose in 3D for AdvantageScope's 3D field: field x, y and heading from {@code pose}, roll
+     * and pitch from the Pigeon (logged inputs; flat while it is not connected). Height is not
+     * measured, so the robot stays on the carpet. For display only.
+     */
+    public Pose3d pose3d(Pose2d pose) {
+        return new Pose3d(
+                pose.getX(),
+                pose.getY(),
+                0.0,
+                new Rotation3d(
+                        inputs.health.roll, inputs.health.pitch, pose.getRotation().getRadians()));
+    }
+
     /** The Pigeon is connected and configured (logged input). */
     private boolean gyroOk() {
         return inputs.health.pigeonConnected;
@@ -379,13 +395,15 @@ public final class Swerve implements Subsystem {
         // Measured robot-frame chassis velocity from the last sample: vx, vy (m/s), omega (rad/s).
         // Compare with Swerve/Request/Velocity to tune lookahead and acceleration limits.
         Logger.recordOutput("Swerve/Odometry/RobotVelocity", odometry.robotVelocity());
-        // Wheel-and-gyro odometry pose (field frame).
-        Logger.recordOutput(
-                "Swerve/Odometry/Pose",
+        Pose2d odometryPose =
                 new Pose2d(
                         odometry.x(),
                         odometry.y(),
-                        org.wpilib.math.geometry.Rotation2d.fromRadians(odometry.heading())));
+                        org.wpilib.math.geometry.Rotation2d.fromRadians(odometry.heading()));
+        // Wheel-and-gyro odometry pose (field frame).
+        Logger.recordOutput("Swerve/Odometry/Pose", odometryPose);
+        // The same pose tilted by the Pigeon's roll and pitch, for AdvantageScope's 3D field.
+        Logger.recordOutput("Swerve/Odometry/Pose3d", pose3d(odometryPose));
         // RMS module disagreement over the last sample (m): slip or a bad module.
         Logger.recordOutput("Swerve/Odometry/Slip", odometry.slip());
         // Heading came from the gyro (false: from the wheels).

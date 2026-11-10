@@ -183,6 +183,14 @@ public final class SwerveIOPhoenix implements SwerveIO {
                             encoder[i].getFault_BadMagnet(),
                             steer[i].getSupplyVoltage()));
         }
+        // Tilt for the 3D pose: the quaternion, as Pigeon2.getRotation3d reads it, so the frame is
+        // WPILib's by construction (no Euler sign conventions to get wrong).
+        slowList.addAll(
+                List.of(
+                        pigeon.getQuatW(),
+                        pigeon.getQuatX(),
+                        pigeon.getQuatY(),
+                        pigeon.getQuatZ()));
         yaw = pigeon.getYaw();
         yawRate = pigeon.getAngularVelocityZWorld();
         fastList.add(yaw);
@@ -365,6 +373,28 @@ public final class SwerveIOPhoenix implements SwerveIO {
         }
         h.supplyVoltage = Double.isNaN(volts) ? 0.0 : volts;
         h.pigeonConnected = devices.connected(pigeonIndex) && devices.configured(pigeonIndex);
+        int q = n * SLOW_PER_MODULE;
+        // A stale or failed quaternion read would log a wrong tilt: all four must be OK.
+        h.tiltOk =
+                h.pigeonConnected
+                        && slow[q].getStatus().isOK()
+                        && slow[q + 1].getStatus().isOK()
+                        && slow[q + 2].getStatus().isOK()
+                        && slow[q + 3].getStatus().isOK();
+        if (h.tiltOk) {
+            var tilt =
+                    new org.wpilib.math.geometry.Rotation3d(
+                            new org.wpilib.math.geometry.Quaternion(
+                                    slow[q].getValueAsDouble(),
+                                    slow[q + 1].getValueAsDouble(),
+                                    slow[q + 2].getValueAsDouble(),
+                                    slow[q + 3].getValueAsDouble()));
+            h.roll = tilt.getX();
+            h.pitch = tilt.getY();
+        } else {
+            h.roll = 0;
+            h.pitch = 0;
+        }
         h.timesync = timesync;
         h.deviceResets = devices.resets();
         h.signalsSet = devices.signalsSet();

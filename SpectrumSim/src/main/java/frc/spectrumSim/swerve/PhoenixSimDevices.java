@@ -88,8 +88,13 @@ final class PhoenixSimDevices implements SwerveSimDevices {
     }
 
     @Override
-    public void senseGyro(double heading, double omega, double batteryVolts) {
+    public void senseGyro(
+            double heading, double omega, double roll, double pitch, double batteryVolts) {
         pigeonSim.setSupplyVoltage(batteryVolts);
+        // Assumes Phoenix's pitch and roll are right-handed about the robot's y and x, as WPILib's
+        // are; not yet checked against a real Pigeon.
+        pigeonSim.setRoll(Math.toDegrees(roll));
+        pigeonSim.setPitch(Math.toDegrees(pitch));
         pigeonSim.setRawYaw(Math.toDegrees(heading));
         pigeonSim.setAngularVelocityZ(Math.toDegrees(omega));
     }

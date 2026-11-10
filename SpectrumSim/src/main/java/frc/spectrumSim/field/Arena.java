@@ -52,32 +52,39 @@ public final class Arena {
 
     /** An empty FRC field: the four walls only. */
     public static Arena emptyField(double startX, double startY, double startHeading) {
-        double t = 1.0; // wall thickness, outside the field
-        return new Arena(
-                List.of(
-                        new ConvexPolygon(-t, -t, FIELD_LENGTH + t, -t, FIELD_LENGTH + t, 0, -t, 0),
-                        new ConvexPolygon(
-                                -t,
-                                FIELD_WIDTH,
-                                FIELD_LENGTH + t,
-                                FIELD_WIDTH,
-                                FIELD_LENGTH + t,
-                                FIELD_WIDTH + t,
-                                -t,
-                                FIELD_WIDTH + t),
-                        new ConvexPolygon(-t, 0, 0, 0, 0, FIELD_WIDTH, -t, FIELD_WIDTH),
-                        new ConvexPolygon(
-                                FIELD_LENGTH,
-                                0,
-                                FIELD_LENGTH + t,
-                                0,
-                                FIELD_LENGTH + t,
-                                FIELD_WIDTH,
-                                FIELD_LENGTH,
-                                FIELD_WIDTH)),
-                startX,
-                startY,
-                startHeading);
+        return new Arena(walls(FIELD_LENGTH, FIELD_WIDTH), startX, startY, startHeading);
+    }
+
+    /** A season's field from its file: walls, solid elements and the floor's bumps. */
+    public static Arena field(FieldMap map, double startX, double startY, double startHeading) {
+        var obstacles = new java.util.ArrayList<>(walls(map.length(), map.width()));
+        obstacles.addAll(map.elements());
+        Arena arena = new Arena(obstacles, startX, startY, startHeading);
+        arena.setTerrain(map.terrain());
+        return arena;
+    }
+
+    /** The four walls around a field {@code length} by {@code width} (m), 1 m thick outside it. */
+    private static List<ConvexPolygon> walls(double length, double width) {
+        double t = 1.0;
+        return List.of(
+                new ConvexPolygon(-t, -t, length + t, -t, length + t, 0, -t, 0),
+                new ConvexPolygon(
+                        -t, width, length + t, width, length + t, width + t, -t, width + t),
+                new ConvexPolygon(-t, 0, 0, 0, 0, width, -t, width),
+                new ConvexPolygon(length, 0, length + t, 0, length + t, width, length, width));
+    }
+
+    private Terrain terrain = Terrain.FLAT;
+
+    /** Sets the floor's bumps and ramps (default flat). */
+    public void setTerrain(Terrain terrain) {
+        this.terrain = terrain;
+    }
+
+    /** The floor's bumps and ramps. */
+    public Terrain terrain() {
+        return terrain;
     }
 
     /** Adds another robot (partner or opponent). Before the sim starts. */

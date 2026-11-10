@@ -7,6 +7,7 @@ import frc.spectrumLib.swerve.SimulatedSwerve;
 import frc.spectrumLib.swerve.SwerveIO;
 import frc.spectrumLib.swerve.SwerveSimSpec;
 import frc.spectrumSim.field.Arena;
+import frc.spectrumSim.field.FieldMap;
 import frc.spectrumSim.field.SimRobot;
 import frc.spectrumSim.swerve.PhoenixSwerveSim;
 import frc.spectrumSim.swerve.SwerveIOSim;
@@ -22,8 +23,9 @@ import org.wpilib.math.geometry.Transform3d;
  * <p>Environment: {@code SPECTRUM_SIM_SPEED} is a multiple of real time or {@code max} (default max
  * for a scripted run, else real time); {@code SPECTRUM_SIM_DEVICES=phoenix} runs the drivetrain on
  * Phoenix's own simulator on the wall clock instead (not repeatable). {@code SPECTRUM_SIM_FIELD} is
- * {@code empty} (default: the field's walls) or {@code none} (open floor); {@code
- * SPECTRUM_SIM_START} is the robot's start on the field, {@code x,y,degrees} (default {@code
+ * {@code empty} (default: the field's walls), {@code none} (open floor), or a season's field file
+ * by name or path (walls, elements and bumps, e.g. {@code 2026-rebuilt}; see {@link FieldMap});
+ * {@code SPECTRUM_SIM_START} is the robot's start on the field, {@code x,y,degrees} (default {@code
  * 2,2,0}: near the blue wall, clear of the walls for the scripted drives). {@code
  * SPECTRUM_SIM_ROBOTS} adds other robots, separated by {@code ;}: {@code parked:x,y,deg}, {@code
  * shuttle:x1,y1,x2,y2,speed} (drives back and forth), {@code defender:x,y,speed} (chases and pushes
@@ -93,9 +95,13 @@ public final class SpectrumDesktopSim implements DesktopSim {
         if ("none".equals(field)) {
             return null;
         }
-        if (field != null && !field.isBlank() && !"empty".equals(field)) {
-            throw new IllegalArgumentException("SPECTRUM_SIM_FIELD is empty or none, not " + field);
-        }
+        // empty (default): the four walls; else a season's field file (walls, elements, bumps).
+        FieldMap map =
+                field == null || field.isBlank() || "empty".equals(field)
+                        ? null
+                        : FieldMap.load(field);
+        double length = map != null ? map.length() : Arena.FIELD_LENGTH;
+        double width = map != null ? map.width() : Arena.FIELD_WIDTH;
         String start = System.getenv("SPECTRUM_SIM_START");
         double[] s = {2, 2, 0};
         if (start != null && !start.isBlank()) {
@@ -107,26 +113,33 @@ public final class SpectrumDesktopSim implements DesktopSim {
             for (int i = 0; i < 3; i++) {
                 s[i] = Double.parseDouble(p[i].trim());
             }
-            if (s[0] < 0.5
-                    || s[0] > Arena.FIELD_LENGTH - 0.5
-                    || s[1] < 0.5
-                    || s[1] > Arena.FIELD_WIDTH - 0.5) {
-                throw new IllegalArgumentException(
-                        "SPECTRUM_SIM_START " + start + " is not on the field, clear of the walls");
-            }
         }
-        Arena arena = Arena.emptyField(s[0], s[1], Math.toRadians(s[2]));
+        // The default start too: a small field file may not reach (2, 2).
+        checkOnField(
+                s[0],
+                s[1],
+                length,
+                width,
+                (start == null || start.isBlank() ? "The default start " : "SPECTRUM_SIM_START ")
+                        + s[0]
+                        + ","
+                        + s[1]);
+        double heading = Math.toRadians(s[2]);
+        Arena arena =
+                map != null
+                        ? Arena.field(map, s[0], s[1], heading)
+                        : Arena.emptyField(s[0], s[1], heading);
         String robots = System.getenv("SPECTRUM_SIM_ROBOTS");
         if (robots != null && !robots.isBlank()) {
             for (String r : robots.split(";")) {
-                arena.add(robot(r.trim()));
+                arena.add(robot(r.trim(), length, width));
             }
         }
         return arena;
     }
 
-    /** One other robot from {@code kind:numbers}. */
-    static SimRobot robot(String spec) {
+    /** One other robot from {@code kind:numbers}, checked against a field this size (m). */
+    static SimRobot robot(String spec, double length, double width) {
         String[] kv = spec.split(":", 2);
         String[] p = kv.length > 1 ? kv[1].split(",") : new String[0];
         double[] v = new double[p.length];
@@ -146,9 +159,9 @@ public final class SpectrumDesktopSim implements DesktopSim {
             throw new IllegalArgumentException(
                     "SPECTRUM_SIM_ROBOTS: " + kv[0] + " takes " + need + " numbers: " + spec);
         }
-        checkOnField(v[0], v[1], spec);
+        checkOnField(v[0], v[1], length, width, spec);
         if (kv[0].equals("shuttle")) {
-            checkOnField(v[2], v[3], spec);
+            checkOnField(v[2], v[3], length, width, spec);
         }
         return switch (kv[0]) {
             case "parked" -> other(v[0], v[1], Math.toRadians(v[2]), SimRobot.parked());
@@ -160,8 +173,8 @@ public final class SpectrumDesktopSim implements DesktopSim {
         };
     }
 
-    private static void checkOnField(double x, double y, String what) {
-        if (x < 0.5 || x > Arena.FIELD_LENGTH - 0.5 || y < 0.5 || y > Arena.FIELD_WIDTH - 0.5) {
+    private static void checkOnField(double x, double y, double length, double width, String what) {
+        if (x < 0.5 || x > length - 0.5 || y < 0.5 || y > width - 0.5) {
             throw new IllegalArgumentException(what + " is not on the field, clear of the walls");
         }
     }
@@ -183,7 +196,7 @@ public final class SpectrumDesktopSim implements DesktopSim {
                             robotToCamera[i],
                             CameraSim.Model.thriftiestCam(),
                             field,
-                            truth::fieldPose);
+                            truth::fieldPose3d);
             clock.addStepper(camera::step);
         }
         return true;

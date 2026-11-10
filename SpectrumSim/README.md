@@ -12,7 +12,9 @@ robot.
 - Run the sim with `./gradlew run` or VS Code's "Simulate Robot Code" (which launches the same
   `run` task); both put SpectrumSim on the classpath. A launch without it stops at boot saying so
   rather than run with no physics.
-- Environment: `SPECTRUM_SIM_FIELD` (`empty`, the default: the field's walls; `none`: open floor),
+- Environment: `SPECTRUM_SIM_FIELD` (`empty`, the default: the field's walls; `none`: open floor;
+  or a season's field file by name, such as `2026-rebuilt` or `2026-rebuilt-andymark`, or by path:
+  walls, solid elements and bumps, see `src/main/resources/fields/README.md`),
   `SPECTRUM_SIM_START` (robot start on the field, `x,y,degrees`, default `2,2,0`),
   `SPECTRUM_SIM_ROBOTS` (other robots, `;`-separated: `parked:x,y,deg`, `shuttle:x1,y1,x2,y2,speed`,
   `defender:x,y,speed`),

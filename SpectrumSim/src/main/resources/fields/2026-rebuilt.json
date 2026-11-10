@@ -1,0 +1,89 @@
+{
+  "name": "2026 REBUILT, welded perimeter",
+  "source": "FE-2026 rev B field drawings (12/10/2025): sheet 3 plan (651.22 x 317.69, HUB centers 182.11 from each wall), sheet 4 section A-A (BUMPs 73.00 wide flush either side of the 47.00 HUB, 12.00 trench post, trench post 12.00 beside each BUMP), GE-26100 BUMP sheet 2 (44.40 deep, 6.51 peak, 15 deg ramps, 0.61 lip). Towers, depots, outposts and trench arms (22.25 in clearance) not modeled.",
+  "units": "in",
+  "length": 651.22,
+  "width": 317.69,
+  "bumps": [
+    {
+      "x": 182.11,
+      "y": 98.84,
+      "length": 44.4,
+      "width": 73.0,
+      "height": 6.51,
+      "rampDeg": 15,
+      "edge": 0.61
+    },
+    {
+      "x": 182.11,
+      "y": 218.84,
+      "length": 44.4,
+      "width": 73.0,
+      "height": 6.51,
+      "rampDeg": 15,
+      "edge": 0.61
+    },
+    {
+      "x": 469.11,
+      "y": 98.84,
+      "length": 44.4,
+      "width": 73.0,
+      "height": 6.51,
+      "rampDeg": 15,
+      "edge": 0.61
+    },
+    {
+      "x": 469.11,
+      "y": 218.84,
+      "length": 44.4,
+      "width": 73.0,
+      "height": 6.51,
+      "rampDeg": 15,
+      "edge": 0.61
+    }
+  ],
+  "elements": [
+    {
+      "name": "trench post",
+      "x": 182.11,
+      "y": 56.34,
+      "length": 47.0,
+      "width": 12.0
+    },
+    {
+      "name": "trench post",
+      "x": 182.11,
+      "y": 261.34,
+      "length": 47.0,
+      "width": 12.0
+    },
+    {
+      "name": "hub",
+      "x": 182.11,
+      "y": 158.84,
+      "length": 47.0,
+      "width": 47.0
+    },
+    {
+      "name": "trench post",
+      "x": 469.11,
+      "y": 56.34,
+      "length": 47.0,
+      "width": 12.0
+    },
+    {
+      "name": "trench post",
+      "x": 469.11,
+      "y": 261.34,
+      "length": 47.0,
+      "width": 12.0
+    },
+    {
+      "name": "hub",
+      "x": 469.11,
+      "y": 158.84,
+      "length": 47.0,
+      "width": 47.0
+    }
+  ]
+}

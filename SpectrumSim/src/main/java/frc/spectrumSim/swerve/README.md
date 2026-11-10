@@ -6,6 +6,7 @@ The drivetrain in the desktop sim.
 |---|---|
 | `SwervePhysicsSim` | Rigid body, tires (grip curve, friction circle), wheel spin, gear losses, battery; moves the simulated devices and publishes the true pose |
 | `Tire` | Tire force from slip: grip curve and friction circle, scaled by the wheel's load |
+| `TerrainContact` | The floor under the wheels: a plane fitted through their heights gives the robot's height, roll and pitch, and gravity along it |
 | `WheelLoads` | Weight transfer: each wheel's load as the robot accelerates, and lifted wheels |
 | `SwerveIOSim` | The drivetrain's `SwerveIO` on `TalonFXModel`s and the sim clock: repeatable, faster than real time |
 | `SwerveSimDevices` | What the physics moves: Phoenix's simulated devices or our models |
