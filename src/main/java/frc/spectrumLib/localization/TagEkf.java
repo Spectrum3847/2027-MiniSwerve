@@ -256,6 +256,7 @@ public class TagEkf {
     private long acceptedCount = 0;
     private long rejectedCount = 0;
     private long relocalizations = 0;
+    private long nonFiniteSamples = 0;
     private final Map<String, Long> rejectionCounts = new LinkedHashMap<>();
     private final Map<String, CameraStats> cameraStats = new LinkedHashMap<>();
 
@@ -319,6 +320,25 @@ public class TagEkf {
     public void addOdometry(
             double timestampSeconds, Rotation2d gyro, SwerveModulePosition[] positions) {
         double g = gyro.getRadians();
+        // A sample that is not all finite numbers is dropped whole: one NaN in the state would
+        // stay for the rest of the match (every later tag fails its gate without a reason, and a
+        // re-seed test against a NaN pose is never true).
+        boolean finite = Double.isFinite(timestampSeconds) && Double.isFinite(g);
+        for (int i = 0; i < modules && finite; i++) {
+            finite =
+                    Double.isFinite(positions[i].distance)
+                            && Double.isFinite(positions[i].angle.getRadians());
+        }
+        if (!finite) {
+            nonFiniteSamples++;
+            return;
+        }
+        if (haveOdometry && size > 0) {
+            // Time never runs backwards in the history: a sample stamped before the newest (clock
+            // offset jitter) would make later frames replay from the wrong sample and apply a
+            // correction twice, and a big step back would turn every frame away as too old.
+            timestampSeconds = Math.max(timestampSeconds, newestTime());
+        }
         if (!haveOdometry) {
             haveOdometry = true;
             lastGyro = g;
@@ -492,6 +512,9 @@ public class TagEkf {
         Correction c =
                 new Correction(
                         clampTime(frame.get(0).timestampSeconds()), kept.toArray(new Measured[0]));
+        if (Double.isNaN(lastGoodFrameTime)) {
+            lastGoodFrameTime = c.time; // reset before any odometry: count from the first frame
+        }
         if (rejectsSinceGoodFrame >= RELOCALIZE_MIN_REJECTS
                 && c.time - lastGoodFrameTime >= RELOCALIZE_SECONDS) {
             c.inflate = true;
@@ -524,6 +547,9 @@ public class TagEkf {
         }
         Correction c = new Correction(clampTime(frame.get(0).timestampSeconds()), null);
         c.corners = frame.toArray(new CornerSighting[0]);
+        if (Double.isNaN(lastGoodFrameTime)) {
+            lastGoodFrameTime = c.time; // reset before any odometry: count from the first frame
+        }
         if (rejectsSinceGoodFrame >= RELOCALIZE_MIN_REJECTS
                 && c.time - lastGoodFrameTime >= RELOCALIZE_SECONDS) {
             c.inflate = true;
@@ -563,7 +589,9 @@ public class TagEkf {
 
     /** Inserts a correction in time order and replays from it; false if outside the history. */
     private boolean insert(Correction c, String rejectAs) {
-        if (size == 0 || c.time < sampleTime[oldest]) {
+        // !(>=) also turns away a NaN time, which would sit in the list and block every later
+        // correction.
+        if (size == 0 || !(c.time >= sampleTime[oldest])) {
             if (rejectAs != null) {
                 countRejection(rejectAs + (size == 0 ? " (No Odometry)" : " (Too Old)"));
             }
@@ -659,6 +687,7 @@ public class TagEkf {
             int n = 0;
             double[] out = new double[3];
             for (Measured m : c.tags) {
+                out[2] = 0; // correctTag may return early; never count the last tag's twice
                 correctTag(m, speed, omega, false, out);
                 if (out[2] > 0) {
                     sum += Math.min(out[2], 100);
@@ -1165,6 +1194,26 @@ public class TagEkf {
 
     public long getRejectedCount() {
         return rejectedCount;
+    }
+
+    /** Odometry samples dropped because a value was not a finite number, since boot. */
+    public long getNonFiniteSamples() {
+        return nonFiniteSamples;
+    }
+
+    /** The pose and covariance are finite numbers; false means {@link #reset} is needed. */
+    public boolean isHealthy() {
+        for (double v : s) {
+            if (!Double.isFinite(v)) {
+                return false;
+            }
+        }
+        for (double v : p) {
+            if (!Double.isFinite(v)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     public long getRelocalizations() {

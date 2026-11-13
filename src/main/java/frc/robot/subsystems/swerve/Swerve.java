@@ -8,6 +8,7 @@ import frc.spectrumLib.hardware.SimFaults;
 import frc.spectrumLib.statemachine.WantedState;
 import frc.spectrumLib.swerve.DriveRequest;
 import frc.spectrumLib.swerve.HeadingHold;
+import frc.spectrumLib.swerve.HeadingMemory;
 import frc.spectrumLib.swerve.ModuleTrust;
 import frc.spectrumLib.swerve.SampleQueue;
 import frc.spectrumLib.swerve.SimulatedSwerve;
@@ -23,8 +24,6 @@ import java.util.function.DoubleSupplier;
 import org.littletonrobotics.junction.Logger;
 import org.wpilib.command2.Command;
 import org.wpilib.command2.Subsystem;
-import org.wpilib.driverstation.Alliance;
-import org.wpilib.driverstation.MatchState;
 import org.wpilib.driverstation.RobotState;
 import org.wpilib.math.geometry.Pose2d;
 import org.wpilib.math.geometry.Pose3d;
@@ -40,8 +39,13 @@ import org.wpilib.util.Alert.Level;
  * scheduler; commands {@link #request} states; {@link #applyWantedState()} after the scheduler
  * turns the wanted state into a {@link DriveRequest} for the thread.
  *
+ * <p>Over 400 lines: the wanted states, the request each becomes and the logging of both are kept
+ * together so the path from "what was asked" to "what the thread was sent" reads in one file. The
+ * field heading ({@link FieldHeading}), the thread watch ({@link SwerveThreadWatch}) and
+ * housekeeping ({@link SwerveUtilities}) are their own files.
+ *
  * <p>Index: {@link State} | constructor | {@link #updateInputs} | {@link #applyWantedState} |
- * commands | pose
+ * {@link #applyLimp} | commands | pose
  */
 public final class Swerve implements Subsystem {
     public enum State {
@@ -119,6 +123,7 @@ public final class Swerve implements Subsystem {
      * @param desktopSim the desktop sim (SpectrumSim); null on the robot and in replay
      */
     public Swerve(SimFaults simFaults, DesktopSim desktopSim) {
+        this.simFaults = simFaults;
         double half = SwerveSettings.TRACK.get() / 2;
         double[] mx = {half, half, -half, -half};
         double[] my = {half, -half, half, -half};
@@ -162,6 +167,16 @@ public final class Swerve implements Subsystem {
             io = SwerveIO.NONE;
         }
         utilities = new SwerveUtilities(io, mx, my);
+        // The heading saved by the code that ran before this one (a code restart), as inputs.
+        HeadingMemory memory =
+                new HeadingMemory(RunMode.CURRENT == RunMode.Mode.REAL ? HEADING_FILE : null);
+        HeadingMemory.Saved saved = memory.load();
+        if (saved != null) {
+            inputs.restoreYawOffset = saved.yawOffset();
+            inputs.restoreYaw = saved.yaw();
+            inputs.restoreAgeSeconds = saved.ageSeconds();
+        }
+        fieldHeading = new FieldHeading(odometry, memory, headingHold::reset);
         thread =
                 new SwerveThread(
                         io,
@@ -179,10 +194,21 @@ public final class Swerve implements Subsystem {
                 SwerveSettings.MAX_STEER_ACCELERATION.get());
         thread.setMotorLimit(SwerveConfigs.motorLimit(mx.length));
         SwerveConfigs.logTraction();
+        threadWatch = new SwerveThreadWatch(thread, io.hasHardware());
         if (io.hasHardware()) {
             thread.start();
         }
     }
+
+    /**
+     * Where the field heading is kept across a code restart: memory-backed, so it is gone after the
+     * robot is powered off (see {@link HeadingMemory}).
+     */
+    private static final java.nio.file.Path HEADING_FILE =
+            java.nio.file.Path.of("/dev/shm/miniswerve-field-heading");
+
+    private final FieldHeading fieldHeading;
+    private final SwerveThreadWatch threadWatch;
 
     /**
      * Receives each 250 Hz sample, in order, with a continuous heading after it (rad: odometry's,
@@ -192,10 +218,8 @@ public final class Swerve implements Subsystem {
         void accept(SwerveSample sample, double heading, boolean fromGyro);
     }
 
-    /** Sum of every jump field-centric re-zeroing put into odometry's heading (rad). */
-    private double headingResets;
-
     private SampleListener sampleListener;
+    private final SimFaults simFaults;
     private final double[] moduleX;
     private final double[] moduleY;
 
@@ -229,11 +253,19 @@ public final class Swerve implements Subsystem {
             inputs.lastThreadFault = thread.lastFault();
             inputs.staleCycles = thread.staleCycles();
             inputs.rejectedJumps = thread.rejectedJumps();
+            inputs.threadCycles = thread.cycles();
+            inputs.threadAlive = thread.alive();
+            inputs.staleRequestCycles = thread.staleRequestCycles();
+            inputs.nonFiniteDropped = thread.nonFinite();
+            if (simFaults != null && simFaults.consumeReset("Code/SwerveThread")) {
+                thread.dieForSim(); // sim script: the thread ends, as if it had died
+            }
             if (RobotLoop.everySeconds(0.1)) {
                 io.updateHealth(inputs.health);
             }
         }
         Logger.processInputs("Swerve", inputs);
+        threadWatch.update(inputs);
         thread.setBusVoltage(inputs.health.supplyVoltage);
         trust.update(inputs.health);
         if (trust.version() != sentModesVersion) {
@@ -251,9 +283,16 @@ public final class Swerve implements Subsystem {
                 // Odometry's heading (the gyro's when healthy, the wheels' when not) without the
                 // jumps of field-centric re-zeroing: a pose estimator would read them as turning.
                 sampleListener.accept(
-                        sample, odometry.heading() - headingResets, gyroOk() && sample.gyroOk);
+                        sample,
+                        odometry.heading() - fieldHeading.resets(),
+                        gyroOk() && sample.gyroOk);
             }
         }
+        fieldHeading.update(
+                inputs,
+                gyroOk(),
+                RobotState.isEnabled(),
+                io.hasHardware() && RobotLoop.everySeconds(0.1));
         utilities.update(
                 inputs,
                 RobotState.isEnabled(),
@@ -310,6 +349,12 @@ public final class Swerve implements Subsystem {
                                 gyroOk());
                     }
                 };
+        if (RobotState.isDisabled()) {
+            // The motors are off whatever is asked. Neutral keeps the thread's plan on the real
+            // wheels, so enabling with a stick already pushed ramps up from rest instead of
+            // starting at a speed the plan reached while nothing moved.
+            request = DriveRequest.NEUTRAL;
+        }
         if (Double.isFinite(limitVelocity)
                 || Double.isFinite(limitAcceleration)
                 || Double.isFinite(limitOmega)
@@ -332,6 +377,29 @@ public final class Swerve implements Subsystem {
         // Module faults never stop the drivetrain: each module degrades on its own (ModuleTrust).
         state.setCurrent(wanted);
         // The request sent to the swerve thread: vx, vy (m/s), omega (rad/s).
+        Logger.recordOutput("Swerve/Request/Mode", request.mode());
+        Logger.recordOutput("Swerve/Request/Velocity", requestVelocity(request));
+    }
+
+    /**
+     * The shortest path from the sticks to the wheels, for when {@link #applyWantedState} throws:
+     * robot-relative (stick forward is the robot's front), no heading hold, no limits from other
+     * mechanisms, nothing from odometry. Neutral outside teleop. Worse to drive, but it drives.
+     */
+    public void applyLimp() {
+        DriveRequest request = DriveRequest.NEUTRAL;
+        if (RobotState.isTeleop() && RobotState.isEnabled()) {
+            request =
+                    DriveRequest.velocity(
+                            teleopX.getAsDouble() * maxDriveVelocity,
+                            teleopY.getAsDouble() * maxDriveVelocity,
+                            teleopOmega.getAsDouble() * maxAngularVelocity,
+                            false,
+                            0,
+                            true);
+        }
+        thread.setRequest(request);
+        // The request sent to the swerve thread by the limp path (see Stages/SwerveApply).
         Logger.recordOutput("Swerve/Request/Mode", request.mode());
         Logger.recordOutput("Swerve/Request/Velocity", requestVelocity(request));
     }
@@ -516,13 +584,9 @@ public final class Swerve implements Subsystem {
                 .withName("Swerve." + name);
     }
 
-    /**
-     * CTRE's {@code setOperatorForwardDirection}, set from the alliance: the field heading (rad)
-     * that is "away from the driver". 0 on blue, pi on red; blue when the alliance is unknown.
-     * Alliance is a Driver Station input, so replay sees the same value.
-     */
+    /** The field heading (rad) that is "away from the driver"; see {@link FieldHeading}. */
     public double operatorForwardDirection() {
-        return MatchState.getAlliance().orElse(Alliance.BLUE) == Alliance.RED ? Math.PI : 0.0;
+        return fieldHeading.operatorForward();
     }
 
     /**
@@ -530,10 +594,7 @@ public final class Swerve implements Subsystem {
      * without moving the pose.
      */
     public void seedFieldCentric() {
-        headingHold.reset();
-        double before = odometry.heading();
-        odometry.resetPose(odometry.x(), odometry.y(), operatorForwardDirection());
-        headingResets += odometry.heading() - before;
+        fieldHeading.seed();
     }
 
     public Pose2d odometryPose() {

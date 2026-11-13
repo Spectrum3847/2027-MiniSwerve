@@ -13,6 +13,12 @@ import org.wpilib.hardware.hal.RobotMode;
 final class SimScripts {
     private SimScripts() {}
 
+    /** Driver Station on the red alliance for the step. */
+    private static final SimScript.Inputs RED_ALLIANCE =
+            (pad, t) ->
+                    org.wpilib.simulation.DriverStationSim.setAllianceStationId(
+                            org.wpilib.hardware.hal.AllianceStationID.RED_1);
+
     static final SimScript.Step[] DRIVE = {
         new SimScript.Step(1.0, "disabled", 0, 0, 0),
         new SimScript.Step(2.0, "forward", 0, -1.0, 0),
@@ -147,6 +153,74 @@ final class SimScripts {
         new SimScript.Step(1.0, "stop", 0, 0, 0),
     };
 
+    /**
+     * Our own code failing mid-drive: the robot must keep driving through each. A camera stage that
+     * throws every loop; the wanted-state stage throwing (the limp path drives, robot-relative);
+     * the swerve thread ending (the main loop restarts it). {@code Code/<stage>} names a {@code
+     * LoopStage}; check {@code Stages/*}, {@code Swerve/Thread/Restarts} and that {@code
+     * Sim/FieldPose} keeps moving in every step.
+     */
+    static final SimScript.Step[] GUARDS = {
+        new SimScript.Step(1.0, "disabled", 0, 0, 0),
+        new SimScript.Step(1.0, "forward", 0, -0.6, 0),
+        new SimScript.Step(
+                1.0,
+                "vision stage throws; forward",
+                0,
+                -0.6,
+                0,
+                f -> f.set("Code/Vision", UNHEARD)),
+        new SimScript.Step(
+                1.0,
+                "localization stage throws too; forward",
+                0,
+                -0.6,
+                0,
+                f -> f.set("Code/Localization", UNHEARD)),
+        new SimScript.Step(
+                1.0,
+                "both back; forward",
+                0,
+                -0.6,
+                0,
+                f -> {
+                    f.clear("Code/Vision");
+                    f.clear("Code/Localization");
+                }),
+        new SimScript.Step(
+                1.5,
+                "wanted-state stage throws: limp path, strafe",
+                -0.6,
+                0,
+                0,
+                f -> f.set("Code/SwerveApply", UNHEARD)),
+        new SimScript.Step(
+                1.0, "wanted-state stage back", -0.6, 0, 0, f -> f.clear("Code/SwerveApply")),
+        new SimScript.Step(
+                1.5, "swerve thread ends; forward", 0, -0.6, 0, f -> f.reboot("Code/SwerveThread")),
+        new SimScript.Step(
+                1.0,
+                "commands stage throws; forward",
+                0,
+                -0.6,
+                0,
+                f -> f.set("Code/Commands", UNHEARD)),
+        new SimScript.Step(1.0, "stop", 0, 0, 0, f -> f.clear("Code/Commands")),
+    };
+
+    /**
+     * A red-alliance robot that is never re-zeroed: placed facing away from its driver (run with
+     * {@code SPECTRUM_SIM_START=x,y,180}), stick pushed forward. It must drive away from the red
+     * wall (field -x), and {@code Swerve/Odometry/Pose} must read a heading of 180 deg from boot.
+     */
+    static final SimScript.Step[] RED = {
+        new SimScript.Step(1.0, "disabled", 0, 0, 0).press(RED_ALLIANCE),
+        new SimScript.Step(2.0, "forward (away from the red driver)", 0, -0.6, 0)
+                .press(RED_ALLIANCE),
+        new SimScript.Step(1.0, "strafe to the driver's left", -0.6, 0, 0).press(RED_ALLIANCE),
+        new SimScript.Step(0.5, "stop", 0, 0, 0).press(RED_ALLIANCE),
+    };
+
     /** The script with this name, or null. */
     static SimScript.Step[] byName(String name) {
         return switch (name) {
@@ -158,6 +232,8 @@ final class SimScripts {
             case "buttons" -> BUTTONS;
             case "driver" -> DRIVER;
             case "bump" -> BUMP;
+            case "guards" -> GUARDS;
+            case "red" -> RED;
             default -> null;
         };
     }

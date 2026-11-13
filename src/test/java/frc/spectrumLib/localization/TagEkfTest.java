@@ -194,4 +194,47 @@ class TagEkfTest {
         Translation3d back = TagSighting.fromAngles(tx, ty, v.getNorm());
         assertEquals(0, back.getDistance(v), 1e-9);
     }
+
+    @Test
+    void aNonFiniteSampleIsDroppedAndThePoseStaysGood() {
+        TagEkf ekf = new TagEkf(MODULES);
+        ekf.reset(new Pose2d(1, 2, Rotation2d.ZERO));
+        for (int i = 0; i <= 50; i++) {
+            ekf.addOdometry(i * 0.004, Rotation2d.ZERO, rolled(i * 0.004));
+        }
+        // One sample with a NaN wheel, one with a NaN gyro, one with a NaN time.
+        SwerveModulePosition[] bad = rolled(0.204);
+        bad[2] = new SwerveModulePosition(Double.NaN, Rotation2d.ZERO);
+        ekf.addOdometry(0.204, Rotation2d.ZERO, bad);
+        ekf.addOdometry(0.208, new Rotation2d(Double.NaN), rolled(0.208));
+        ekf.addOdometry(Double.NaN, Rotation2d.ZERO, rolled(0.212));
+        assertEquals(3, ekf.getNonFiniteSamples());
+        assertTrue(ekf.isHealthy());
+        // Driving on: the travel during the bad samples is picked up by the next good one.
+        for (int i = 54; i <= 100; i++) {
+            ekf.addOdometry(i * 0.004, Rotation2d.ZERO, rolled(i * 0.004));
+        }
+        assertTrue(ekf.isHealthy());
+        assertEquals(1.4, ekf.getPose().getX(), 1e-9);
+        assertEquals(2.0, ekf.getPose().getY(), 1e-9);
+    }
+
+    @Test
+    void aSampleStampedBeforeTheNewestDoesNotBreakFrames() {
+        Pose2d truth = new Pose2d(2, 1.5, Rotation2d.fromDegrees(5));
+        TagEkf ekf = new TagEkf(MODULES);
+        ekf.addOdometry(0, Rotation2d.ZERO, rolled(0));
+        ekf.reset(new Pose2d(2.05, 1.46, Rotation2d.fromDegrees(5.3)));
+        for (int i = 1; i <= 100; i++) {
+            // Every fifth sample is stamped a little early (clock offset jitter).
+            double t = i * 0.02 - (i % 5 == 0 ? 0.025 : 0);
+            ekf.addOdometry(t, Rotation2d.ZERO, rolled(0));
+            if (i > 1) {
+                ekf.addFrame(frame(i * 0.02 - 0.03, truth));
+            }
+        }
+        assertTrue(ekf.isHealthy());
+        assertEquals(truth.getX(), ekf.getPose().getX(), 0.01);
+        assertEquals(truth.getY(), ekf.getPose().getY(), 0.01);
+    }
 }

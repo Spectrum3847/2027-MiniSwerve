@@ -8,6 +8,14 @@ package frc.spectrumLib.swerve;
  * samples come from the log. It never logs (AdvantageKit is main-thread only) and allocates nothing
  * per cycle. Faults are counted and the last message kept, for the main loop to log.
  *
+ * <p>Three guards keep one bad moment from costing the match: anything a cycle throws (errors
+ * included) is caught and the loop goes on; a request the main loop has not renewed for {@link
+ * #STALE_REQUEST_SECONDS} is replaced by a controlled stop (a stalled main loop must not leave the
+ * robot driving its last stick command); and a request or plan that is not a finite number is
+ * dropped and the planner restarted from the measured wheels, because a NaN would otherwise stay in
+ * the planner for the rest of the match. The main loop restarts the thread if it ever ends ({@link
+ * #alive}, {@link #start}).
+ *
  * <p>Over 400 lines: one cycle's path (read, guard, plan, send) is kept in one file so the 250 Hz
  * code can be read top to bottom.
  *
@@ -49,6 +57,34 @@ public final class SwerveThread {
     private double lastOmega;
 
     private volatile boolean running;
+    private volatile Thread thread;
+
+    /** Sim only: the thread ends at its next cycle, as if it had died. */
+    private volatile boolean dieForSim;
+
+    /** Set by {@link #start} on a restart: begin again from the measured wheels. */
+    private volatile boolean restarted;
+
+    /** Goes up with every {@link #setRequest}; how the thread knows the main loop is alive. */
+    private volatile long requestSeq;
+
+    private long seenRequestSeq = -1;
+    private int cyclesSinceRequest;
+    private final int staleRequestCycles;
+    private volatile long staleRequestCycleCount;
+    private volatile long nonFinite;
+
+    /**
+     * How long the last request is obeyed without the main loop renewing it (s). The main loop
+     * sends one every 10 ms; 0.25 s rides out a garbage collection or a slow loop, and a robot at
+     * full speed travels about a meter in it.
+     */
+    public static final double STALE_REQUEST_SECONDS = 0.25;
+
+    /** What a stale request is replaced by: ramp to a stop, robot frame, wheels held. */
+    private static final DriveRequest STOP = DriveRequest.velocity(0, 0, 0, false, 0, true);
+
+    private final double[] zeros;
     private volatile long faults;
     private volatile String lastFault = "";
     private volatile long cycles;
@@ -99,6 +135,8 @@ public final class SwerveThread {
         robotFx = new double[n];
         robotFy = new double[n];
         commands = ModuleCommands.allNormal(n);
+        zeros = new double[n];
+        staleRequestCycles = (int) Math.ceil(STALE_REQUEST_SECONDS / periodSeconds);
         generator = new SwerveSetpointGenerator(mx, my);
         guard =
                 new SampleGuard(
@@ -126,12 +164,32 @@ public final class SwerveThread {
 
     private DriveRequest lastSeenRequest;
 
-    /** Starts the loop on its own daemon thread. Call once, during robot init. */
+    /**
+     * Starts the loop on its own daemon thread: during robot init, and again from the main loop if
+     * the thread ever ends ({@link #alive} false). Does nothing while it is running.
+     */
     public void start() {
+        Thread old = thread;
+        if (old != null && old.isAlive()) {
+            return;
+        }
+        restarted = old != null;
         running = true;
         Thread t = new Thread(this::run, "Swerve250Hz");
         t.setDaemon(true);
+        thread = t;
         t.start();
+    }
+
+    /** The thread is running (false before {@link #start} and if it has ended). */
+    public boolean alive() {
+        Thread t = thread;
+        return t != null && t.isAlive();
+    }
+
+    /** Sim only: ends the thread at its next cycle, to check the main loop restarts it. */
+    public void dieForSim() {
+        dieForSim = true;
     }
 
     public void stop() {
@@ -144,8 +202,20 @@ public final class SwerveThread {
     }
 
     /** Main thread: what to do from the next cycle on. */
+    @SuppressWarnings("NonAtomicVolatileUpdate") // one writer: the main thread
     public void setRequest(DriveRequest r) {
         request = r;
+        requestSeq++;
+    }
+
+    /** Cycles that ran on a stop because the main loop had not renewed its request, since boot. */
+    public long staleRequestCycles() {
+        return staleRequestCycleCount;
+    }
+
+    /** Requests or plans dropped because they were not finite numbers, since boot. */
+    public long nonFinite() {
+        return nonFinite;
     }
 
     public void setMaxWheelVelocity(double metersPerSecond) {
@@ -224,9 +294,28 @@ public final class SwerveThread {
         if (priority > 0) {
             org.wpilib.system.Threads.setCurrentThreadPriority(priority);
         }
+        try {
+            io.open();
+        } catch (Throwable e) {
+            // Counted like a cycle fault; the loop below still runs.
+            faults++;
+            lastFault = e.toString();
+        }
         while (running) {
+            if (dieForSim) {
+                dieForSim = false;
+                io.close(); // the sim clock must not wait for a thread that is gone
+                return;
+            }
             try {
                 io.waitForSample(sample);
+                if (restarted) {
+                    // A new thread after the old one ended: plan from where the wheels are.
+                    restarted = false;
+                    haveTargets = false;
+                    lastTimestamp = 0;
+                    resetGenerator();
+                }
                 guard.check(sample);
                 if (guard.yawJumped()) {
                     yawHoldRequests = 2;
@@ -235,13 +324,18 @@ public final class SwerveThread {
                 staleCycles = sample.allGood ? 0 : staleCycles + 1;
                 // Late signals never stop the drivetrain (AGENTS.md "Finish the match"): a module
                 // whose readings are stale is planned from its last target instead.
-                computeTargets(request);
-                System.arraycopy(sample.targetAngle, 0, lastTargetAngle, 0, lastTargetAngle.length);
+                computeTargets(freshRequest());
+                if (finite(sample.targetAngle)) {
+                    System.arraycopy(
+                            sample.targetAngle, 0, lastTargetAngle, 0, lastTargetAngle.length);
+                }
                 lastTimestamp = sample.timestamp;
                 queue.offer(sample);
                 cycles++;
                 faultsInRow = 0;
-            } catch (RuntimeException e) {
+            } catch (Throwable e) {
+                // Errors too (a StackOverflowError, a missing class): this thread ending would
+                // leave the robot unable to drive for the rest of the match.
                 faults++;
                 faultsInRow++;
                 // Reword only when the fault changes: a persistent bug would otherwise build a
@@ -259,7 +353,7 @@ public final class SwerveThread {
                 if (faultsInRow >= MAX_FAULTS_HOLDING) {
                     try {
                         io.setNeutral();
-                    } catch (RuntimeException ignored) {
+                    } catch (Throwable ignored) {
                         // Already counted; nothing more to do this cycle.
                     }
                 }
@@ -270,8 +364,66 @@ public final class SwerveThread {
         io.close();
     }
 
+    /**
+     * The main loop's request, or a controlled stop once it has gone unrenewed for {@link
+     * #STALE_REQUEST_SECONDS}. Counted in cycles, not wall time, so the desktop sim (its own clock)
+     * and a paused debugger behave the same as the robot. Package-private for tests.
+     */
+    @SuppressWarnings("NonAtomicVolatileUpdate") // one writer: this thread
+    DriveRequest freshRequest() {
+        DriveRequest r = request;
+        long seq = requestSeq;
+        if (seq != seenRequestSeq) {
+            seenRequestSeq = seq;
+            cyclesSinceRequest = 0;
+            return r;
+        }
+        if (cyclesSinceRequest < staleRequestCycles) {
+            cyclesSinceRequest++;
+            return r;
+        }
+        if (r.mode() != DriveRequest.Mode.VELOCITY) {
+            return r; // neutral and X lock are already stops
+        }
+        staleRequestCycleCount++;
+        return STOP;
+    }
+
+    /** Restarts the planner from the measured wheels, or from rest if those are not finite. */
+    private void resetGenerator() {
+        boolean finite = true;
+        for (int i = 0; i < mx.length; i++) {
+            finite &= Double.isFinite(sample.velocity[i]) && Double.isFinite(sample.angle[i]);
+        }
+        if (finite) {
+            generator.reset(sample.velocity, sample.angle);
+        } else {
+            generator.reset(zeros, zeros);
+        }
+    }
+
+    private static boolean finite(double[] a) {
+        for (double v : a) {
+            if (!Double.isFinite(v)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     /** Fills the sample's targets from the request and sends them. Package-private for tests. */
+    @SuppressWarnings("NonAtomicVolatileUpdate") // one writer: this thread
     void computeTargets(DriveRequest r) {
+        if (r.mode() == DriveRequest.Mode.VELOCITY
+                && !(Double.isFinite(r.vx())
+                        && Double.isFinite(r.vy())
+                        && Double.isFinite(r.omega())
+                        && Double.isFinite(r.headingOffset()))) {
+            // A NaN from upstream (a sensor, a divide) must not reach the planner, where it
+            // would stay: stop instead, and count it.
+            nonFinite++;
+            r = STOP;
+        }
         int n = mx.length;
         double dt = lastTimestamp > 0 ? sample.timestamp - lastTimestamp : periodSeconds;
         if (!(dt > 1e-4 && dt < 0.05)) {
@@ -389,9 +541,23 @@ public final class SwerveThread {
                             maxSteerAcceleration,
                             pushing);
                     sample.setpointFraction = generator.lastFraction();
-                    System.arraycopy(generator.angle(), 0, angle, 0, n);
-                    System.arraycopy(generator.velocity(), 0, velocity, 0, n);
-                    System.arraycopy(generator.steerVelocity(), 0, steerVelocity, 0, n);
+                    if (finite(generator.angle())
+                            && finite(generator.velocity())
+                            && finite(generator.steerVelocity())) {
+                        System.arraycopy(generator.angle(), 0, angle, 0, n);
+                        System.arraycopy(generator.velocity(), 0, velocity, 0, n);
+                        System.arraycopy(generator.steerVelocity(), 0, steerVelocity, 0, n);
+                    } else {
+                        // The plan went non-finite (a NaN reading in its state): it would never
+                        // recover on its own. Hold the last angles at rest this cycle and plan
+                        // from the measured wheels again.
+                        nonFinite++;
+                        System.arraycopy(lastTargetAngle, 0, angle, 0, n);
+                        java.util.Arrays.fill(velocity, 0.0);
+                        java.util.Arrays.fill(steerVelocity, 0.0);
+                        lastOmega = 0;
+                        resetGenerator();
+                    }
                 } else {
                     SwerveMath.toSwerveModuleVelocities(
                             chassis[0], chassis[1], chassis[2], mx, my, velocity, angle);

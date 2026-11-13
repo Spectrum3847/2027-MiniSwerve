@@ -6,7 +6,7 @@
 | `Robot` | Boot order and the main loop order; owns subsystems as fields |
 | `RunMode` | REAL / SIM / REPLAY, loop periods, RT priority, tuning mode |
 | `LoggingSetup` | AdvantageKit metadata and receivers |
-| `SimScript` | Scripted sim driving (`MINISWERVE_SIM_SCRIPT=drive|faults|radius|auto|walls|buttons|driver`): sticks, buttons (tap, hold), Driver Station inputs, unplugged controller, Driver Station lost |
+| `SimScript` | Scripted sim driving (`MINISWERVE_SIM_SCRIPT=drive|faults|radius|auto|walls|buttons|driver|bump|guards|red`): sticks, buttons (tap, hold), Driver Station inputs, unplugged controller, Driver Station lost |
 | `SimDriver` | The person on the scripted controller: sticks that take time to move, imperfect pushes, drift and jitter (`MINISWERVE_SIM_DRIVER=perfect` turns it off) |
 | `SimScripts` | The scripts `SimScript` plays, by name |
 | `config/Hardware` | CAN IDs, bus, gear ratios, inverts, current limits: hard stops |

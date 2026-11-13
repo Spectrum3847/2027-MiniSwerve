@@ -18,10 +18,14 @@ public final class VisionInputs implements LoggableInputs {
     /** How many frames are in {@link #frames} (also readable from the bytes). */
     public final int[] frameCount;
 
+    /** Values that arrived this loop and were not exactly one frame (dropped). */
+    public final int[] malformed;
+
     public VisionInputs(String... cameras) {
         this.cameras = cameras.clone();
         frames = new byte[cameras.length][];
         frameCount = new int[cameras.length];
+        malformed = new int[cameras.length];
         for (int i = 0; i < cameras.length; i++) {
             frames[i] = new byte[0];
         }
@@ -34,6 +38,8 @@ public final class VisionInputs implements LoggableInputs {
             table.put(cameras[i] + "/Frames", frames[i]);
             // Number of frames in Frames.
             table.put(cameras[i] + "/FrameCount", frameCount[i]);
+            // Values this loop that were not exactly one frame and were dropped (count).
+            table.put(cameras[i] + "/Malformed", malformed[i]);
         }
     }
 
@@ -42,6 +48,7 @@ public final class VisionInputs implements LoggableInputs {
         for (int i = 0; i < cameras.length; i++) {
             frames[i] = table.get(cameras[i] + "/Frames", new byte[0]);
             frameCount[i] = table.get(cameras[i] + "/FrameCount", 0);
+            malformed[i] = table.get(cameras[i] + "/Malformed", 0);
         }
     }
 }

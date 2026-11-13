@@ -36,6 +36,27 @@ public final class SwerveInputs implements LoggableInputs {
     /** Readings the swerve thread rejected as impossible jumps (device reboots), since boot. */
     public long rejectedJumps;
 
+    /**
+     * The field heading saved before a code restart ({@link HeadingMemory}): heading minus gyro
+     * yaw, the gyro's yaw then (rad) and how old it was at boot (s). NaN when there is none.
+     */
+    public double restoreYawOffset = Double.NaN;
+
+    public double restoreYaw = Double.NaN;
+    public double restoreAgeSeconds = Double.NaN;
+
+    /** Swerve thread cycles completed since boot: the main loop's proof that it is running. */
+    public long threadCycles;
+
+    /** The swerve thread exists and has not ended. */
+    public boolean threadAlive = true;
+
+    /** Cycles the thread ran a stop because the main loop had not renewed its request. */
+    public long staleRequestCycles;
+
+    /** Requests or plans the thread dropped because they were not finite numbers. */
+    public long nonFiniteDropped;
+
     public SwerveInputs(int modules, int maxSamplesPerLoop) {
         this.modules = modules;
         samples = new SwerveSample[maxSamplesPerLoop];
@@ -195,6 +216,20 @@ public final class SwerveInputs implements LoggableInputs {
         t.put("Thread/RejectedJumps", rejectedJumps);
         // Last swerve thread exception message.
         t.put("Thread/LastFault", lastThreadFault);
+        // Field heading saved before a code restart: heading minus gyro yaw (rad), NaN if none.
+        t.put("Restore/YawOffset", restoreYawOffset);
+        // The gyro's yaw when that was saved (rad).
+        t.put("Restore/Yaw", restoreYaw);
+        // How old the saved heading was at boot (s).
+        t.put("Restore/AgeSeconds", restoreAgeSeconds);
+        // Swerve thread cycles completed since boot (count).
+        t.put("Thread/Cycles", threadCycles);
+        // The swerve thread is running (bool); false means it ended and is being restarted.
+        t.put("Thread/Alive", threadAlive);
+        // Cycles run on a stop because the main loop's request went stale, since boot (count).
+        t.put("Thread/StaleRequestCycles", staleRequestCycles);
+        // Requests or plans dropped as not finite (NaN, infinite), since boot (count).
+        t.put("Thread/NonFiniteDropped", nonFiniteDropped);
     }
 
     @Override
@@ -260,6 +295,13 @@ public final class SwerveInputs implements LoggableInputs {
         threadFaults = t.get("Thread/Faults", threadFaults);
         rejectedJumps = t.get("Thread/RejectedJumps", rejectedJumps);
         lastThreadFault = t.get("Thread/LastFault", lastThreadFault);
+        threadCycles = t.get("Thread/Cycles", threadCycles);
+        restoreYawOffset = t.get("Restore/YawOffset", restoreYawOffset);
+        restoreYaw = t.get("Restore/Yaw", restoreYaw);
+        restoreAgeSeconds = t.get("Restore/AgeSeconds", restoreAgeSeconds);
+        threadAlive = t.get("Thread/Alive", threadAlive);
+        staleRequestCycles = t.get("Thread/StaleRequestCycles", staleRequestCycles);
+        nonFiniteDropped = t.get("Thread/NonFiniteDropped", nonFiniteDropped);
     }
 
     private static void copy(double[] from, double[] to) {

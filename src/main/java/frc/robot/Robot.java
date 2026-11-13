@@ -17,6 +17,7 @@ import frc.spectrumLib.battery.BatteryTagIO;
 import frc.spectrumLib.battery.BatteryTagIOSerial;
 import frc.spectrumLib.battery.BatteryVoltageCheck;
 import frc.spectrumLib.framework.DesktopSim;
+import frc.spectrumLib.framework.LoopStage;
 import frc.spectrumLib.framework.OpModeLoop;
 import frc.spectrumLib.framework.RobotLoop;
 import frc.spectrumLib.framework.SpectrumRobot;
@@ -54,6 +55,15 @@ import org.wpilib.util.Alert.Level;
  *   <li>{@link Swerve#applyWantedState()} - wanted state to the swerve thread
  *   <li>alerts and telemetry
  * </ol>
+ *
+ * <p>Every step runs as a {@link LoopStage}: if one throws, it is counted and alerted and the rest
+ * of the loop still runs, so a bug in the battery reader or a camera never restarts the robot
+ * mid-match (AGENTS.md "Finish the match"). If turning the wanted state into a drive request
+ * throws, the sticks still drive, robot-relative ({@link Swerve#applyLimp}). Boot is the same: the
+ * parts the robot can drive without (cameras, pose, the battery tag) are left out with an alert if
+ * making them throws.
+ *
+ * <p>Index: constructor | {@link #robotPeriodic} | {@link #registerOpModes}
  */
 public class Robot extends SpectrumRobot {
     /** Folder on the robot that survives deploys, for settings saved in the pit. */
@@ -63,13 +73,35 @@ public class Robot extends SpectrumRobot {
     private final Swerve swerve;
     private final Vision vision;
     private final BatteryTag battery;
-    private final BatteryVoltageCheck batteryVoltage =
-            new BatteryVoltageCheck(
-                    BatterySettings.LOW_VOLTS.get(), BatterySettings.SETTLE_SECONDS.get());
+    private final BatteryVoltageCheck batteryVoltage;
     private final Localization localization;
     private final SimScript simScript;
     private final DesktopSim desktopSim;
     private final OpModeLoop opModeLoop = new OpModeLoop();
+
+    // The loop's stages and their work, made once so the loop allocates nothing for them.
+    private final LoopStage settingsStage = new LoopStage("Settings");
+    private final LoopStage swerveInputsStage = new LoopStage("SwerveInputs");
+    private final LoopStage batteryStage = new LoopStage("Battery");
+    private final LoopStage visionStage = new LoopStage("Vision");
+    private final LoopStage localizationStage = new LoopStage("Localization");
+    private final LoopStage opModeStage = new LoopStage("OpMode");
+    private final LoopStage commandsStage = new LoopStage("Commands");
+    private final LoopStage swerveApplyStage = new LoopStage("SwerveApply");
+    private final LoopStage limpStage = new LoopStage("SwerveLimp");
+    private final LoopStage alertsStage = new LoopStage("Alerts");
+    private final LoopStage telemetryStage = new LoopStage("Telemetry");
+    private final Runnable settingsWork = RobotSettings::periodic;
+    private final Runnable swerveInputsWork;
+    private final Runnable batteryWork = this::batteryPeriodic;
+    private final Runnable visionWork;
+    private final Runnable localizationWork = this::localizationPeriodic;
+    private final Runnable opModeWork = opModeLoop::run;
+    private final Runnable commandsWork = CommandScheduler.getInstance()::run;
+    private final Runnable swerveApplyWork;
+    private final Runnable limpWork;
+    private final Runnable alertsWork = Alert::periodic;
+    private final Runnable telemetryWork = Telemetry::periodic;
 
     public Robot() {
         super(RunMode.MAIN_LOOP_PERIOD_SECONDS);
@@ -87,32 +119,70 @@ public class Robot extends SpectrumRobot {
                             + " Simulate Robot Code");
         }
         LoggingSetup.start(this);
-        RobotSettings.start(
-                Filesystem.getDeployDirectory().toPath().resolve("settings"),
-                "MiniSwerve",
-                RunMode.CURRENT == RunMode.Mode.REAL ? LOCAL_SETTINGS : null,
-                new NetworkTablesTransport(RobotSettings.NT_PREFIX));
+        // Settings that fail to start leave every setting at its code default: still a robot.
+        new LoopStage("Boot/Settings")
+                .run(
+                        () ->
+                                RobotSettings.start(
+                                        Filesystem.getDeployDirectory()
+                                                .toPath()
+                                                .resolve("settings"),
+                                        "MiniSwerve",
+                                        RunMode.CURRENT == RunMode.Mode.REAL
+                                                ? LOCAL_SETTINGS
+                                                : null,
+                                        new NetworkTablesTransport(RobotSettings.NT_PREFIX)));
+        // After settings, so files and pit-saved values apply (a field initializer would read
+        // the code defaults).
+        batteryVoltage =
+                new BatteryVoltageCheck(
+                        BatterySettings.LOW_VOLTS.get(), BatterySettings.SETTLE_SECONDS.get());
         // Subsystems are built here, after settings and before the RT priority below.
         // Sim only: devices the scripted sim can unplug, reboot or make fail.
         SimFaults simFaults = RunMode.CURRENT == RunMode.Mode.SIM ? new SimFaults() : null;
+        if (simFaults != null) {
+            // Sim scripts make a stage throw by "unplugging" Code/<stage>.
+            LoopStage.setFaultInjector(name -> simFaults.unheard("Code/" + name));
+        }
+        // The drivetrain is the one part with no fallback: without it there is no robot.
         swerve = new Swerve(simFaults, desktopSim);
+        swerveInputsWork = swerve::updateInputs;
+        swerveApplyWork = swerve::applyWantedState;
+        limpWork = swerve::applyLimp;
         simScript = SimScript.fromEnvironment(simFaults);
+        // Everything below is optional: the robot drives without it.
         VisionSettings.Camera[] cameras = VisionSettings.cameras();
-        vision = new Vision(cameras);
-        Field field = Field.loadField(VisionSettings.FIELD);
-        localization = new Localization(swerve, vision, field);
-        if (desktopSim != null) {
-            Transform3d[] mounts = new Transform3d[cameras.length];
-            for (int i = 0; i < cameras.length; i++) {
-                mounts[i] = cameras[i].robotToCamera();
-            }
-            vision.expectFrames(desktopSim.cameras(field, vision.names(), mounts));
+        Vision madeVision = new LoopStage("Boot/Vision").make(() -> new Vision(cameras));
+        vision = madeVision;
+        visionWork = madeVision != null ? madeVision::periodic : () -> {};
+        Field field = new LoopStage("Boot/Field").make(() -> Field.loadField(VisionSettings.FIELD));
+        localization =
+                madeVision != null && field != null
+                        ? new LoopStage("Boot/Localization")
+                                .make(() -> new Localization(swerve, madeVision, field))
+                        : null;
+        if (desktopSim != null && madeVision != null && field != null) {
+            new LoopStage("Boot/SimCameras")
+                    .run(
+                            () -> {
+                                Transform3d[] mounts = new Transform3d[cameras.length];
+                                for (int i = 0; i < cameras.length; i++) {
+                                    mounts[i] = cameras[i].robotToCamera();
+                                }
+                                madeVision.expectFrames(
+                                        desktopSim.cameras(field, madeVision.names(), mounts));
+                            });
         }
         battery =
-                new BatteryTag(
-                        batteryReader(),
-                        BatteryNames.load(
-                                Filesystem.getDeployDirectory().toPath().resolve("batteries.csv")));
+                new LoopStage("Boot/Battery")
+                        .make(
+                                () ->
+                                        new BatteryTag(
+                                                batteryReader(),
+                                                BatteryNames.load(
+                                                        Filesystem.getDeployDirectory()
+                                                                .toPath()
+                                                                .resolve("batteries.csv"))));
         // The pilot only binds controls; the bindings keep it alive.
         new Pilot(swerve);
         registerOpModes();
@@ -147,22 +217,36 @@ public class Robot extends SpectrumRobot {
         if (simScript != null) {
             simScript.periodic();
         }
-        RobotSettings.periodic();
-        swerve.updateInputs();
-        battery.periodic(org.wpilib.driverstation.RobotState.isDisabled());
-        batteryVoltage.periodic(
-                swerve.supplyVoltage(),
-                org.wpilib.driverstation.RobotState.isDisabled(),
-                org.wpilib.system.Timer.getTimestamp());
-        vision.periodic();
-        localization.periodic(vision, org.wpilib.system.Timer.getTimestamp());
-        opModeLoop.run();
-        CommandScheduler.getInstance().run();
-        swerve.applyWantedState();
-        Alert.periodic();
-        Telemetry.periodic();
+        settingsStage.run(settingsWork);
+        swerveInputsStage.run(swerveInputsWork);
+        batteryStage.run(batteryWork);
+        visionStage.run(visionWork);
+        localizationStage.run(localizationWork);
+        opModeStage.run(opModeWork);
+        commandsStage.run(commandsWork);
+        if (!swerveApplyStage.run(swerveApplyWork)) {
+            // The wanted-state path threw: the sticks still drive, by the shortest path there is.
+            limpStage.run(limpWork);
+        }
+        alertsStage.run(alertsWork);
+        telemetryStage.run(telemetryWork);
         if (desktopSim != null) {
             desktopSim.loopDone();
+        }
+    }
+
+    private void batteryPeriodic() {
+        boolean disabled = org.wpilib.driverstation.RobotState.isDisabled();
+        if (battery != null) {
+            battery.periodic(disabled);
+        }
+        batteryVoltage.periodic(
+                swerve.supplyVoltage(), disabled, org.wpilib.system.Timer.getTimestamp());
+    }
+
+    private void localizationPeriodic() {
+        if (localization != null) {
+            localization.periodic(vision, org.wpilib.system.Timer.getTimestamp());
         }
     }
 

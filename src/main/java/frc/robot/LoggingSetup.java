@@ -1,5 +1,6 @@
 package frc.robot;
 
+import frc.spectrumLib.telemetry.Alert;
 import frc.spectrumLib.telemetry.DashboardReceiver;
 import frc.spectrumLib.telemetry.Telemetry;
 import java.io.File;
@@ -10,6 +11,7 @@ import org.littletonrobotics.junction.Logger;
 import org.littletonrobotics.junction.networktables.NT4Publisher;
 import org.littletonrobotics.junction.wpilog.WPILOGReader;
 import org.littletonrobotics.junction.wpilog.WPILOGWriter;
+import org.wpilib.util.Alert.Level;
 
 /**
  * Starts AdvantageKit: metadata, where the log goes, and in replay where it comes from. Runs before
@@ -47,10 +49,26 @@ final class LoggingSetup {
 
         switch (RunMode.CURRENT) {
             case REAL -> {
-                String folder = new File("/U").isDirectory() ? USB_LOGS : LOCAL_LOGS;
-                new File(folder).mkdirs();
-                Logger.recordMetadata("LogFolder", folder);
-                Logger.addDataReceiver(new WPILOGWriter(folder));
+                // The first folder that can really be written: a full or read-only stick used to
+                // mean a match with no log and nothing saying so.
+                boolean stick = new File("/U").isDirectory();
+                String folder =
+                        stick && writable(USB_LOGS)
+                                ? USB_LOGS
+                                : writable(LOCAL_LOGS) ? LOCAL_LOGS : null;
+                Logger.recordMetadata("LogFolder", folder == null ? "none" : folder);
+                if (folder != null) {
+                    Logger.addDataReceiver(new WPILOGWriter(folder));
+                }
+                if (folder == null) {
+                    new Alert("No log folder can be written: this run is not logged", Level.HIGH)
+                            .set(true);
+                } else if (stick && !folder.equals(USB_LOGS)) {
+                    new Alert(
+                                    "USB stick cannot be written: logging to the robot's storage",
+                                    Level.MEDIUM)
+                            .set(true);
+                }
                 Logger.addDataReceiver(new DashboardReceiver(new NT4Publisher(), ntEveryN()));
             }
             case SIM -> {
@@ -70,6 +88,20 @@ final class LoggingSetup {
         Logger.start();
         // Sim mirrors every output to NT for AdvantageScope; the robot sends dashboard keys only.
         Telemetry.startDashboard(RunMode.CURRENT == RunMode.Mode.SIM);
+    }
+
+    /** Whether a file can be made in {@code folder} (made if missing). Boot only: file I/O. */
+    private static boolean writable(String folder) {
+        try {
+            File dir = new File(folder);
+            if (!dir.isDirectory() && !dir.mkdirs()) {
+                return false;
+            }
+            File probe = File.createTempFile("probe", ".tmp", dir);
+            return probe.delete() || !probe.exists();
+        } catch (java.io.IOException | RuntimeException e) {
+            return false;
+        }
     }
 
     /** Main loops per NetworkTables publish, for about 50 Hz at any loop rate. */

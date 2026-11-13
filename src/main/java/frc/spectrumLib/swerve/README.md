@@ -11,6 +11,7 @@ Phoenix (`toSwerveModuleVelocities`, `optimize`, `cosineScale`, `TorqueCurrentFO
 | `ModuleMode` | NORMAL / STEER_ONLY / COAST: what a module can still do |
 | `ModuleCommands` | Per motor: real command or coast, full or slow (10 Hz) rate |
 | `HeadingHold` | Optional heading hold that lets go after a hit (off by default) |
+| `HeadingMemory` | Field heading kept in memory-backed storage across a code restart (never a power cycle or an old run) |
 | `CoastOnDisable` | Brake while enabled or moving; coast once disabled and still (pushable in the pit) |
 | `WheelRadiusCharacterizer` | Spin-in-place wheel radius measurement (gyro turn vs wheel travel) |
 | `SwerveThread` | The 250 Hz loop: read devices, request to module targets, send, queue the sample |

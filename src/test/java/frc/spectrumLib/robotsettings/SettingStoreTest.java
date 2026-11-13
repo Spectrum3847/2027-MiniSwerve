@@ -430,6 +430,28 @@ class SettingStoreTest {
     }
 
     @Test
+    void aSecondSaveCanUndoTheFirst() throws IOException {
+        // No local file at boot. Tune a to 2 and save; tune it back to 0 and save again: the
+        // file from the first save must not keep 2 for the next boot.
+        configure();
+        var t = new FakeTransport();
+        store.enableLive(t);
+        cams.number("a", 0, "");
+        t.values.put("cams/a", 2.0);
+        store.applyLive(true);
+        SettingStore.SaveJob first = store.prepareSave("first");
+        SettingStore.write(first);
+        store.markSaved(first);
+        assertTrue(Files.readString(localFile()).contains("\"value\""));
+        t.values.put("cams/a", 0.0);
+        store.applyLive(true);
+        SettingStore.SaveJob second = store.prepareSave("second");
+        SettingStore.write(second);
+        store.markSaved(second);
+        assertFalse(Files.readString(localFile()).contains("\"value\""));
+    }
+
+    @Test
     void savedLiveValuesStopCountingAsUnsaved() throws IOException {
         configure();
         var t = new FakeTransport();

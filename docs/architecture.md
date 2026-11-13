@@ -14,6 +14,51 @@ How MiniSwerve's code fits together. Status marks: **built**, **next**, **planne
 The swerve thread never logs. It writes samples into preallocated ring buffers; the main loop
 drains them into logged inputs, and replay feeds the same inputs back.
 
+## Finishing the match when our own code fails
+
+Device faults degrade one part (see the swerve sections). Our own bugs are held the same way:
+
+- Every step of the main loop runs as a `LoopStage`. A throw (errors included) is counted
+  (`Stages/<name>/Faults`, `LastFault`), raised as an alert and printed once per distinct fault,
+  and the rest of the loop runs. If the wanted-state step throws, `Swerve.applyLimp` still drives
+  from the sticks, robot-relative.
+- Boot makes the parts the robot can drive without (settings files, cameras, the field, pose, the
+  battery tag) as stages too: one that throws is left out with an alert.
+- The swerve thread catches everything a cycle throws. The main loop watches its cycle count
+  (`Swerve/Thread/Cycles`, a logged input) and starts it again if it has ended
+  (`Swerve/Thread/Restarts`).
+- The swerve thread obeys a request for 0.25 s without the main loop renewing it, then ramps to a
+  stop until the next one (`Swerve/Thread/StaleRequestCycles`): a stalled main loop does not
+  leave the robot driving its last stick command.
+- A request or plan that is not a finite number is dropped and the setpoint generator restarted
+  from the measured wheels (`Swerve/Thread/NonFiniteDropped`); a NaN would otherwise stay in the
+  generator until the next neutral.
+
+Field heading (`FieldHeading`): a code restart mid-match no longer loses field-centric. The gyro
+keeps its yaw while the code is down, so the offset between yaw and field heading is saved ten
+times a second to `/dev/shm` (memory: gone when the robot is powered off) and put back at boot if
+it is under 30 s old on the computer's monotonic clock, its checksum is right, and the gyro has
+not turned more than two turns since (a gyro that lost power starts near zero). A power cycle, a
+move to another field with the robot off, or a redeploy minutes later all start fresh. The saved
+values are logged inputs (`Swerve/Restore/*`). Until the first enable the robot is taken to face
+away from its own driver (heading pi on red: the `red` sim script, started at 180 deg, drives away
+from the red wall with no re-zero; before, it drove toward it), and the last alliance seen is kept
+so a Driver Station dropout cannot flip a red driver's sticks.
+
+Smaller guards in the same spirit: TagEKF drops an odometry sample that is not all finite numbers
+(`Pose/NonFiniteSamples`), never lets sample time run backwards in its history, and is re-seeded
+from a checked frame if its state ever stops being finite (`Pose/Healthy`); a camera value that is
+not exactly one frame is dropped before it is joined to the loop's bytes
+(`Vision/<camera>/Malformed`), since the decoder finds each frame's end from its own header; the
+log folder is test-written at boot, falling back from the USB stick to the robot's storage with an
+alert; a disabled robot's request is neutral, so the setpoint generator follows the real wheels
+and enabling with a stick pushed ramps up from rest.
+
+`MINISWERVE_SIM_SCRIPT=guards` drives while making stages throw (`Code/<stage>` in `SimFaults`)
+and ending the swerve thread. Checked: the robot moves 1.2 to 1.5 m in every 1 to 1.5 s step,
+through 200 vision and localization throws, 150 wanted-state throws (limp path), 100 scheduler
+throws and one thread restart.
+
 ## Main loop order
 
 1. `RobotLoop.next()`

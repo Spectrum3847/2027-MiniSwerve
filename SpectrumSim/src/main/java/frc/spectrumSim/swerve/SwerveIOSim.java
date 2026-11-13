@@ -36,7 +36,12 @@ public final class SwerveIOSim implements SwerveIO {
     private final PhoenixSwerveConfig cfg;
     private final SwervePhysicsSim sim;
     private final SimFaults faults;
-    private final SimClock.Participant clock;
+    private volatile SimClock.Participant clock;
+
+    /** The sim clock itself, to join again if the swerve thread is restarted. */
+    private final SimClock simClock;
+
+    private volatile boolean left;
     private final int n;
     private final TalonFXModel[] drive;
     private final TalonFXModel[] steer;
@@ -140,6 +145,7 @@ public final class SwerveIOSim implements SwerveIO {
         ticksPerPeriod = Math.max(1, Math.round(1.0 / cfg.signalHz() / SimClock.TICK_SECONDS));
         sim.attach(cfg, new Devices());
         sim.setSimFaults(faults);
+        simClock = clock;
         if (clock != null) {
             this.clock = clock.join();
             clock.addStepper(this::physicsStep);
@@ -236,6 +242,17 @@ public final class SwerveIOSim implements SwerveIO {
     public void close() {
         if (clock != null) {
             clock.leave();
+            left = true;
+        }
+    }
+
+    @Override
+    public void open() {
+        // A restarted swerve thread: the clock must wait for it again.
+        if (left && simClock != null) {
+            left = false;
+            clock = simClock.join();
+            tick = clock.now();
         }
     }
 
