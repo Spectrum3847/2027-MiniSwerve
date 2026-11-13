@@ -189,6 +189,8 @@ public final class SwerveInputs implements LoggableInputs {
         t.put("Health/Timesync", h.timesync);
         // Drivetrain device reboots detected since boot.
         t.put("Health/DeviceResets", h.deviceResets);
+        // Reboots of each steer motor detected since boot (count), FL FR BL BR.
+        t.put("Health/SteerResets", h.steerResets);
         // Signal rates set on every device (false after a reboot until redone).
         t.put("Health/SignalsSet", h.signalsSet);
         // Drive motors in brake (false: coast), as last applied.
@@ -280,6 +282,8 @@ public final class SwerveInputs implements LoggableInputs {
         h.timesync = t.get("Health/Timesync", h.timesync);
         h.driveBrake = t.get("Health/DriveBrake", h.driveBrake);
         h.deviceResets = t.get("Health/DeviceResets", h.deviceResets);
+        long[] steerResets = t.get("Health/SteerResets", h.steerResets);
+        System.arraycopy(steerResets, 0, h.steerResets, 0, Math.min(steerResets.length, modules));
         h.signalsSet = t.get("Health/SignalsSet", h.signalsSet);
         staleCycles = t.get("Thread/StaleCycles", staleCycles);
         copy(t.get("Health/DriveStatorCurrent", h.driveStatorCurrent), h.driveStatorCurrent);

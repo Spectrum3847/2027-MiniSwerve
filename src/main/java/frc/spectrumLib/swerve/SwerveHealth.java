@@ -43,6 +43,12 @@ public final class SwerveHealth {
     /** Device reboots detected since boot (any drivetrain device). */
     public long deviceResets;
 
+    /**
+     * Reboots of each steer motor detected since boot. A count, not a flag: a reboot that is
+     * noticed and reconfigured between two health readings still shows.
+     */
+    public final long[] steerResets;
+
     /** Signal update rates are set on every device (false right after a reboot, until redone). */
     public boolean signalsSet = true;
 
@@ -86,5 +92,6 @@ public final class SwerveHealth {
         steerDeviceTemp = new double[modules];
         driveSupplyVoltage = new double[modules];
         steerSupplyVoltage = new double[modules];
+        steerResets = new long[modules];
     }
 }

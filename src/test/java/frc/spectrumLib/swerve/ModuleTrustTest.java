@@ -92,4 +92,38 @@ class ModuleTrustTest {
         Arrays.fill(s.moduleOk, true);
         assertEquals(0.0, t.weights(s)[0]);
     }
+
+    @Test
+    void aSteerRebootWithItsEncoderGoneCoastsUntilTheEncoderIsBack() {
+        ModuleTrust t = new ModuleTrust("Test/Reboot", 4);
+        SwerveHealth h = healthy();
+        t.update(h);
+        // The CANcoder is lost: the steer motor carries on from its rotor.
+        h.encoderConnected[1] = false;
+        h.fusedOk[1] = false;
+        t.update(h);
+        assertEquals(ModuleMode.NORMAL, t.modes()[1]);
+        // Then the steer motor reboots and is reconfigured between two health readings: it has
+        // lost the rotor angle and has no CANcoder to get it from.
+        h.steerResets[1] = 1;
+        t.update(h);
+        assertEquals(ModuleMode.COAST, t.modes()[1], "angle unknown: do not steer on it");
+        assertEquals(false, t.commands().steer()[1]);
+        assertEquals(ModuleMode.NORMAL, t.modes()[0]);
+        // The CANcoder comes back: the module is whole again.
+        h.encoderConnected[1] = true;
+        h.fusedOk[1] = true;
+        t.update(h);
+        assertEquals(ModuleMode.NORMAL, t.modes()[1]);
+    }
+
+    @Test
+    void aSteerRebootWithAGoodEncoderDoesNotCostTheModule() {
+        ModuleTrust t = new ModuleTrust("Test/RebootOk", 4);
+        SwerveHealth h = healthy();
+        t.update(h);
+        h.steerResets[2] = 1;
+        t.update(h);
+        assertEquals(ModuleMode.NORMAL, t.modes()[2]);
+    }
 }

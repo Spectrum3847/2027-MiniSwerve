@@ -22,6 +22,10 @@ import java.util.function.Supplier;
  *       on {@link PhoenixBackground} unless already queued.
  *   <li>A per-device generation counter makes sure a retry that finishes after a newer reboot does
  *       not mark the device configured again.
+ *   <li>Devices that are answering go first and get the full retries; a device that is not
+ *       answering is queued after them with one try. All of this shares one background thread, and
+ *       a dead device's five timed-out tries (about half a second) used to stand in front of the
+ *       devices a brown-out had just brought back.
  * </ul>
  *
  * <p>Flags are atomics: written on the background thread, read on the main thread.
@@ -131,20 +135,27 @@ public final class PhoenixDeviceSet {
                 resets.incrementAndGet();
             }
         }
-        for (int i = 0; i < devices.size(); i++) {
-            Device d = devices.get(i);
-            String name = prefix + "/Config/" + d.name();
-            if (configured.get(i) == 0 && !PhoenixBackground.pending(name)) {
-                final int index = i;
-                final int gen = generation.get(i);
-                PhoenixBackground.run(
-                        name,
-                        d.config(),
-                        ok -> {
-                            if (ok && generation.get(index) == gen) {
-                                configured.set(index, 1);
-                            }
-                        });
+        // Answering devices first, with every retry; silent ones after, one try each.
+        for (int pass = 0; pass < 2; pass++) {
+            boolean wantConnected = pass == 0;
+            for (int i = 0; i < devices.size(); i++) {
+                Device d = devices.get(i);
+                String name = prefix + "/Config/" + d.name();
+                if (configured.get(i) == 0
+                        && connected(i) == wantConnected
+                        && !PhoenixBackground.pending(name)) {
+                    final int index = i;
+                    final int gen = generation.get(i);
+                    PhoenixBackground.run(
+                            name,
+                            d.config(),
+                            ok -> {
+                                if (ok && generation.get(index) == gen) {
+                                    configured.set(index, 1);
+                                }
+                            },
+                            wantConnected ? PhoenixBackground.TRIES : 1);
+                }
             }
         }
         String signalsName = prefix + "/Signals";
@@ -175,6 +186,11 @@ public final class PhoenixDeviceSet {
     /** Every device's signal rates are set (false after a reboot until redone). */
     public boolean signalsSet() {
         return signalsSet;
+    }
+
+    /** Reboots of one device seen since boot. */
+    public long resets(int index) {
+        return generation.get(index);
     }
 
     /** Device reboots seen since boot. */

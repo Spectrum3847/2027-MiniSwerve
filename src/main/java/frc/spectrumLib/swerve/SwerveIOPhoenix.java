@@ -350,6 +350,7 @@ public final class SwerveIOPhoenix implements SwerveIO {
             h.driveConfigured[i] = devices.configured(driveIndex[i]);
             h.steerConfigured[i] = devices.configured(steerIndex[i]);
             h.encoderConfigured[i] = devices.configured(encoderIndex[i]);
+            h.steerResets[i] = devices.resets(steerIndex[i]);
             h.driveStatorCurrent[i] = slow[b].getValueAsDouble();
             h.steerStatorCurrent[i] = slow[b + 1].getValueAsDouble();
             h.driveSupplyCurrent[i] = slow[b + 2].getValueAsDouble();

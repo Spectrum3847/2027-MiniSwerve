@@ -9,7 +9,10 @@ import org.littletonrobotics.junction.Logger;
  * <p>Driving never stops for a module fault (AGENTS.md "Finish the match"): a bad drive motor makes
  * its module {@link ModuleMode#STEER_ONLY}; a bad steer motor, or an angle never known since boot,
  * makes it {@link ModuleMode#COAST}; the rest keep driving. A CANcoder lost after boot does not
- * change the mode: the steer motor keeps the angle from its own rotor.
+ * change the mode: the steer motor keeps the angle from its own rotor. A steer motor that reboots
+ * has lost that rotor angle, so its angle counts as unknown again until the CANcoder gives it back:
+ * with the CANcoder also gone, the module coasts instead of steering to a wrong angle and dragging
+ * the other three.
  *
  * <p>Odometry is stricter: it uses a module only when it is {@link ModuleMode#NORMAL}, its CANcoder
  * is fused and readable, and that sample's signals were fresh.
@@ -22,6 +25,7 @@ public final class ModuleTrust {
     private final double[] weight;
     private final boolean[] trusted;
     private final boolean[] absoluteKnown;
+    private final long[] seenSteerResets;
     private final ModuleMode[] mode;
     private final String[] modeNames;
     private int version;
@@ -37,6 +41,7 @@ public final class ModuleTrust {
         weight = new double[n];
         trusted = new boolean[n];
         absoluteKnown = new boolean[n];
+        seenSteerResets = new long[n];
         mode = new ModuleMode[n];
         modeNames = new String[n];
         java.util.Arrays.fill(mode, ModuleMode.NORMAL);
@@ -63,6 +68,11 @@ public final class ModuleTrust {
         boolean changed = false;
         for (int i = 0; i < n; i++) {
             boolean encoder = h.encoderConnected[i] && h.encoderConfigured[i] && h.magnetOk[i];
+            if (h.steerResets[i] != seenSteerResets[i]) {
+                // The steer motor rebooted: what it knew of its angle is gone.
+                seenSteerResets[i] = h.steerResets[i];
+                absoluteKnown[i] = false;
+            }
             if (encoder && h.steerConnected[i] && h.steerConfigured[i] && h.fusedOk[i]) {
                 absoluteKnown[i] = true;
             }

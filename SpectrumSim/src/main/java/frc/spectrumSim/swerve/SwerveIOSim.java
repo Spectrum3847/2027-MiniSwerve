@@ -108,6 +108,7 @@ public final class SwerveIOSim implements SwerveIO {
     private long tick;
     private double selfTime;
     private long resets;
+    private final long[] steerResets = new long[8];
     private boolean driveBrake = true;
 
     /**
@@ -277,6 +278,9 @@ public final class SwerveIOSim implements SwerveIO {
         for (int d = 0; d < names.length; d++) {
             if (faults != null && faults.consumeReset(names[d])) {
                 resets++;
+                if (d >= n && d < 2 * n) {
+                    steerResets[d - n]++;
+                }
                 configured[d] = false;
                 TalonFXModel m = motor(d);
                 if (m != null) {
@@ -349,6 +353,7 @@ public final class SwerveIOSim implements SwerveIO {
         }
         h.timesync = false;
         h.deviceResets = resets;
+        System.arraycopy(steerResets, 0, h.steerResets, 0, n);
         h.signalsSet = true;
         h.driveBrake = driveBrake;
     }
