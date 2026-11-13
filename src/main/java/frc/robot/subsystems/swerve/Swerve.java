@@ -119,6 +119,7 @@ public final class Swerve implements Subsystem {
      * @param desktopSim the desktop sim (SpectrumSim); null on the robot and in replay
      */
     public Swerve(SimFaults simFaults, DesktopSim desktopSim) {
+        this.simFaults = simFaults;
         double half = SwerveSettings.TRACK.get() / 2;
         double[] mx = {half, half, -half, -half};
         double[] my = {half, -half, half, -half};
@@ -196,6 +197,7 @@ public final class Swerve implements Subsystem {
     private double headingResets;
 
     private SampleListener sampleListener;
+    private final SimFaults simFaults;
     private final double[] moduleX;
     private final double[] moduleY;
 
@@ -229,11 +231,19 @@ public final class Swerve implements Subsystem {
             inputs.lastThreadFault = thread.lastFault();
             inputs.staleCycles = thread.staleCycles();
             inputs.rejectedJumps = thread.rejectedJumps();
+            inputs.threadCycles = thread.cycles();
+            inputs.threadAlive = thread.alive();
+            inputs.staleRequestCycles = thread.staleRequestCycles();
+            inputs.nonFiniteDropped = thread.nonFinite();
+            if (simFaults != null && simFaults.consumeReset("Code/SwerveThread")) {
+                thread.dieForSim(); // sim script: the thread ends, as if it had died
+            }
             if (RobotLoop.everySeconds(0.1)) {
                 io.updateHealth(inputs.health);
             }
         }
         Logger.processInputs("Swerve", inputs);
+        watchThread();
         thread.setBusVoltage(inputs.health.supplyVoltage);
         trust.update(inputs.health);
         if (trust.version() != sentModesVersion) {
@@ -261,6 +271,66 @@ public final class Swerve implements Subsystem {
                 RobotLoop.periodSeconds());
         logOutputs();
     }
+
+    /**
+     * The swerve thread must keep cycling: without it nothing drives. If it has ended, start it
+     * again (it re-plans from the measured wheels); if it is alive but not cycling, say so. Reads
+     * logged inputs, so replay shows the same alerts; only the restart itself needs hardware.
+     */
+    private void watchThread() {
+        if (inputs.threadCycles != watchedCycles) {
+            watchedCycles = inputs.threadCycles;
+            loopsWithoutCycle = 0;
+        } else {
+            loopsWithoutCycle++;
+        }
+        boolean stalled =
+                loopsWithoutCycle * RobotLoop.periodSeconds() > THREAD_STALL_SECONDS
+                        && inputs.threadCycles > 0;
+        if (!inputs.threadAlive && io.hasHardware()) {
+            thread.start();
+            threadRestarts++;
+        }
+        // Times the swerve thread ended and was started again, since boot (count).
+        Logger.recordOutput("Swerve/Thread/Restarts", threadRestarts);
+        // The swerve thread has not completed a cycle for 0.25 s (bool).
+        Logger.recordOutput("Swerve/Thread/Stalled", stalled);
+        if (threadRestarts != alertedRestarts) {
+            alertedRestarts = threadRestarts;
+            threadRestartAlert.setText("Swerve thread ended and was restarted: " + threadRestarts);
+        }
+        threadRestartAlert.set(threadRestarts > 0);
+        threadStallAlert.set(stalled);
+        if (inputs.staleRequestCycles != alertedStale) {
+            alertedStale = inputs.staleRequestCycles;
+            staleRequestAlert.setText(
+                    "Main loop stalled: swerve stopped itself for "
+                            + inputs.staleRequestCycles
+                            + " cycles");
+        }
+        staleRequestAlert.set(inputs.staleRequestCycles > 0);
+        if (inputs.nonFiniteDropped != alertedNonFinite) {
+            alertedNonFinite = inputs.nonFiniteDropped;
+            nonFiniteAlert.setText(
+                    "Swerve dropped non-finite requests or plans: " + inputs.nonFiniteDropped);
+        }
+        nonFiniteAlert.set(inputs.nonFiniteDropped > 0);
+    }
+
+    /** No completed swerve cycle for this long means the thread is stuck (s). */
+    private static final double THREAD_STALL_SECONDS = 0.25;
+
+    private long watchedCycles = -1;
+    private int loopsWithoutCycle;
+    private long threadRestarts;
+    private long alertedRestarts;
+    private long alertedStale;
+    private long alertedNonFinite;
+    private final Alert threadRestartAlert = new Alert("", Level.HIGH);
+    private final Alert threadStallAlert =
+            new Alert("Swerve thread is not cycling: the robot cannot drive", Level.HIGH);
+    private final Alert staleRequestAlert = new Alert("", Level.MEDIUM);
+    private final Alert nonFiniteAlert = new Alert("", Level.MEDIUM);
 
     /** Main loop, after the scheduler: turn the wanted state into a request for the thread. */
     public void applyWantedState() {
@@ -332,6 +402,29 @@ public final class Swerve implements Subsystem {
         // Module faults never stop the drivetrain: each module degrades on its own (ModuleTrust).
         state.setCurrent(wanted);
         // The request sent to the swerve thread: vx, vy (m/s), omega (rad/s).
+        Logger.recordOutput("Swerve/Request/Mode", request.mode());
+        Logger.recordOutput("Swerve/Request/Velocity", requestVelocity(request));
+    }
+
+    /**
+     * The shortest path from the sticks to the wheels, for when {@link #applyWantedState} throws:
+     * robot-relative (stick forward is the robot's front), no heading hold, no limits from other
+     * mechanisms, nothing from odometry. Neutral outside teleop. Worse to drive, but it drives.
+     */
+    public void applyLimp() {
+        DriveRequest request = DriveRequest.NEUTRAL;
+        if (RobotState.isTeleop()) {
+            request =
+                    DriveRequest.velocity(
+                            teleopX.getAsDouble() * maxDriveVelocity,
+                            teleopY.getAsDouble() * maxDriveVelocity,
+                            teleopOmega.getAsDouble() * maxAngularVelocity,
+                            false,
+                            0,
+                            true);
+        }
+        thread.setRequest(request);
+        // The request sent to the swerve thread by the limp path (see Stages/SwerveApply).
         Logger.recordOutput("Swerve/Request/Mode", request.mode());
         Logger.recordOutput("Swerve/Request/Velocity", requestVelocity(request));
     }

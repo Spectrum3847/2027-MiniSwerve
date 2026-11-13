@@ -147,6 +147,61 @@ final class SimScripts {
         new SimScript.Step(1.0, "stop", 0, 0, 0),
     };
 
+    /**
+     * Our own code failing mid-drive: the robot must keep driving through each. A camera stage that
+     * throws every loop; the wanted-state stage throwing (the limp path drives, robot-relative);
+     * the swerve thread ending (the main loop restarts it). {@code Code/<stage>} names a {@code
+     * LoopStage}; check {@code Stages/*}, {@code Swerve/Thread/Restarts} and that {@code
+     * Sim/FieldPose} keeps moving in every step.
+     */
+    static final SimScript.Step[] GUARDS = {
+        new SimScript.Step(1.0, "disabled", 0, 0, 0),
+        new SimScript.Step(1.0, "forward", 0, -0.6, 0),
+        new SimScript.Step(
+                1.0,
+                "vision stage throws; forward",
+                0,
+                -0.6,
+                0,
+                f -> f.set("Code/Vision", UNHEARD)),
+        new SimScript.Step(
+                1.0,
+                "localization stage throws too; forward",
+                0,
+                -0.6,
+                0,
+                f -> f.set("Code/Localization", UNHEARD)),
+        new SimScript.Step(
+                1.0,
+                "both back; forward",
+                0,
+                -0.6,
+                0,
+                f -> {
+                    f.clear("Code/Vision");
+                    f.clear("Code/Localization");
+                }),
+        new SimScript.Step(
+                1.5,
+                "wanted-state stage throws: limp path, strafe",
+                -0.6,
+                0,
+                0,
+                f -> f.set("Code/SwerveApply", UNHEARD)),
+        new SimScript.Step(
+                1.0, "wanted-state stage back", -0.6, 0, 0, f -> f.clear("Code/SwerveApply")),
+        new SimScript.Step(
+                1.5, "swerve thread ends; forward", 0, -0.6, 0, f -> f.reboot("Code/SwerveThread")),
+        new SimScript.Step(
+                1.0,
+                "commands stage throws; forward",
+                0,
+                -0.6,
+                0,
+                f -> f.set("Code/Commands", UNHEARD)),
+        new SimScript.Step(1.0, "stop", 0, 0, 0, f -> f.clear("Code/Commands")),
+    };
+
     /** The script with this name, or null. */
     static SimScript.Step[] byName(String name) {
         return switch (name) {
@@ -158,6 +213,7 @@ final class SimScripts {
             case "buttons" -> BUTTONS;
             case "driver" -> DRIVER;
             case "bump" -> BUMP;
+            case "guards" -> GUARDS;
             default -> null;
         };
     }

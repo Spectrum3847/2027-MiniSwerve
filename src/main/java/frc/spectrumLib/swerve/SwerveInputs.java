@@ -36,6 +36,18 @@ public final class SwerveInputs implements LoggableInputs {
     /** Readings the swerve thread rejected as impossible jumps (device reboots), since boot. */
     public long rejectedJumps;
 
+    /** Swerve thread cycles completed since boot: the main loop's proof that it is running. */
+    public long threadCycles;
+
+    /** The swerve thread exists and has not ended. */
+    public boolean threadAlive = true;
+
+    /** Cycles the thread ran a stop because the main loop had not renewed its request. */
+    public long staleRequestCycles;
+
+    /** Requests or plans the thread dropped because they were not finite numbers. */
+    public long nonFiniteDropped;
+
     public SwerveInputs(int modules, int maxSamplesPerLoop) {
         this.modules = modules;
         samples = new SwerveSample[maxSamplesPerLoop];
@@ -195,6 +207,14 @@ public final class SwerveInputs implements LoggableInputs {
         t.put("Thread/RejectedJumps", rejectedJumps);
         // Last swerve thread exception message.
         t.put("Thread/LastFault", lastThreadFault);
+        // Swerve thread cycles completed since boot (count).
+        t.put("Thread/Cycles", threadCycles);
+        // The swerve thread is running (bool); false means it ended and is being restarted.
+        t.put("Thread/Alive", threadAlive);
+        // Cycles run on a stop because the main loop's request went stale, since boot (count).
+        t.put("Thread/StaleRequestCycles", staleRequestCycles);
+        // Requests or plans dropped as not finite (NaN, infinite), since boot (count).
+        t.put("Thread/NonFiniteDropped", nonFiniteDropped);
     }
 
     @Override
@@ -260,6 +280,10 @@ public final class SwerveInputs implements LoggableInputs {
         threadFaults = t.get("Thread/Faults", threadFaults);
         rejectedJumps = t.get("Thread/RejectedJumps", rejectedJumps);
         lastThreadFault = t.get("Thread/LastFault", lastThreadFault);
+        threadCycles = t.get("Thread/Cycles", threadCycles);
+        threadAlive = t.get("Thread/Alive", threadAlive);
+        staleRequestCycles = t.get("Thread/StaleRequestCycles", staleRequestCycles);
+        nonFiniteDropped = t.get("Thread/NonFiniteDropped", nonFiniteDropped);
     }
 
     private static void copy(double[] from, double[] to) {

@@ -14,6 +14,31 @@ How MiniSwerve's code fits together. Status marks: **built**, **next**, **planne
 The swerve thread never logs. It writes samples into preallocated ring buffers; the main loop
 drains them into logged inputs, and replay feeds the same inputs back.
 
+## Finishing the match when our own code fails
+
+Device faults degrade one part (see the swerve sections). Our own bugs are held the same way:
+
+- Every step of the main loop runs as a `LoopStage`. A throw (errors included) is counted
+  (`Stages/<name>/Faults`, `LastFault`), raised as an alert and printed once per distinct fault,
+  and the rest of the loop runs. If the wanted-state step throws, `Swerve.applyLimp` still drives
+  from the sticks, robot-relative.
+- Boot makes the parts the robot can drive without (settings files, cameras, the field, pose, the
+  battery tag) as stages too: one that throws is left out with an alert.
+- The swerve thread catches everything a cycle throws. The main loop watches its cycle count
+  (`Swerve/Thread/Cycles`, a logged input) and starts it again if it has ended
+  (`Swerve/Thread/Restarts`).
+- The swerve thread obeys a request for 0.25 s without the main loop renewing it, then ramps to a
+  stop until the next one (`Swerve/Thread/StaleRequestCycles`): a stalled main loop does not
+  leave the robot driving its last stick command.
+- A request or plan that is not a finite number is dropped and the setpoint generator restarted
+  from the measured wheels (`Swerve/Thread/NonFiniteDropped`); a NaN would otherwise stay in the
+  generator until the next neutral.
+
+`MINISWERVE_SIM_SCRIPT=guards` drives while making stages throw (`Code/<stage>` in `SimFaults`)
+and ending the swerve thread. Checked: the robot moves 1.2 to 1.5 m in every 1 to 1.5 s step,
+through 200 vision and localization throws, 150 wanted-state throws (limp path), 100 scheduler
+throws and one thread restart.
+
 ## Main loop order
 
 1. `RobotLoop.next()`
