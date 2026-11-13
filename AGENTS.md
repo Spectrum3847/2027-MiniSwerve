@@ -25,8 +25,9 @@ stops are the ones the Driver Station or the rules make (disabled, e-stop).
 - `./gradlew run -PnoSimGui` runs the sim headless and writes `logs/*.wpilog`.
 - Replay: `AKIT_LOG_PATH=logs/<log>.wpilog MINISWERVE_REPLAY=1 ./gradlew run -PnoSimGui`. Always
   set the path: without it AdvantageKit picks the newest log, which may be a `_replay` output.
-- Never push anything that fails CI. `tools/check.sh` runs what CI runs; the pre-push hook runs it
-  for you once a clone has `git config core.hooksPath .githooks`. CI itself runs only on pull
+- Never push anything that fails CI. `tools/check.sh` runs what CI runs except the sim
+  scripts (`tools/sim_check.sh`, a few minutes: run it by hand after touching the drive path); the
+  pre-push hook runs `check.sh` for you once a clone has `git config core.hooksPath .githooks`. CI itself runs only on pull
   requests into `main`, so work goes on a branch and merges by PR.
 - Text files are UTF-8 with LF line endings (`.bat`/`.cmd` excepted), set by `.gitattributes` and
   `.editorconfig`. When writing files from a script, write bytes as UTF-8 with `

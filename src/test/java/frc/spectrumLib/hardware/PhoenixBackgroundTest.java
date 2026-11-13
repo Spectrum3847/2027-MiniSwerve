@@ -60,4 +60,25 @@ class PhoenixBackgroundTest {
         assertFalse(PhoenixBackground.result("throws").isOK());
         assertTrue(PhoenixBackground.thrown("throws").contains("bad config"));
     }
+
+    @Test
+    void aCallGivenOneTryIsNotRetried() throws Exception {
+        CountDownLatch done = new CountDownLatch(1);
+        AtomicInteger tries = new AtomicInteger();
+        boolean[] result = {true};
+        PhoenixBackground.run(
+                "oneTry",
+                () -> {
+                    tries.incrementAndGet();
+                    return StatusCode.TxTimeout;
+                },
+                ok -> {
+                    result[0] = ok;
+                    done.countDown();
+                },
+                1);
+        assertTrue(done.await(2, TimeUnit.SECONDS));
+        assertEquals(1, tries.get());
+        assertFalse(result[0]);
+    }
 }

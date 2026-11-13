@@ -85,6 +85,16 @@ final class SimScripts {
                     f.failConfigs("Steer1", 2);
                     f.reboot("Steer1");
                 }),
+        new SimScript.Step(
+                1.0, "BL CANcoder unplugged; drive", 0, -0.6, 0, f -> f.set("Encoder2", UNPLUGGED)),
+        new SimScript.Step(
+                1.5,
+                "BL steer reboots with no CANcoder: BL coasts",
+                0,
+                -0.6,
+                0,
+                f -> f.reboot("Steer2")),
+        new SimScript.Step(1.0, "BL CANcoder back", 0, -0.6, 0, f -> f.clear("Encoder2")),
         new SimScript.Step(2.0, "recovered", 0, 0, 0),
     };
 

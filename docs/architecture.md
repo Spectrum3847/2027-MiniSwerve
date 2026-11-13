@@ -54,6 +54,10 @@ log folder is test-written at boot, falling back from the USB stick to the robot
 alert; a disabled robot's request is neutral, so the setpoint generator follows the real wheels
 and enabling with a stick pushed ramps up from rest.
 
+`tools/sim_check.sh` runs the `guards`, `driver`, `red` and `faults` scripts headless and checks
+each log (how far the true robot moved in each step, that each fault really was injected, that
+every module recovered); CI runs it on every pull request, so "Finish the match" is a test.
+
 `MINISWERVE_SIM_SCRIPT=guards` drives while making stages throw (`Code/<stage>` in `SimFaults`)
 and ending the swerve thread. Checked: the robot moves 1.2 to 1.5 m in every 1 to 1.5 s step,
 through 200 vision and localization throws, 150 wanted-state throws (limp path), 100 scheduler

@@ -22,7 +22,8 @@ import java.util.function.Supplier;
 public final class PhoenixBackground {
     private PhoenixBackground() {}
 
-    private static final int TRIES = 5;
+    /** Tries a call gets unless told otherwise. */
+    public static final int TRIES = 5;
 
     private static final ExecutorService THREAD =
             Executors.newSingleThreadExecutor(
@@ -60,12 +61,28 @@ public final class PhoenixBackground {
      */
     public static void run(
             String name, Supplier<StatusCode> call, java.util.function.Consumer<Boolean> onDone) {
+        run(name, call, onDone, TRIES);
+    }
+
+    /**
+     * {@link #run(String, Supplier, java.util.function.Consumer)} with a number of tries: one for a
+     * device that is not answering, so its timeouts do not hold up the calls queued behind it (it
+     * is queued again later).
+     *
+     * @param tries how many times to try until it returns OK (at least 1)
+     */
+    public static void run(
+            String name,
+            Supplier<StatusCode> call,
+            java.util.function.Consumer<Boolean> onDone,
+            int tries) {
+        final int limit = Math.max(1, tries);
         PENDING.merge(name, 1, Integer::sum);
         THREAD.execute(
                 () -> {
                     StatusCode code = StatusCode.StatusCodeNotInitialized;
                     try {
-                        for (int t = 0; t < TRIES; t++) {
+                        for (int t = 0; t < limit; t++) {
                             try {
                                 code = call.get();
                             } catch (RuntimeException | LinkageError e) {
