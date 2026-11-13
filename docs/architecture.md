@@ -34,6 +34,17 @@ Device faults degrade one part (see the swerve sections). Our own bugs are held 
   from the measured wheels (`Swerve/Thread/NonFiniteDropped`); a NaN would otherwise stay in the
   generator until the next neutral.
 
+Field heading (`FieldHeading`): a code restart mid-match no longer loses field-centric. The gyro
+keeps its yaw while the code is down, so the offset between yaw and field heading is saved ten
+times a second to `/dev/shm` (memory: gone when the robot is powered off) and put back at boot if
+it is under 30 s old on the computer's monotonic clock, its checksum is right, and the gyro has
+not turned more than two turns since (a gyro that lost power starts near zero). A power cycle, a
+move to another field with the robot off, or a redeploy minutes later all start fresh. The saved
+values are logged inputs (`Swerve/Restore/*`). Until the first enable the robot is taken to face
+away from its own driver (heading pi on red: the `red` sim script, started at 180 deg, drives away
+from the red wall with no re-zero; before, it drove toward it), and the last alliance seen is kept
+so a Driver Station dropout cannot flip a red driver's sticks.
+
 `MINISWERVE_SIM_SCRIPT=guards` drives while making stages throw (`Code/<stage>` in `SimFaults`)
 and ending the swerve thread. Checked: the robot moves 1.2 to 1.5 m in every 1 to 1.5 s step,
 through 200 vision and localization throws, 150 wanted-state throws (limp path), 100 scheduler

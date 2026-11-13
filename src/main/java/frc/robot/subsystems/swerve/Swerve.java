@@ -8,6 +8,7 @@ import frc.spectrumLib.hardware.SimFaults;
 import frc.spectrumLib.statemachine.WantedState;
 import frc.spectrumLib.swerve.DriveRequest;
 import frc.spectrumLib.swerve.HeadingHold;
+import frc.spectrumLib.swerve.HeadingMemory;
 import frc.spectrumLib.swerve.ModuleTrust;
 import frc.spectrumLib.swerve.SampleQueue;
 import frc.spectrumLib.swerve.SimulatedSwerve;
@@ -23,8 +24,6 @@ import java.util.function.DoubleSupplier;
 import org.littletonrobotics.junction.Logger;
 import org.wpilib.command2.Command;
 import org.wpilib.command2.Subsystem;
-import org.wpilib.driverstation.Alliance;
-import org.wpilib.driverstation.MatchState;
 import org.wpilib.driverstation.RobotState;
 import org.wpilib.math.geometry.Pose2d;
 import org.wpilib.math.geometry.Pose3d;
@@ -163,6 +162,16 @@ public final class Swerve implements Subsystem {
             io = SwerveIO.NONE;
         }
         utilities = new SwerveUtilities(io, mx, my);
+        // The heading saved by the code that ran before this one (a code restart), as inputs.
+        HeadingMemory memory =
+                new HeadingMemory(RunMode.CURRENT == RunMode.Mode.REAL ? HEADING_FILE : null);
+        HeadingMemory.Saved saved = memory.load();
+        if (saved != null) {
+            inputs.restoreYawOffset = saved.yawOffset();
+            inputs.restoreYaw = saved.yaw();
+            inputs.restoreAgeSeconds = saved.ageSeconds();
+        }
+        fieldHeading = new FieldHeading(odometry, memory, headingHold::reset);
         thread =
                 new SwerveThread(
                         io,
@@ -180,10 +189,21 @@ public final class Swerve implements Subsystem {
                 SwerveSettings.MAX_STEER_ACCELERATION.get());
         thread.setMotorLimit(SwerveConfigs.motorLimit(mx.length));
         SwerveConfigs.logTraction();
+        threadWatch = new SwerveThreadWatch(thread, io.hasHardware());
         if (io.hasHardware()) {
             thread.start();
         }
     }
+
+    /**
+     * Where the field heading is kept across a code restart: memory-backed, so it is gone after the
+     * robot is powered off (see {@link HeadingMemory}).
+     */
+    private static final java.nio.file.Path HEADING_FILE =
+            java.nio.file.Path.of("/dev/shm/miniswerve-field-heading");
+
+    private final FieldHeading fieldHeading;
+    private final SwerveThreadWatch threadWatch;
 
     /**
      * Receives each 250 Hz sample, in order, with a continuous heading after it (rad: odometry's,
@@ -192,9 +212,6 @@ public final class Swerve implements Subsystem {
     public interface SampleListener {
         void accept(SwerveSample sample, double heading, boolean fromGyro);
     }
-
-    /** Sum of every jump field-centric re-zeroing put into odometry's heading (rad). */
-    private double headingResets;
 
     private SampleListener sampleListener;
     private final SimFaults simFaults;
@@ -243,7 +260,7 @@ public final class Swerve implements Subsystem {
             }
         }
         Logger.processInputs("Swerve", inputs);
-        watchThread();
+        threadWatch.update(inputs);
         thread.setBusVoltage(inputs.health.supplyVoltage);
         trust.update(inputs.health);
         if (trust.version() != sentModesVersion) {
@@ -261,9 +278,16 @@ public final class Swerve implements Subsystem {
                 // Odometry's heading (the gyro's when healthy, the wheels' when not) without the
                 // jumps of field-centric re-zeroing: a pose estimator would read them as turning.
                 sampleListener.accept(
-                        sample, odometry.heading() - headingResets, gyroOk() && sample.gyroOk);
+                        sample,
+                        odometry.heading() - fieldHeading.resets(),
+                        gyroOk() && sample.gyroOk);
             }
         }
+        fieldHeading.update(
+                inputs,
+                gyroOk(),
+                RobotState.isEnabled(),
+                io.hasHardware() && RobotLoop.everySeconds(0.1));
         utilities.update(
                 inputs,
                 RobotState.isEnabled(),
@@ -271,66 +295,6 @@ public final class Swerve implements Subsystem {
                 RobotLoop.periodSeconds());
         logOutputs();
     }
-
-    /**
-     * The swerve thread must keep cycling: without it nothing drives. If it has ended, start it
-     * again (it re-plans from the measured wheels); if it is alive but not cycling, say so. Reads
-     * logged inputs, so replay shows the same alerts; only the restart itself needs hardware.
-     */
-    private void watchThread() {
-        if (inputs.threadCycles != watchedCycles) {
-            watchedCycles = inputs.threadCycles;
-            loopsWithoutCycle = 0;
-        } else {
-            loopsWithoutCycle++;
-        }
-        boolean stalled =
-                loopsWithoutCycle * RobotLoop.periodSeconds() > THREAD_STALL_SECONDS
-                        && inputs.threadCycles > 0;
-        if (!inputs.threadAlive && io.hasHardware()) {
-            thread.start();
-            threadRestarts++;
-        }
-        // Times the swerve thread ended and was started again, since boot (count).
-        Logger.recordOutput("Swerve/Thread/Restarts", threadRestarts);
-        // The swerve thread has not completed a cycle for 0.25 s (bool).
-        Logger.recordOutput("Swerve/Thread/Stalled", stalled);
-        if (threadRestarts != alertedRestarts) {
-            alertedRestarts = threadRestarts;
-            threadRestartAlert.setText("Swerve thread ended and was restarted: " + threadRestarts);
-        }
-        threadRestartAlert.set(threadRestarts > 0);
-        threadStallAlert.set(stalled);
-        if (inputs.staleRequestCycles != alertedStale) {
-            alertedStale = inputs.staleRequestCycles;
-            staleRequestAlert.setText(
-                    "Main loop stalled: swerve stopped itself for "
-                            + inputs.staleRequestCycles
-                            + " cycles");
-        }
-        staleRequestAlert.set(inputs.staleRequestCycles > 0);
-        if (inputs.nonFiniteDropped != alertedNonFinite) {
-            alertedNonFinite = inputs.nonFiniteDropped;
-            nonFiniteAlert.setText(
-                    "Swerve dropped non-finite requests or plans: " + inputs.nonFiniteDropped);
-        }
-        nonFiniteAlert.set(inputs.nonFiniteDropped > 0);
-    }
-
-    /** No completed swerve cycle for this long means the thread is stuck (s). */
-    private static final double THREAD_STALL_SECONDS = 0.25;
-
-    private long watchedCycles = -1;
-    private int loopsWithoutCycle;
-    private long threadRestarts;
-    private long alertedRestarts;
-    private long alertedStale;
-    private long alertedNonFinite;
-    private final Alert threadRestartAlert = new Alert("", Level.HIGH);
-    private final Alert threadStallAlert =
-            new Alert("Swerve thread is not cycling: the robot cannot drive", Level.HIGH);
-    private final Alert staleRequestAlert = new Alert("", Level.MEDIUM);
-    private final Alert nonFiniteAlert = new Alert("", Level.MEDIUM);
 
     /** Main loop, after the scheduler: turn the wanted state into a request for the thread. */
     public void applyWantedState() {
@@ -609,13 +573,9 @@ public final class Swerve implements Subsystem {
                 .withName("Swerve." + name);
     }
 
-    /**
-     * CTRE's {@code setOperatorForwardDirection}, set from the alliance: the field heading (rad)
-     * that is "away from the driver". 0 on blue, pi on red; blue when the alliance is unknown.
-     * Alliance is a Driver Station input, so replay sees the same value.
-     */
+    /** The field heading (rad) that is "away from the driver"; see {@link FieldHeading}. */
     public double operatorForwardDirection() {
-        return MatchState.getAlliance().orElse(Alliance.BLUE) == Alliance.RED ? Math.PI : 0.0;
+        return fieldHeading.operatorForward();
     }
 
     /**
@@ -623,10 +583,7 @@ public final class Swerve implements Subsystem {
      * without moving the pose.
      */
     public void seedFieldCentric() {
-        headingHold.reset();
-        double before = odometry.heading();
-        odometry.resetPose(odometry.x(), odometry.y(), operatorForwardDirection());
-        headingResets += odometry.heading() - before;
+        fieldHeading.seed();
     }
 
     public Pose2d odometryPose() {
