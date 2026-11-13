@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Runs the sim scripts that prove the robot keeps driving through faults, headless, and checks
-# each log (tools/sim_check.py). CI runs this; so does tools/check.sh.
+# each log (tools/sim_check.py). CI runs this on pull requests; tools/check.sh (the pre-push
+# hook) does not, because it takes a few minutes. Run it by hand after touching the drive path.
 #   tools/sim_check.sh            all of them
 #   tools/sim_check.sh guards     one
 set -euo pipefail

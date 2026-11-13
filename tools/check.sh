@@ -23,6 +23,4 @@ echo "check: no CTRE swerve API"
 ! grep -rnE "com\.ctre\.phoenix6\.swerve" src
 echo "check: spotless + build + tests"
 ./gradlew spotlessCheck build -q
-echo "check: sim scripts (finish the match)"
-bash tools/sim_check.sh
 echo "check: all passed"
