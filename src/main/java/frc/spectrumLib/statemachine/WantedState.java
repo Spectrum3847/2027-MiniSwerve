@@ -25,8 +25,18 @@ public final class WantedState<S extends Enum<S>> {
     private String requester = "default";
     private double wantedSince;
 
+    // Log keys, built once: this logs every loop.
+    private final String wantedKey;
+    private final String currentKey;
+    private final String requesterKey;
+    private final String secondsKey;
+
     public WantedState(String prefix, S defaultState) {
         this.prefix = prefix;
+        wantedKey = prefix + "/State/Wanted";
+        currentKey = prefix + "/State/Current";
+        requesterKey = prefix + "/State/Requester";
+        secondsKey = prefix + "/State/SecondsInWanted";
         this.defaultState = defaultState;
         this.wanted = defaultState;
         this.current = defaultState;
@@ -70,10 +80,10 @@ public final class WantedState<S extends Enum<S>> {
     public void setCurrent(S state) {
         current = state;
         // What was asked for, by whom, and what the subsystem is actually doing.
-        Logger.recordOutput(prefix + "/State/Wanted", wanted);
-        Logger.recordOutput(prefix + "/State/Current", current);
-        Logger.recordOutput(prefix + "/State/Requester", requester);
+        Logger.recordOutput(wantedKey, wanted);
+        Logger.recordOutput(currentKey, current);
+        Logger.recordOutput(requesterKey, requester);
         // Seconds since the wanted state last changed.
-        Logger.recordOutput(prefix + "/State/SecondsInWanted", Timer.getTimestamp() - wantedSince);
+        Logger.recordOutput(secondsKey, Timer.getTimestamp() - wantedSince);
     }
 }

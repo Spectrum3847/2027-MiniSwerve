@@ -127,6 +127,13 @@ final class SettingStore {
     private final Set<String> pendingLive = new LinkedHashSet<>();
     private final Map<String, Object> savedValues = new HashMap<>();
 
+    /**
+     * Local files a save has written this boot. The local layer is read once at boot, so without
+     * this a second save could not tell that the first one made a file: tuning a value back to its
+     * base and saving again wrote nothing, and the next boot ran the first save's value.
+     */
+    private final java.util.Set<String> writtenThisBoot = new java.util.HashSet<>();
+
     // ── Declaring and resolving ─────────────────────────────────────────────
 
     /** Points the store at its files and re-resolves every setting already declared. */
@@ -544,10 +551,13 @@ final class SettingStore {
                 }
             }
             boolean hadFile = local != null && !"missing".equals(local.status());
-            if (!out.isEmpty() || hadFile) {
+            boolean rewritten = writtenThisBoot.contains(file);
+            if (!out.isEmpty() || hadFile || rewritten) {
                 files.put(file, stamped(e.getKey(), out));
             }
-            if (!hadFile) {
+            if (!hadFile || rewritten) {
+                // Nothing to set aside: no file at boot, or the boot file was already set aside
+                // by this boot's first save and the one there now is ours.
                 continue;
             }
             String suffix = local.unreadable() ? ".bad" : local.refused() ? ".refused" : null;
@@ -581,6 +591,7 @@ final class SettingStore {
     void markSaved(SaveJob job) {
         savedValues.clear();
         savedValues.putAll(job.values());
+        writtenThisBoot.addAll(job.files().keySet());
         refreshSummaries();
     }
 
@@ -682,8 +693,10 @@ final class SettingStore {
             for (Path tmp : temps) {
                 Files.deleteIfExists(tmp);
             }
-        } catch (IOException e) {
-            // Left for the next boot; the save overwrites it anyway.
+        } catch (IOException | RuntimeException e) {
+            // Left for the next boot; the save overwrites it anyway. RuntimeException too: a
+            // read error while listing arrives as DirectoryIteratorException, and settings must
+            // never stop the robot booting.
         }
     }
 

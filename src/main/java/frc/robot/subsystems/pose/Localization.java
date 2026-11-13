@@ -211,6 +211,11 @@ public final class Localization {
         if (agrees && !ekf.isSeeded()) {
             ekf.addPose(pose, time, 0.1, Math.toRadians(3));
             seeds++;
+        } else if (agrees && !ekf.isHealthy()) {
+            // The estimate is not a number any more: nothing it does will bring it back, and the
+            // distance test below is never true against NaN. Start again from this checked pose.
+            ekf.reset(pose);
+            reseeds++;
         } else if (agrees
                 && lost()
                 && ekf.getPose().getTranslation().getDistance(pose.getTranslation())
@@ -237,7 +242,12 @@ public final class Localization {
         int n = s.size();
         double[] rx = new double[n], ry = new double[n];
         for (int i = 0; i < n; i++) {
-            if (s.get(i).cameraToTag().getNorm() > MAX_RANGE) {
+            double range = s.get(i).cameraToTag().getNorm();
+            if (!Double.isFinite(range)) {
+                // Every check below compares with ">", which a NaN passes.
+                return new Solution(null, "tag reading not finite");
+            }
+            if (range > MAX_RANGE) {
                 return new Solution(null, "tag farther than 8 m");
             }
             Translation3d inRobot =
@@ -340,6 +350,10 @@ public final class Localization {
         Logger.recordOutput("Pose/Reseeds", reseeds);
         // The last multi-tag frame's check ("ok", or why it was not trusted).
         Logger.recordOutput("Pose/SeedCheck", seedCheck);
+        // Odometry samples TagEKF dropped as not finite, since boot (count).
+        Logger.recordOutput("Pose/NonFiniteSamples", ekf.getNonFiniteSamples());
+        // TagEKF's pose and covariance are finite numbers (bool).
+        Logger.recordOutput("Pose/Healthy", ekf.isHealthy());
         // Tags seen that are not on this field, since boot.
         Logger.recordOutput("Pose/UnknownTags", unknownTags);
         // Newest odometry sample minus the last frame's capture time (s): the clocks' health.

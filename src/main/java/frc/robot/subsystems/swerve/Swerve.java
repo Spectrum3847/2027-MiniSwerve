@@ -39,8 +39,13 @@ import org.wpilib.util.Alert.Level;
  * scheduler; commands {@link #request} states; {@link #applyWantedState()} after the scheduler
  * turns the wanted state into a {@link DriveRequest} for the thread.
  *
+ * <p>Over 400 lines: the wanted states, the request each becomes and the logging of both are kept
+ * together so the path from "what was asked" to "what the thread was sent" reads in one file. The
+ * field heading ({@link FieldHeading}), the thread watch ({@link SwerveThreadWatch}) and
+ * housekeeping ({@link SwerveUtilities}) are their own files.
+ *
  * <p>Index: {@link State} | constructor | {@link #updateInputs} | {@link #applyWantedState} |
- * commands | pose
+ * {@link #applyLimp} | commands | pose
  */
 public final class Swerve implements Subsystem {
     public enum State {
@@ -344,6 +349,12 @@ public final class Swerve implements Subsystem {
                                 gyroOk());
                     }
                 };
+        if (RobotState.isDisabled()) {
+            // The motors are off whatever is asked. Neutral keeps the thread's plan on the real
+            // wheels, so enabling with a stick already pushed ramps up from rest instead of
+            // starting at a speed the plan reached while nothing moved.
+            request = DriveRequest.NEUTRAL;
+        }
         if (Double.isFinite(limitVelocity)
                 || Double.isFinite(limitAcceleration)
                 || Double.isFinite(limitOmega)
@@ -377,7 +388,7 @@ public final class Swerve implements Subsystem {
      */
     public void applyLimp() {
         DriveRequest request = DriveRequest.NEUTRAL;
-        if (RobotState.isTeleop()) {
+        if (RobotState.isTeleop() && RobotState.isEnabled()) {
             request =
                     DriveRequest.velocity(
                             teleopX.getAsDouble() * maxDriveVelocity,

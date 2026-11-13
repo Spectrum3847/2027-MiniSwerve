@@ -136,6 +136,7 @@ public final class Vision {
         double now = Timer.getTimestamp();
         for (int i = 0; i < cameras.length; i++) {
             decoded[i] = 0;
+            badFrames[i] += inputs.malformed[i]; // dropped at the IO: not exactly one frame
             byte[] bytes = inputs.frames[i];
             int offset = 0;
             while (offset < bytes.length && decoded[i] < FRAMES_PER_LOOP) {

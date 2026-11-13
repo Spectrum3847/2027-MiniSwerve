@@ -45,6 +45,15 @@ away from its own driver (heading pi on red: the `red` sim script, started at 18
 from the red wall with no re-zero; before, it drove toward it), and the last alliance seen is kept
 so a Driver Station dropout cannot flip a red driver's sticks.
 
+Smaller guards in the same spirit: TagEKF drops an odometry sample that is not all finite numbers
+(`Pose/NonFiniteSamples`), never lets sample time run backwards in its history, and is re-seeded
+from a checked frame if its state ever stops being finite (`Pose/Healthy`); a camera value that is
+not exactly one frame is dropped before it is joined to the loop's bytes
+(`Vision/<camera>/Malformed`), since the decoder finds each frame's end from its own header; the
+log folder is test-written at boot, falling back from the USB stick to the robot's storage with an
+alert; a disabled robot's request is neutral, so the setpoint generator follows the real wheels
+and enabling with a stick pushed ramps up from rest.
+
 `MINISWERVE_SIM_SCRIPT=guards` drives while making stages throw (`Code/<stage>` in `SimFaults`)
 and ending the swerve thread. Checked: the robot moves 1.2 to 1.5 m in every 1 to 1.5 s step,
 through 200 vision and localization throws, 150 wanted-state throws (limp path), 100 scheduler
