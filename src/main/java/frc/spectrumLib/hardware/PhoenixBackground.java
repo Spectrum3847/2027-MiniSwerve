@@ -77,6 +77,21 @@ public final class PhoenixBackground {
             Supplier<StatusCode> call,
             java.util.function.Consumer<Boolean> onDone,
             int tries) {
+        run(name, call, onDone, tries, code -> false);
+    }
+
+    /**
+     * {@link #run(String, Supplier, java.util.function.Consumer, int)} that also stops at an answer
+     * no retry can change (e.g. a missing licence), instead of repeating the call.
+     *
+     * @param stopOn true for a failed answer to stop at
+     */
+    public static void run(
+            String name,
+            Supplier<StatusCode> call,
+            java.util.function.Consumer<Boolean> onDone,
+            int tries,
+            java.util.function.Predicate<StatusCode> stopOn) {
         final int limit = Math.max(1, tries);
         PENDING.merge(name, 1, Integer::sum);
         THREAD.execute(
@@ -92,7 +107,7 @@ public final class PhoenixBackground {
                                 code = StatusCode.GeneralError;
                                 THROWN.put(name, e.toString());
                             }
-                            if (code != null && code.isOK()) {
+                            if (code != null && (code.isOK() || stopOn.test(code))) {
                                 break;
                             }
                         }
