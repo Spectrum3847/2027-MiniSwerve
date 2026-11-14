@@ -2,12 +2,18 @@ package frc.spectrumLib.hardware;
 
 import com.ctre.phoenix6.StatusCode;
 import com.ctre.phoenix6.hardware.ParentDevice;
+import frc.spectrumLib.telemetry.Alert;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicIntegerArray;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicLongArray;
+import java.util.concurrent.atomic.AtomicReferenceArray;
 import java.util.function.Supplier;
+import org.wpilib.util.Alert.Level;
 
 /**
  * A mechanism's Phoenix devices, kept configured for the whole match: devices that reboot (a
@@ -22,6 +28,12 @@ import java.util.function.Supplier;
  *       on {@link PhoenixBackground} unless already queued.
  *   <li>A per-device generation counter makes sure a retry that finishes after a newer reboot does
  *       not mark the device configured again.
+ *   <li>A config the device refuses for good (no Pro licence, a value it does not take, wrong
+ *       firmware) is not retried: each retry rewrites the whole config, and the device looks like
+ *       it keeps rebooting. It raises one alert instead, and a reboot (a reflash, a licence added)
+ *       gives it fresh tries.
+ *   <li>Other failures (a timeout, a device not answering) wait longer between rounds, 0.25 s
+ *       doubling up to 4 s, so a device that stays down does not keep the background thread busy.
  *   <li>Devices that are answering go first and get the full retries; a device that is not
  *       answering is queued after them with one try. All of this shares one background thread, and
  *       a dead device's five timed-out tries (about half a second) used to stand in front of the
@@ -30,10 +42,24 @@ import java.util.function.Supplier;
  *
  * <p>Flags are atomics: written on the background thread, read on the main thread.
  *
- * <p>Index: {@link #add} | {@link #setSignals} | {@link #configureAtBoot} | {@link #poll} | getters
+ * <p>Index: {@link #add} | {@link #setSignals} | {@link #configureAtBoot} | {@link #poll} |
+ * configDone | updateRefusedAlert | getters
  */
 public final class PhoenixDeviceSet {
     private static final int BOOT_TRIES = 5;
+    private static final long FIRST_WAIT_NANOS = 250_000_000L;
+    private static final long MAX_WAIT_NANOS = 4_000_000_000L;
+
+    /** Answers no retry can change: the device itself has to (reboot, reflash, licence). */
+    static final Set<StatusCode> REFUSED_FOR_GOOD =
+            EnumSet.of(
+                    StatusCode.UsingProFeatureOnUnlicensedDevice,
+                    StatusCode.InvalidParamValue,
+                    StatusCode.FeatureNotSupported,
+                    StatusCode.NotSupported,
+                    StatusCode.FirmwareTooOld,
+                    StatusCode.FirmwareTooNew,
+                    StatusCode.FirmwareVersNotCompatible);
 
     private record Device(String name, ParentDevice device, Supplier<StatusCode> config) {}
 
@@ -41,6 +67,14 @@ public final class PhoenixDeviceSet {
     private final List<Device> devices = new ArrayList<>();
     private AtomicIntegerArray configured = new AtomicIntegerArray(0);
     private AtomicIntegerArray generation = new AtomicIntegerArray(0);
+    // Why a device's config is not retried (null while it is), and when its next round may start.
+    private AtomicReferenceArray<StatusCode> refused = new AtomicReferenceArray<>(0);
+    private AtomicLongArray nextTryNanos = new AtomicLongArray(0);
+    private AtomicLongArray waitNanos = new AtomicLongArray(0);
+    private final Alert refusedAlert = new Alert("", Level.HIGH);
+    private final StringBuilder refusedText = new StringBuilder();
+    private String refusedShown = "";
+    private boolean[] wasConnected = new boolean[0];
     private Supplier<StatusCode> signals = () -> StatusCode.OK;
     private final AtomicInteger signalsGeneration = new AtomicInteger();
     private volatile boolean signalsSet;
@@ -91,29 +125,43 @@ public final class PhoenixDeviceSet {
         int n = devices.size();
         configured = new AtomicIntegerArray(n);
         generation = new AtomicIntegerArray(n);
+        refused = new AtomicReferenceArray<>(n);
+        nextTryNanos = new AtomicLongArray(n);
+        waitNanos = new AtomicLongArray(n);
+        wasConnected = new boolean[n];
         for (int i = 0; i < n; i++) {
-            configured.set(i, tryHard(devices.get(i).config()) ? 1 : 0);
+            StatusCode code = tryHard(devices.get(i).config());
+            configured.set(i, code.isOK() ? 1 : 0);
+            if (REFUSED_FOR_GOOD.contains(code)) {
+                refused.set(i, code);
+            }
         }
-        signalsSet = tryHard(signals);
+        signalsSet = tryHard(signals).isOK();
         // A freshly constructed device reports a reset; clear it so boot is not counted as one.
         for (Device d : devices) {
             d.device().hasResetOccurred();
         }
     }
 
-    private static boolean tryHard(Supplier<StatusCode> call) {
+    /** Up to five tries; the last answer (OK, or why it failed). Stops early on a refusal. */
+    private static StatusCode tryHard(Supplier<StatusCode> call) {
+        StatusCode code = StatusCode.GeneralError;
         for (int t = 0; t < BOOT_TRIES; t++) {
             try {
-                StatusCode code = call.get();
-                if (code != null && code.isOK()) {
-                    return true;
+                code = call.get();
+                if (code == null) {
+                    code = StatusCode.GeneralError;
+                }
+                if (code.isOK() || REFUSED_FOR_GOOD.contains(code)) {
+                    return code;
                 }
             } catch (RuntimeException | LinkageError e) {
                 // Left unconfigured; poll() retries it in the background through the match.
                 System.err.println("Phoenix config threw at boot: " + e);
+                code = StatusCode.GeneralError;
             }
         }
-        return false;
+        return code;
     }
 
     /**
@@ -129,19 +177,36 @@ public final class PhoenixDeviceSet {
             }
             if (reset) {
                 configured.set(i, 0);
+                // Generation first, then the clears: a round finishing now either sees the new
+                // generation and writes nothing, or writes before the clears, or undoes its write
+                // when it checks again (configDone).
                 generation.incrementAndGet(i);
+                // A reboot may be the fix (a reflash, a licence): fresh tries, no waiting.
+                clearRetryState(i);
                 signalsGeneration.incrementAndGet();
                 signalsSet = false;
                 resets.incrementAndGet();
             }
         }
+        // A device answering again without a reboot (a connector wiggle) tries now, not after
+        // the wait it built up while it was silent.
+        for (int i = 0; i < devices.size(); i++) {
+            boolean up = connected(i);
+            if (up && !wasConnected[i]) {
+                waitNanos.set(i, 0);
+            }
+            wasConnected[i] = up;
+        }
         // Answering devices first, with every retry; silent ones after, one try each.
+        long now = System.nanoTime();
         for (int pass = 0; pass < 2; pass++) {
             boolean wantConnected = pass == 0;
             for (int i = 0; i < devices.size(); i++) {
                 Device d = devices.get(i);
                 String name = prefix + "/Config/" + d.name();
                 if (configured.get(i) == 0
+                        && refused.get(i) == null
+                        && (waitNanos.get(i) == 0 || now - nextTryNanos.get(i) >= 0)
                         && connected(i) == wantConnected
                         && !PhoenixBackground.pending(name)) {
                     final int index = i;
@@ -149,15 +214,13 @@ public final class PhoenixDeviceSet {
                     PhoenixBackground.run(
                             name,
                             d.config(),
-                            ok -> {
-                                if (ok && generation.get(index) == gen) {
-                                    configured.set(index, 1);
-                                }
-                            },
-                            wantConnected ? PhoenixBackground.TRIES : 1);
+                            ok -> configDone(index, gen, ok, PhoenixBackground.result(name)),
+                            wantConnected ? PhoenixBackground.TRIES : 1,
+                            REFUSED_FOR_GOOD::contains);
                 }
             }
         }
+        updateRefusedAlert();
         String signalsName = prefix + "/Signals";
         if (!signalsSet && !PhoenixBackground.pending(signalsName)) {
             final int gen = signalsGeneration.get();
@@ -170,6 +233,59 @@ public final class PhoenixDeviceSet {
                         }
                     });
         }
+    }
+
+    /** Background thread: records how a config round ended. */
+    private void configDone(int index, int gen, boolean ok, StatusCode code) {
+        if (generation.get(index) != gen) {
+            return; // it rebooted meanwhile, and that reboot already reset its state
+        }
+        if (ok) {
+            configured.set(index, 1);
+            waitNanos.set(index, 0);
+            return;
+        }
+        if (code != null && REFUSED_FOR_GOOD.contains(code)) {
+            refused.set(index, code);
+        } else {
+            long wait =
+                    Math.min(MAX_WAIT_NANOS, Math.max(FIRST_WAIT_NANOS, 2 * waitNanos.get(index)));
+            nextTryNanos.set(index, System.nanoTime() + wait);
+            waitNanos.set(index, wait);
+        }
+        // A reboot between the check above and these writes already cleared this state: undo.
+        if (generation.get(index) != gen) {
+            clearRetryState(index);
+        }
+    }
+
+    /** Fresh tries for a device: not refused, no waiting. */
+    private void clearRetryState(int index) {
+        refused.set(index, null);
+        waitNanos.set(index, 0);
+    }
+
+    /** Main thread: one alert naming each refused device and why; rebuilt only on a change. */
+    private void updateRefusedAlert() {
+        refusedText.setLength(0);
+        for (int i = 0; i < devices.size(); i++) {
+            StatusCode code = refused.get(i);
+            if (code != null) {
+                refusedText.append(refusedText.length() == 0 ? "" : ", ");
+                refusedText.append(devices.get(i).name()).append(' ').append(code.getName());
+            }
+        }
+        if (!refusedShown.contentEquals(refusedText)) {
+            refusedShown = refusedText.toString();
+            refusedAlert.setText(
+                    prefix + ": config refused, retried after a reboot: " + refusedShown);
+            refusedAlert.set(!refusedShown.isEmpty());
+        }
+    }
+
+    /** Why the device's config is not being retried, or null if it is (or it took). */
+    public StatusCode refused(int index) {
+        return refused.get(index);
     }
 
     /** The device has taken its config since its last reboot. */

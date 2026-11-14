@@ -15,8 +15,11 @@ import static org.wpilib.units.Units.Meters;
 public final class Hardware {
     private Hardware() {}
 
-    /** The training robot has everything on one bus: SystemCore's built-in CAN. */
-    public static final String CAN_BUS = "";
+    /**
+     * The training robot has everything on one bus, SystemCore's bus 0. Phoenix needs its Linux
+     * name: "" does not map to it on SystemCore. HARD STOP.
+     */
+    public static final String CAN_BUS = "can_s0";
 
     public static final int PIGEON_ID = 1;
 

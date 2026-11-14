@@ -101,7 +101,11 @@ public class Robot extends SpectrumRobot {
     private final Runnable swerveApplyWork;
     private final Runnable limpWork;
     private final Runnable alertsWork = Alert::periodic;
-    private final Runnable telemetryWork = Telemetry::periodic;
+    private final Runnable telemetryWork =
+            () -> {
+                Telemetry.periodic();
+                frc.spectrumLib.hardware.PhoenixBackground.logResults();
+            };
 
     public Robot() {
         super(RunMode.MAIN_LOOP_PERIOD_SECONDS);
