@@ -23,6 +23,9 @@ import frc.spectrumLib.framework.OpModeLoop;
 import frc.spectrumLib.framework.RobotLoop;
 import frc.spectrumLib.framework.SpectrumRobot;
 import frc.spectrumLib.hardware.SimFaults;
+import frc.spectrumLib.imu.ImuIO;
+import frc.spectrumLib.imu.ImuIOGoku;
+import frc.spectrumLib.imu.ImuInputs;
 import frc.spectrumLib.power.PowerDistributionIO;
 import frc.spectrumLib.power.PowerDistributionIOWpilib;
 import frc.spectrumLib.power.PowerDistributionInputs;
@@ -54,6 +57,7 @@ import org.wpilib.util.Alert.Level;
  *   <li>{@link BatteryTag#periodic} - which battery is in (NFC tag, logged inputs)
  *   <li>{@link BatteryVoltageCheck#periodic} - low-battery warning at rest
  *   <li>power distribution board (PDP) readings, logged inputs
+ *   <li>Goku IMU readings (alongside the Pigeon, not used yet), logged inputs
  *   <li>vision, then localization
  *   <li>{@link OpModeLoop#run()} - the running OpMode's requests
  *   <li>{@link CommandScheduler#run()} - wanted-state requests and commands
@@ -81,6 +85,8 @@ public class Robot extends SpectrumRobot {
     private final BatteryVoltageCheck batteryVoltage;
     private final PowerDistributionIO pdp;
     private final PowerDistributionInputs pdpInputs = new PowerDistributionInputs();
+    private final ImuIO goku;
+    private final ImuInputs gokuInputs = new ImuInputs();
     private final Localization localization;
     private final SimScript simScript;
     private final DesktopSim desktopSim;
@@ -91,6 +97,7 @@ public class Robot extends SpectrumRobot {
     private final LoopStage swerveInputsStage = new LoopStage("SwerveInputs");
     private final LoopStage batteryStage = new LoopStage("Battery");
     private final LoopStage pdpStage = new LoopStage("PowerDistribution");
+    private final LoopStage gokuStage = new LoopStage("GokuIMU");
     private final LoopStage visionStage = new LoopStage("Vision");
     private final LoopStage localizationStage = new LoopStage("Localization");
     private final LoopStage opModeStage = new LoopStage("OpMode");
@@ -103,6 +110,7 @@ public class Robot extends SpectrumRobot {
     private final Runnable swerveInputsWork;
     private final Runnable batteryWork = this::batteryPeriodic;
     private final Runnable pdpWork = this::pdpPeriodic;
+    private final Runnable gokuWork = this::gokuPeriodic;
     private final Runnable visionWork;
     private final Runnable localizationWork = this::localizationPeriodic;
     private final Runnable opModeWork = opModeLoop::run;
@@ -208,6 +216,13 @@ public class Robot extends SpectrumRobot {
                                                                 .ModuleType.CTRE))
                         : null;
         pdp = madePdp != null ? madePdp : PowerDistributionIO.NONE;
+        // Read alongside the Pigeon to compare before it can replace it; 100 Hz like the main
+        // loop.
+        ImuIO madeGoku =
+                RunMode.CURRENT == RunMode.Mode.REAL
+                        ? new LoopStage("Boot/GokuIMU").make(() -> new ImuIOGoku(100))
+                        : null;
+        goku = madeGoku != null ? madeGoku : ImuIO.NONE;
         // The pilot only binds controls; the bindings keep it alive.
         new Pilot(swerve);
         registerOpModes();
@@ -246,6 +261,7 @@ public class Robot extends SpectrumRobot {
         swerveInputsStage.run(swerveInputsWork);
         batteryStage.run(batteryWork);
         pdpStage.run(pdpWork);
+        gokuStage.run(gokuWork);
         visionStage.run(visionWork);
         localizationStage.run(localizationWork);
         opModeStage.run(opModeWork);
@@ -268,6 +284,11 @@ public class Robot extends SpectrumRobot {
         }
         batteryVoltage.periodic(
                 swerve.supplyVoltage(), disabled, org.wpilib.system.Timer.getTimestamp());
+    }
+
+    private void gokuPeriodic() {
+        goku.updateInputs(gokuInputs);
+        org.littletonrobotics.junction.Logger.processInputs("GokuIMU", gokuInputs);
     }
 
     private void pdpPeriodic() {
