@@ -10,6 +10,7 @@ Reusable Spectrum code. It never imports `frc.robot`. It will move to its own re
 | `swerve/` | Our swerve: 250 Hz thread, Phoenix Pro IO, odometry |
 | `localization/` | TagEKF (bearing/range per tag, history replay, gating), mount estimator, odometry guard |
 | `vision/` | Camera frames from the coprocessor: the compact wire format, NetworkTables IO, logged inputs |
+| `imu/` | A second IMU (Flywoo Goku F7 over USB) read alongside the Pigeon, logged inputs |
 | `power/` | Power distribution board (CTRE PDP, REV PDH) through WPILib, logged inputs |
 | `battery/` | Battery identity: NFC tag reader on USB (PN532), logged inputs, battery names |
 | `statemachine/` | `WantedState`: wanted vs current state, logged |

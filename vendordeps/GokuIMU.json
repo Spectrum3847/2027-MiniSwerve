@@ -1,0 +1,20 @@
+{
+  "fileName": "GokuIMU.json",
+  "name": "GokuIMU",
+  "version": "0.2.2",
+  "uuid": "cfb2a9bb-465d-40a2-8f4a-ddb926e58d4d",
+  "wpilibYear": "2027_alpha7",
+  "mavenUrls": [
+    "https://spectrum3847.github.io/FRC-FlywooGokuF7ProMiniV2/vendordep/repo"
+  ],
+  "jsonUrl": "https://spectrum3847.github.io/FRC-FlywooGokuF7ProMiniV2/vendordep/GokuIMU.json",
+  "javaDependencies": [
+    {
+      "groupId": "io.github.frcgokuimu",
+      "artifactId": "GokuIMU-java",
+      "version": "0.2.2"
+    }
+  ],
+  "jniDependencies": [],
+  "cppDependencies": []
+}
