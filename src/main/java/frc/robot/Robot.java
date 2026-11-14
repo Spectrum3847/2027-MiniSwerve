@@ -1,6 +1,7 @@
 package frc.robot;
 
 import frc.robot.config.BatterySettings;
+import frc.robot.config.Hardware;
 import frc.robot.opmodes.DemoTeleop;
 import frc.robot.opmodes.DoNothingAuto;
 import frc.robot.opmodes.DriveForwardAuto;
@@ -22,6 +23,9 @@ import frc.spectrumLib.framework.OpModeLoop;
 import frc.spectrumLib.framework.RobotLoop;
 import frc.spectrumLib.framework.SpectrumRobot;
 import frc.spectrumLib.hardware.SimFaults;
+import frc.spectrumLib.power.PowerDistributionIO;
+import frc.spectrumLib.power.PowerDistributionIOWpilib;
+import frc.spectrumLib.power.PowerDistributionInputs;
 import frc.spectrumLib.robotsettings.NetworkTablesTransport;
 import frc.spectrumLib.robotsettings.RobotSettings;
 import frc.spectrumLib.robotsettings.TuningMode;
@@ -49,6 +53,7 @@ import org.wpilib.util.Alert.Level;
  *   <li>{@link Swerve#updateInputs()} - drain 250 Hz samples, log, odometry
  *   <li>{@link BatteryTag#periodic} - which battery is in (NFC tag, logged inputs)
  *   <li>{@link BatteryVoltageCheck#periodic} - low-battery warning at rest
+ *   <li>power distribution board (PDP) readings, logged inputs
  *   <li>vision, then localization
  *   <li>{@link OpModeLoop#run()} - the running OpMode's requests
  *   <li>{@link CommandScheduler#run()} - wanted-state requests and commands
@@ -74,6 +79,8 @@ public class Robot extends SpectrumRobot {
     private final Vision vision;
     private final BatteryTag battery;
     private final BatteryVoltageCheck batteryVoltage;
+    private final PowerDistributionIO pdp;
+    private final PowerDistributionInputs pdpInputs = new PowerDistributionInputs();
     private final Localization localization;
     private final SimScript simScript;
     private final DesktopSim desktopSim;
@@ -83,6 +90,7 @@ public class Robot extends SpectrumRobot {
     private final LoopStage settingsStage = new LoopStage("Settings");
     private final LoopStage swerveInputsStage = new LoopStage("SwerveInputs");
     private final LoopStage batteryStage = new LoopStage("Battery");
+    private final LoopStage pdpStage = new LoopStage("PowerDistribution");
     private final LoopStage visionStage = new LoopStage("Vision");
     private final LoopStage localizationStage = new LoopStage("Localization");
     private final LoopStage opModeStage = new LoopStage("OpMode");
@@ -94,6 +102,7 @@ public class Robot extends SpectrumRobot {
     private final Runnable settingsWork = RobotSettings::periodic;
     private final Runnable swerveInputsWork;
     private final Runnable batteryWork = this::batteryPeriodic;
+    private final Runnable pdpWork = this::pdpPeriodic;
     private final Runnable visionWork;
     private final Runnable localizationWork = this::localizationPeriodic;
     private final Runnable opModeWork = opModeLoop::run;
@@ -187,6 +196,18 @@ public class Robot extends SpectrumRobot {
                                                         Filesystem.getDeployDirectory()
                                                                 .toPath()
                                                                 .resolve("batteries.csv"))));
+        PowerDistributionIO madePdp =
+                RunMode.CURRENT == RunMode.Mode.REAL
+                        ? new LoopStage("Boot/PDP")
+                                .make(
+                                        () ->
+                                                new PowerDistributionIOWpilib(
+                                                        Hardware.PDP_BUS,
+                                                        Hardware.PDP_ID,
+                                                        org.wpilib.hardware.power.PowerDistribution
+                                                                .ModuleType.CTRE))
+                        : null;
+        pdp = madePdp != null ? madePdp : PowerDistributionIO.NONE;
         // The pilot only binds controls; the bindings keep it alive.
         new Pilot(swerve);
         registerOpModes();
@@ -224,6 +245,7 @@ public class Robot extends SpectrumRobot {
         settingsStage.run(settingsWork);
         swerveInputsStage.run(swerveInputsWork);
         batteryStage.run(batteryWork);
+        pdpStage.run(pdpWork);
         visionStage.run(visionWork);
         localizationStage.run(localizationWork);
         opModeStage.run(opModeWork);
@@ -246,6 +268,11 @@ public class Robot extends SpectrumRobot {
         }
         batteryVoltage.periodic(
                 swerve.supplyVoltage(), disabled, org.wpilib.system.Timer.getTimestamp());
+    }
+
+    private void pdpPeriodic() {
+        pdp.updateInputs(pdpInputs);
+        org.littletonrobotics.junction.Logger.processInputs("PowerDistribution", pdpInputs);
     }
 
     private void localizationPeriodic() {
