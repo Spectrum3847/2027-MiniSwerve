@@ -35,10 +35,13 @@ public final class ImuInputs implements LoggableInputs {
     /** Board temperature (C). */
     public double temperatureC;
 
-    /** Active fault bits (0: none). */
+    /** The device's raw status word: status and fault bits together. */
+    public int statusFlags;
+
+    /** Active fault bits only (0: none). */
     public int faultFlags;
 
-    /** Sticky fault bits (0: none). */
+    /** Sticky fault bits only (0: none). */
     public int stickyFaultFlags;
 
     /** Firmware, board and serial number, read once connected; "" until then. */
@@ -67,7 +70,9 @@ public final class ImuInputs implements LoggableInputs {
         table.put("Timestamp", timestamp);
         // IMU board temperature (C).
         table.put("TemperatureC", temperatureC);
-        // IMU active fault bits, 0 for none.
+        // IMU raw status word (status and fault bits).
+        table.put("StatusFlags", statusFlags);
+        // IMU active fault bits only, 0 for none.
         table.put("FaultFlags", faultFlags);
         // IMU sticky fault bits, 0 for none.
         table.put("StickyFaultFlags", stickyFaultFlags);
@@ -88,6 +93,7 @@ public final class ImuInputs implements LoggableInputs {
         yawRateDps = table.get("YawRateDps", yawRateDps);
         timestamp = table.get("Timestamp", timestamp);
         temperatureC = table.get("TemperatureC", temperatureC);
+        statusFlags = table.get("StatusFlags", statusFlags);
         faultFlags = table.get("FaultFlags", faultFlags);
         stickyFaultFlags = table.get("StickyFaultFlags", stickyFaultFlags);
         deviceInfo = table.get("DeviceInfo", deviceInfo);

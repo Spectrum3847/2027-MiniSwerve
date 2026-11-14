@@ -14,6 +14,13 @@ import io.github.frcgokuimu.GokuIMU;
  * a read throws, the inputs say why and nothing else stops.
  */
 public final class ImuIOGoku implements ImuIO {
+    /**
+     * Fault bits in GokuIMU 0.2.x's status word: hardware 1, gyro saturated 8, accel saturated 16,
+     * clock 32, sample missed 64. The rest are status (2 calibrated, 4 moving, 128 booting, 256
+     * default config), which the library reports in the same word.
+     */
+    private static final int FAULT_BITS = 0x79;
+
     private final GokuIMU imu;
     private final String openError;
 
@@ -53,8 +60,9 @@ public final class ImuIOGoku implements ImuIO {
             inputs.yawRateDps = in.yawRateWorldDps();
             inputs.timestamp = in.timestamp();
             inputs.temperatureC = in.temperatureC();
-            inputs.faultFlags = in.faultFlags();
-            inputs.stickyFaultFlags = in.stickyFaultFlags();
+            inputs.statusFlags = in.faultFlags();
+            inputs.faultFlags = in.faultFlags() & FAULT_BITS;
+            inputs.stickyFaultFlags = in.stickyFaultFlags() & FAULT_BITS;
             inputs.error = in.connected() ? "" : "not connected";
             if (!in.connected()) {
                 inputs.deviceInfo = ""; // read again after a reconnect: it may be another board
@@ -82,6 +90,7 @@ public final class ImuIOGoku implements ImuIO {
         inputs.yawRateDps = 0;
         inputs.timestamp = 0;
         inputs.temperatureC = 0;
+        inputs.statusFlags = 0;
         inputs.faultFlags = 0;
         inputs.stickyFaultFlags = 0;
         inputs.error = why;
