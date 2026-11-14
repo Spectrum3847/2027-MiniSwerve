@@ -35,7 +35,7 @@ public final class ImuInputs implements LoggableInputs {
     /** Board temperature (C). */
     public double temperatureC;
 
-    /** The device's raw status word: status and fault bits together. */
+    /** Status bits (2 calibrated, 4 moving, 128 booting, 256 default config). */
     public int statusFlags;
 
     /** Active fault bits only (0: none). */
@@ -70,7 +70,7 @@ public final class ImuInputs implements LoggableInputs {
         table.put("Timestamp", timestamp);
         // IMU board temperature (C).
         table.put("TemperatureC", temperatureC);
-        // IMU raw status word (status and fault bits).
+        // IMU status bits: 2 calibrated, 4 moving, 128 booting, 256 default config.
         table.put("StatusFlags", statusFlags);
         // IMU active fault bits only, 0 for none.
         table.put("FaultFlags", faultFlags);

@@ -1,7 +1,7 @@
 {
   "fileName": "GokuIMU.json",
   "name": "GokuIMU",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "uuid": "cfb2a9bb-465d-40a2-8f4a-ddb926e58d4d",
   "wpilibYear": "2027_alpha7",
   "mavenUrls": [
@@ -12,7 +12,7 @@
     {
       "groupId": "io.github.frcgokuimu",
       "artifactId": "GokuIMU-java",
-      "version": "0.2.2"
+      "version": "0.2.3"
     }
   ],
   "jniDependencies": [],

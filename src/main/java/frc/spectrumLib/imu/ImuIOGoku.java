@@ -7,21 +7,15 @@ import io.github.frcgokuimu.GokuIMU;
  * finds the board by its USB product name "GokuIMU" (VID/PID on Windows), so it never opens the
  * CANable's serial port. It reads the board on its own thread, reconnects after an unplug, and
  * raises its own disconnect and fault alerts (from its own thread, every 250 ms). Opening it also
- * makes the JVM ignore SIGHUP. Every call here reads its latest frame and does not wait;
- * getInputs() allocates a small record each loop, which this library offers no way around.
+ * makes the JVM ignore SIGHUP. Every call here reads its latest frame into one reused buffer and
+ * does not wait or allocate.
  *
  * <p>Read alongside the Pigeon for now, not used for heading. Finish the match: if opening fails or
  * a read throws, the inputs say why and nothing else stops.
  */
 public final class ImuIOGoku implements ImuIO {
-    /**
-     * Fault bits in GokuIMU 0.2.x's status word: hardware 1, gyro saturated 8, accel saturated 16,
-     * clock 32, sample missed 64. The rest are status (2 calibrated, 4 moving, 128 booting, 256
-     * default config), which the library reports in the same word.
-     */
-    private static final int FAULT_BITS = 0x79;
-
     private final GokuIMU imu;
+    private final GokuIMU.InputsBuffer in = new GokuIMU.InputsBuffer();
     private final String openError;
 
     /**
@@ -50,24 +44,24 @@ public final class ImuIOGoku implements ImuIO {
             return;
         }
         try {
-            GokuIMU.Inputs in = imu.getInputs();
-            inputs.connected = in.connected();
-            inputs.calibrated = in.calibrated();
-            inputs.moving = in.moving();
-            inputs.yawDeg = in.yawDeg();
-            inputs.pitchDeg = in.pitchDeg();
-            inputs.rollDeg = in.rollDeg();
-            inputs.yawRateDps = in.yawRateWorldDps();
-            inputs.timestamp = in.timestamp();
-            inputs.temperatureC = in.temperatureC();
-            inputs.statusFlags = in.faultFlags();
-            inputs.faultFlags = in.faultFlags() & FAULT_BITS;
-            inputs.stickyFaultFlags = in.stickyFaultFlags() & FAULT_BITS;
-            inputs.error = in.connected() ? "" : "not connected";
-            if (!in.connected()) {
+            imu.readInputs(in);
+            inputs.connected = in.connected;
+            inputs.calibrated = in.calibrated;
+            inputs.moving = in.moving;
+            inputs.yawDeg = in.yawDeg;
+            inputs.pitchDeg = in.pitchDeg;
+            inputs.rollDeg = in.rollDeg;
+            inputs.yawRateDps = in.yawRateWorldDps;
+            inputs.timestamp = in.timestamp;
+            inputs.temperatureC = in.temperatureC;
+            inputs.statusFlags = in.statusFlags;
+            inputs.faultFlags = in.faultFlags;
+            inputs.stickyFaultFlags = in.stickyFaultFlags;
+            inputs.error = in.connected ? "" : "not connected";
+            if (!in.connected) {
                 inputs.deviceInfo = ""; // read again after a reconnect: it may be another board
             }
-            if (inputs.deviceInfo.isEmpty() && in.connected()) {
+            if (inputs.deviceInfo.isEmpty() && in.connected) {
                 GokuIMU.DeviceInfo d = imu.getDeviceInfo();
                 if (d != null) {
                     inputs.deviceInfo =
