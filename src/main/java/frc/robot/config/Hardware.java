@@ -10,7 +10,8 @@ import static org.wpilib.units.Units.Meters;
  * <p>ID scheme: module N has drive N, steer 10+N and CANcoder N. Phoenix IDs are unique per device
  * type, so drive 1, CANcoder 1 and the Pigeon 1 do not collide.
  *
- * <p>Index: {@link #CAN_BUS} · {@link #PIGEON_ID} · {@link Module} · {@link MK4iL2}
+ * <p>Index: {@link #CAN_BUS} · {@link #PIGEON_ID} · {@link #PDP_ID} · {@link Module} · {@link
+ * MK4iL2}
  */
 public final class Hardware {
     private Hardware() {}
@@ -22,6 +23,14 @@ public final class Hardware {
     public static final String CAN_BUS = "can_s0";
 
     public static final int PIGEON_ID = 1;
+
+    /**
+     * The power distribution board: a CTRE PDP at CAN ID 0 on bus 0 (read by WPILib, not Phoenix).
+     */
+    public static final org.wpilib.hardware.bus.CANPort PDP_BUS =
+            org.wpilib.hardware.bus.CANPort.CAN_S0;
+
+    public static final int PDP_ID = 0;
 
     /** Modules in the order every array in the swerve code uses: FL, FR, BL, BR. */
     public enum Module {
