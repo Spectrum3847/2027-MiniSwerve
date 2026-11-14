@@ -6,6 +6,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Supplier;
+import org.littletonrobotics.junction.Logger;
 
 /**
  * The one place blocking Phoenix calls run while the robot is up: config applies, {@code
@@ -17,7 +18,7 @@ import java.util.function.Supplier;
  * health input) and act on it. Boot-time configuration may still block directly, before the robot
  * loop starts.
  *
- * <p>Index: {@link #run} | {@link #result} | {@link #pending}
+ * <p>Index: {@link #run} | {@link #result} | {@link #pending} | {@link #logResults}
  */
 public final class PhoenixBackground {
     private PhoenixBackground() {}
@@ -133,6 +134,31 @@ public final class PhoenixBackground {
     /** The last result of the named call, or null if it has not finished yet. */
     public static StatusCode result(String name) {
         return RESULTS.get(name);
+    }
+
+    /** Log keys by call name, made once so logging each loop does not build strings. */
+    private static final Map<String, String[]> KEYS = new ConcurrentHashMap<>();
+
+    /**
+     * Logs every call's latest result and last exception. Main thread only (the Logger is). Output
+     * only: logic reads {@link #result}, through its own logged inputs.
+     */
+    public static void logResults() {
+        RESULTS.forEach(
+                (name, code) -> {
+                    String[] k =
+                            KEYS.computeIfAbsent(
+                                    name,
+                                    n ->
+                                            new String[] {
+                                                "PhoenixBackground/" + n,
+                                                "PhoenixBackground/" + n + "/Thrown"
+                                            });
+                    // The call's latest StatusCode name, e.g. OK or ConfigFailed.
+                    Logger.recordOutput(k[0], code.getName());
+                    // The last exception the call threw, or "" if none.
+                    Logger.recordOutput(k[1], THROWN.getOrDefault(name, ""));
+                });
     }
 
     /** Whether the named call is queued or running. */
