@@ -183,6 +183,11 @@ public final class SwerveInputs implements LoggableInputs {
         t.put("Health/EncoderConfigured", h.encoderConfigured);
         // Steer motors fusing their CANcoder (no fused-sensor faults).
         t.put("Health/FusedOk", h.fusedOk);
+        // Steer rotor and CANcoder disagree (FusedSensorOutOfSync fault), FL FR BL BR.
+        t.put("Health/FusedOutOfSync", h.fusedOutOfSync);
+        // Steer motor not getting good CANcoder frames (RemoteSensorDataInvalid fault), FL FR BL
+        // BR.
+        t.put("Health/RemoteSensorInvalid", h.remoteSensorInvalid);
         // CANcoder magnets readable.
         t.put("Health/MagnetOk", h.magnetOk);
         // CANivore timesync in use.
@@ -278,6 +283,8 @@ public final class SwerveInputs implements LoggableInputs {
         copy(t.get("Health/SteerConfigured", h.steerConfigured), h.steerConfigured);
         copy(t.get("Health/EncoderConfigured", h.encoderConfigured), h.encoderConfigured);
         copy(t.get("Health/FusedOk", h.fusedOk), h.fusedOk);
+        copy(t.get("Health/FusedOutOfSync", h.fusedOutOfSync), h.fusedOutOfSync);
+        copy(t.get("Health/RemoteSensorInvalid", h.remoteSensorInvalid), h.remoteSensorInvalid);
         copy(t.get("Health/MagnetOk", h.magnetOk), h.magnetOk);
         h.timesync = t.get("Health/Timesync", h.timesync);
         h.driveBrake = t.get("Health/DriveBrake", h.driveBrake);

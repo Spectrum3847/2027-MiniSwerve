@@ -358,8 +358,9 @@ public final class SwerveIOPhoenix implements SwerveIO {
             h.driveDeviceTemp[i] = slow[b + 4].getValueAsDouble();
             h.steerDeviceTemp[i] = slow[b + 5].getValueAsDouble();
             // Fault signals are Boolean; getValueAsDouble is 1 when the fault is active.
-            h.fusedOk[i] =
-                    slow[b + 7].getValueAsDouble() == 0 && slow[b + 8].getValueAsDouble() == 0;
+            h.fusedOutOfSync[i] = slow[b + 7].getValueAsDouble() != 0;
+            h.remoteSensorInvalid[i] = slow[b + 8].getValueAsDouble() != 0;
+            h.fusedOk[i] = !h.fusedOutOfSync[i] && !h.remoteSensorInvalid[i];
             h.magnetOk[i] = slow[b + 9].getValueAsDouble() == 0;
             h.driveSupplyVoltage[i] = slow[b + 6].getValueAsDouble();
             h.steerSupplyVoltage[i] = slow[b + 10].getValueAsDouble();

@@ -34,6 +34,19 @@ public final class SwerveHealth {
      */
     public final boolean[] fusedOk;
 
+    /**
+     * Each steer motor's FusedSensorOutOfSync fault: its rotor and its CANcoder disagree by more
+     * than the fused sensor allows (gear or belt skip, slop, a moved magnet). Part of {@link
+     * #fusedOk}.
+     */
+    public final boolean[] fusedOutOfSync;
+
+    /**
+     * Each steer motor's RemoteSensorDataInvalid fault: its CANcoder's frames are not arriving or
+     * are bad (CAN wiring, bus load, CANcoder reboot). Part of {@link #fusedOk}.
+     */
+    public final boolean[] remoteSensorInvalid;
+
     /** Each CANcoder's magnet is readable (no BadMagnet fault). */
     public final boolean[] magnetOk;
 
@@ -83,6 +96,8 @@ public final class SwerveHealth {
         steerConfigured = new boolean[modules];
         encoderConfigured = new boolean[modules];
         fusedOk = new boolean[modules];
+        fusedOutOfSync = new boolean[modules];
+        remoteSensorInvalid = new boolean[modules];
         magnetOk = new boolean[modules];
         driveStatorCurrent = new double[modules];
         steerStatorCurrent = new double[modules];

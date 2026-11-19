@@ -337,8 +337,10 @@ public final class SwerveIOSim implements SwerveIO {
                             .supplyCurrent(steerAmps, steerRotorRps[i] * 2 * Math.PI, volts);
             h.driveDeviceTemp[i] = 25;
             h.steerDeviceTemp[i] = 25;
-            // An unplugged CANcoder leaves the fused steer sensor out of sync.
-            h.fusedOk[i] = !unheard(names[2 * n + i]);
+            // An unplugged CANcoder's frames stop reaching the steer motor.
+            h.remoteSensorInvalid[i] = unheard(names[2 * n + i]);
+            h.fusedOutOfSync[i] = false;
+            h.fusedOk[i] = !h.remoteSensorInvalid[i];
             h.magnetOk[i] = true;
         }
         h.supplyVoltage = volts;
