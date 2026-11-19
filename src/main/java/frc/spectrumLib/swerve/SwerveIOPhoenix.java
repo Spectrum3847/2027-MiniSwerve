@@ -31,7 +31,7 @@ import org.wpilib.system.RobotController;
  * retries in {@code PhoenixDeviceSet}.
  *
  * <p>Index: constructor | {@link #waitForSample} | {@link #setModules} | {@link
- * #retryFailedConfigs} | {@link #setDriveBrake} | {@link #updateHealth}
+ * #retryFailedConfigs} | {@link #setBrake} | {@link #updateHealth}
  */
 public final class SwerveIOPhoenix implements SwerveIO {
     private final PhoenixSwerveConfig cfg;
@@ -75,7 +75,8 @@ public final class SwerveIOPhoenix implements SwerveIO {
     private final Pigeon2Configuration pigeonConfig;
 
     private final boolean timesync;
-    private final DriveNeutralMode neutralMode;
+    private final MotorNeutralMode driveNeutral;
+    private final MotorNeutralMode steerNeutral;
 
     private final SimFaults faults;
 
@@ -109,8 +110,9 @@ public final class SwerveIOPhoenix implements SwerveIO {
         requests.setTimesync(timesync);
         measuredSteerRps = new double[n];
         drive = new TalonFX[n];
-        neutralMode = new DriveNeutralMode(drive);
+        driveNeutral = new MotorNeutralMode(drive, "Swerve/DriveBrake");
         steer = new TalonFX[n];
+        steerNeutral = new MotorNeutralMode(steer, "Swerve/SteerBrake");
         encoder = new CANcoder[n];
         drivePosition = new StatusSignal<?>[n];
         driveVelocity = new StatusSignal<?>[n];
@@ -150,13 +152,7 @@ public final class SwerveIOPhoenix implements SwerveIO {
                                     encoder[m]
                                             .getConfigurator()
                                             .apply(SwervePhoenixConfigs.encoder(cfg, m)));
-            steerIndex[i] =
-                    devices.add(
-                            steerName[i],
-                            steer[i],
-                            () ->
-                                    steer[m].getConfigurator()
-                                            .apply(SwervePhoenixConfigs.steer(cfg, m)));
+            steerIndex[i] = devices.add(steerName[i], steer[i], () -> applySteerConfig(m));
             driveIndex[i] = devices.add(driveName[i], drive[i], () -> applyDriveConfig(m));
 
             drivePosition[i] = drive[i].getPosition();
@@ -237,8 +233,14 @@ public final class SwerveIOPhoenix implements SwerveIO {
 
     /** Applies a drive's whole config with the neutral mode wanted now. */
     private com.ctre.phoenix6.StatusCode applyDriveConfig(int i) {
-        boolean brake = neutralMode.wantedBrake();
-        return neutralMode.applyFull(i, SwervePhoenixConfigs.drive(cfg, i, brake), brake);
+        boolean brake = driveNeutral.wantedBrake();
+        return driveNeutral.applyFull(i, SwervePhoenixConfigs.drive(cfg, i, brake), brake);
+    }
+
+    /** Applies a steer's whole config with the neutral mode wanted now. */
+    private com.ctre.phoenix6.StatusCode applySteerConfig(int i) {
+        boolean brake = steerNeutral.wantedBrake();
+        return steerNeutral.applyFull(i, SwervePhoenixConfigs.steer(cfg, i, brake), brake);
     }
 
     @Override
@@ -330,8 +332,9 @@ public final class SwerveIOPhoenix implements SwerveIO {
     }
 
     @Override
-    public void setDriveBrake(boolean brake) {
-        neutralMode.request(brake);
+    public void setBrake(boolean brake) {
+        driveNeutral.request(brake);
+        steerNeutral.request(brake);
     }
 
     @Override
@@ -400,7 +403,8 @@ public final class SwerveIOPhoenix implements SwerveIO {
         h.timesync = timesync;
         h.deviceResets = devices.resets();
         h.signalsSet = devices.signalsSet();
-        // Brake only if every drive motor is in brake.
-        h.driveBrake = neutralMode.allBrake();
+        // Brake only if every motor of the set is in brake.
+        h.driveBrake = driveNeutral.allBrake();
+        h.steerBrake = steerNeutral.allBrake();
     }
 }

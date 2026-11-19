@@ -39,10 +39,10 @@ public interface SwerveIO {
     void setNeutral();
 
     /**
-     * Main thread: drive motors brake (true) or coast at neutral. Applying it is a blocking config
-     * call, so implementations do it on their own thread; call only on a change.
+     * Main thread: drive and steer motors brake (true) or coast at neutral. Applying it is a
+     * blocking config call, so implementations do it on their own thread; call only on a change.
      */
-    default void setDriveBrake(boolean brake) {}
+    default void setBrake(boolean brake) {}
 
     /** The swerve thread is starting, or starting again after it ended. */
     default void open() {}

@@ -21,7 +21,7 @@ Phoenix (`toSwerveModuleVelocities`, `optimize`, `cosineScale`, `TorqueCurrentFO
 | `SwerveIO` | Hardware interface; `NONE` for replay |
 | `SwervePhoenixConfigs` | The TalonFX / CANcoder configs the Phoenix IO applies |
 | `DriveMotorLimit` | How hard a drive motor can speed its wheel up at a wheel speed and battery voltage (back-EMF, slip and supply limits) |
-| `DriveNeutralMode` | Drive brake/coast applied in the background; newest request wins |
+| `MotorNeutralMode` | Brake/coast for one motor set (drives or steers), applied in the background; newest request wins |
 | `SwerveIOPhoenix` | TalonFX drive/steer, CANcoder, Pigeon 2; on-motor TorqueCurrentFOC loops |
 | `SwerveRequests` | Module targets to Phoenix control requests, shared by `SwerveIOPhoenix` and SpectrumSim's sim IO |
 | `SimulatedSwerve` | A drivetrain in the desktop sim: its IO and true-pose logging (SpectrumSim implements it) |

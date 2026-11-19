@@ -200,6 +200,8 @@ public final class SwerveInputs implements LoggableInputs {
         t.put("Health/SignalsSet", h.signalsSet);
         // Drive motors in brake (false: coast), as last applied.
         t.put("Health/DriveBrake", h.driveBrake);
+        // Steer motors in brake (false: coast), as last applied.
+        t.put("Health/SteerBrake", h.steerBrake);
         // Swerve thread cycles in a row with stale or failed signals.
         t.put("Thread/StaleCycles", staleCycles);
         // Motor currents (A).
@@ -288,6 +290,7 @@ public final class SwerveInputs implements LoggableInputs {
         copy(t.get("Health/MagnetOk", h.magnetOk), h.magnetOk);
         h.timesync = t.get("Health/Timesync", h.timesync);
         h.driveBrake = t.get("Health/DriveBrake", h.driveBrake);
+        h.steerBrake = t.get("Health/SteerBrake", h.steerBrake);
         h.deviceResets = t.get("Health/DeviceResets", h.deviceResets);
         long[] steerResets = t.get("Health/SteerResets", h.steerResets);
         System.arraycopy(steerResets, 0, h.steerResets, 0, Math.min(steerResets.length, modules));

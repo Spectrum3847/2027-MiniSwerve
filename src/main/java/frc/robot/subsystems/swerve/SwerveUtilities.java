@@ -51,14 +51,15 @@ final class SwerveUtilities {
         sinceBrakeRequest += dt;
         // Request on a change, and again (about once a second) while the applied state does not
         // match: an apply can fail, and a rebooted drive motor comes back in its boot mode.
-        boolean mismatch = inputs.health.driveBrake != brake;
+        boolean mismatch = inputs.health.driveBrake != brake || inputs.health.steerBrake != brake;
         if (brake != brakeRequested || (mismatch && sinceBrakeRequest >= 1.0)) {
             // A config apply: SwerveIO does it on its own thread.
-            io.setDriveBrake(brake);
+            io.setBrake(brake);
             brakeRequested = brake;
             sinceBrakeRequest = 0;
         }
-        // Drive motors should brake (false: coast); Health/DriveBrake is what was applied.
+        // Drive and steer motors should brake (false: coast); Health/DriveBrake and
+        // Health/SteerBrake are what was applied.
         Logger.recordOutput("Swerve/DriveBrakeWanted", brake);
 
         if (characterizing) {

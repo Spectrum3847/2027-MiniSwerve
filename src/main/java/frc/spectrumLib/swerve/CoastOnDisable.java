@@ -1,13 +1,13 @@
 package frc.spectrumLib.swerve;
 
 /**
- * Whether the drive motors should brake or coast. Brake while enabled and while the robot is still
- * moving after a disable (so it does not roll at the end of a match); coast once it has been
- * disabled and still for a while, so the pit crew can push it. Team 6328's approach.
+ * Whether the drive and steer motors should brake or coast. Brake while enabled and while the robot
+ * is still moving after a disable (so it does not roll at the end of a match); coast once it has
+ * been disabled and still for a while, so the pit crew can push it. Team 6328's approach.
  *
  * <p>Once coasting it stays coasting until the next enable: pushing or shaking a disabled robot
  * must not brake it again (that fights the person moving it, and every switch is a config apply on
- * all four drive motors).
+ * every drive and steer motor).
  *
  * <p>Pure decision from logged values (enabled state, wheel speeds), so replay agrees.
  */

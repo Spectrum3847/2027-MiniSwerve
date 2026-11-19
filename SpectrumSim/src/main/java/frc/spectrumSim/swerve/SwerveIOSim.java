@@ -263,7 +263,7 @@ public final class SwerveIOSim implements SwerveIO {
     }
 
     @Override
-    public void setDriveBrake(boolean brake) {
+    public void setBrake(boolean brake) {
         driveBrake = brake;
         for (int i = 0; i < n; i++) {
             if (configured[i]) {
@@ -306,7 +306,7 @@ public final class SwerveIOSim implements SwerveIO {
         } else if (d < n) {
             m.configure(SwervePhoenixConfigs.drive(cfg, d, driveBrake));
         } else {
-            m.configure(SwervePhoenixConfigs.steer(cfg, d - n));
+            m.configure(SwervePhoenixConfigs.steer(cfg, d - n, driveBrake));
         }
     }
 
@@ -358,6 +358,7 @@ public final class SwerveIOSim implements SwerveIO {
         System.arraycopy(steerResets, 0, h.steerResets, 0, n);
         h.signalsSet = true;
         h.driveBrake = driveBrake;
+        h.steerBrake = driveBrake;
     }
 
     private boolean unheard(String device) {

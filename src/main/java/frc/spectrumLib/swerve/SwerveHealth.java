@@ -68,6 +68,9 @@ public final class SwerveHealth {
     /** The drive motors are in brake (false: coast), as last applied. */
     public boolean driveBrake = true;
 
+    /** The steer motors are in brake (false: coast), as last applied. */
+    public boolean steerBrake = true;
+
     /** Amps. */
     public final double[] driveStatorCurrent;
 

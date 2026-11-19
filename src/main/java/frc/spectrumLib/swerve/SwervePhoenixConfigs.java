@@ -23,13 +23,13 @@ public final class SwervePhoenixConfigs {
         return c;
     }
 
-    public static TalonFXConfiguration steer(PhoenixSwerveConfig cfg, int i) {
+    public static TalonFXConfiguration steer(PhoenixSwerveConfig cfg, int i, boolean brake) {
         var c = new TalonFXConfiguration();
         c.MotorOutput.Inverted =
                 cfg.steerInverted()
                         ? InvertedValue.Clockwise_Positive
                         : InvertedValue.CounterClockwise_Positive;
-        c.MotorOutput.NeutralMode = NeutralModeValue.Brake;
+        c.MotorOutput.NeutralMode = brake ? NeutralModeValue.Brake : NeutralModeValue.Coast;
         c.Feedback.FeedbackRemoteSensorID = cfg.encoderIds()[i];
         c.Feedback.FeedbackSensorSource = FeedbackSensorSourceValue.FusedCANcoder;
         c.Feedback.RotorToSensorRatio = cfg.steerRatio();
