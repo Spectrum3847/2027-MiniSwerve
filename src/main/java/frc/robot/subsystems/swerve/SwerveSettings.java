@@ -114,7 +114,8 @@ final class SwerveSettings {
 
     /**
      * Coast the drive motors once the robot has been disabled and still for coastDelaySeconds, so
-     * it can be pushed; brake while enabled and while still moving. HARD STOP (brake/coast).
+     * it can be pushed, and keep coasting until the next enable; brake while enabled and while
+     * still rolling after a disable. HARD STOP (brake/coast).
      */
     static final BooleanSetting COAST_ON_DISABLE = G.bool("coastOnDisable", true);
 
