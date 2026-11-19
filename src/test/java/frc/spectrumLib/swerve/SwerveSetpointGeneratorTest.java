@@ -69,6 +69,32 @@ class SwerveSetpointGeneratorTest {
     }
 
     @Test
+    void reversingAFewDegreesOffStraightFlipsTheWheelsInsteadOfTurningThem() {
+        // Field-relative driving is never exactly along the robot's x: the stick and heading put
+        // a small sideways part in both requests, so a straight line between them misses zero.
+        double off = Math.toRadians(3);
+        var g = stopped();
+        for (int k = 0; k < 250; k++) {
+            g.generate(3.0 * Math.cos(off), 3.0 * Math.sin(off), 0, DT, 4.5, ACCEL, STEER, null);
+        }
+        double start = g.angle()[0];
+        for (int k = 0; k < 250; k++) {
+            g.generate(
+                    -3.0 * Math.cos(-off), -3.0 * Math.sin(-off), 0, DT, 4.5, ACCEL, STEER, null);
+            for (int i = 0; i < 4; i++) {
+                double turned = Math.abs(SwerveMath.angleModulus(g.angle()[i] - start));
+                assertTrue(turned < Math.toRadians(10), "step " + k + " module " + i + " turned");
+            }
+        }
+        assertTrue(
+                g.velocity()[0] < -2.9,
+                "drives backward at the end: "
+                        + g.velocity()[0]
+                        + " at "
+                        + Math.toDegrees(g.angle()[0]));
+    }
+
+    @Test
     void desaturatesTheWholeChassis() {
         var g = stopped();
         for (int k = 0; k < 500; k++) {
