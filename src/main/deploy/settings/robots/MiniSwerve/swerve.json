@@ -1,8 +1,8 @@
 {
   "loopHz": 100,
-  "magnetOffsetFL": 0.19141,
-  "magnetOffsetFR": -0.27937,
-  "magnetOffsetBL": -0.15771,
-  "magnetOffsetBR": -0.11865,
+  "magnetOffsetFL": 0.44141,
+  "magnetOffsetFR": -0.02937,
+  "magnetOffsetBL": 0.09229,
+  "magnetOffsetBR": 0.13135,
   "track": 0.32385
 }
