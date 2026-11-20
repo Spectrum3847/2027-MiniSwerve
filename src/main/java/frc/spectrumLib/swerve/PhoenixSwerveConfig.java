@@ -33,6 +33,8 @@ package frc.spectrumLib.swerve;
  *     generated swerve defaults to; false is TorqueCurrentFOC
  * @param driveSupplyCurrentLimit drive supply (battery-side) current limit (A); 0 for none
  * @param steerSupplyCurrentLimit steer supply (battery-side) current limit (A); 0 for none
+ * @param encoderSignalHz update rate of the CANcoder position and velocity frames the steer motors
+ *     fuse (Hz); can be above {@code signalHz}, as CTRE's CANivore template runs them
  */
 public record PhoenixSwerveConfig(
         String canBus,
@@ -60,7 +62,66 @@ public record PhoenixSwerveConfig(
         boolean allowTimesync,
         boolean steerVoltage,
         double driveSupplyCurrentLimit,
-        double steerSupplyCurrentLimit) {
+        double steerSupplyCurrentLimit,
+        double encoderSignalHz) {
+
+    /** The same, with the CANcoder frames at {@code signalHz}. */
+    public PhoenixSwerveConfig(
+            String canBus,
+            int pigeonId,
+            int[] driveIds,
+            int[] steerIds,
+            int[] encoderIds,
+            double[] magnetOffsets,
+            boolean[] driveInverted,
+            boolean steerInverted,
+            double driveRatio,
+            double steerRatio,
+            double coupleRatio,
+            double wheelRadius,
+            double driveStatorCurrentLimit,
+            double steerStatorCurrentLimit,
+            Gains drive,
+            Gains steer,
+            double signalHz,
+            double[] pigeonMountPose,
+            boolean steerMotionMagicExpo,
+            double steerExpoKv,
+            double steerExpoKa,
+            double driveKt,
+            boolean allowTimesync,
+            boolean steerVoltage,
+            double driveSupplyCurrentLimit,
+            double steerSupplyCurrentLimit) {
+        this(
+                canBus,
+                pigeonId,
+                driveIds,
+                steerIds,
+                encoderIds,
+                magnetOffsets,
+                driveInverted,
+                steerInverted,
+                driveRatio,
+                steerRatio,
+                coupleRatio,
+                wheelRadius,
+                driveStatorCurrentLimit,
+                steerStatorCurrentLimit,
+                drive,
+                steer,
+                signalHz,
+                pigeonMountPose,
+                steerMotionMagicExpo,
+                steerExpoKv,
+                steerExpoKa,
+                driveKt,
+                allowTimesync,
+                steerVoltage,
+                driveSupplyCurrentLimit,
+                steerSupplyCurrentLimit,
+                signalHz);
+    }
 
     /** Phoenix Slot0 gains: kP, kI, kD, kS, kV, kA. */
     public record Gains(double kP, double kI, double kD, double kS, double kV, double kA) {}

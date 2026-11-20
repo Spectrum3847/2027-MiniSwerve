@@ -228,7 +228,14 @@ public final class SwerveIOPhoenix implements SwerveIO {
         devices.setSignals(
                 () ->
                         SwervePhoenixConfigs.signals(
-                                cfg.signalHz(), fast, slow, drive, steer, encoder, pigeon));
+                                cfg.signalHz(),
+                                cfg.encoderSignalHz(),
+                                fast,
+                                slow,
+                                drive,
+                                steer,
+                                encoder,
+                                pigeon));
         devices.configureAtBoot();
         // Old faults (from any earlier run) would hide what happens now.
         stickyClear = sticky.clear().getName();

@@ -67,7 +67,8 @@ final class SwerveConfigs {
                 SwerveSettings.TIMESYNC.get(),
                 SwerveSettings.steerVoltage(),
                 Hardware.DRIVE_SUPPLY_LIMIT_AMPS,
-                Hardware.STEER_SUPPLY_LIMIT_AMPS);
+                Hardware.STEER_SUPPLY_LIMIT_AMPS,
+                SwerveSettings.ENCODER_SIGNAL_HZ.get());
     }
 
     /**

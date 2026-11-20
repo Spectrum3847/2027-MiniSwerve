@@ -91,6 +91,7 @@ public final class SwervePhoenixConfigs {
      */
     static com.ctre.phoenix6.StatusCode signals(
             double hz,
+            double encoderHz,
             com.ctre.phoenix6.BaseStatusSignal[] fast,
             com.ctre.phoenix6.BaseStatusSignal[] slow,
             com.ctre.phoenix6.hardware.TalonFX[] drive,
@@ -104,7 +105,7 @@ public final class SwervePhoenixConfigs {
         for (int i = 0; i < n; i++) {
             var c =
                     com.ctre.phoenix6.BaseStatusSignal.setUpdateFrequencyForAll(
-                            hz, encoder[i].getPosition(), encoder[i].getVelocity());
+                            encoderHz, encoder[i].getPosition(), encoder[i].getVelocity());
             code = code.isOK() ? c : code;
         }
         var c = com.ctre.phoenix6.BaseStatusSignal.setUpdateFrequencyForAll(10, slow);

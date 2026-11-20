@@ -35,6 +35,13 @@ final class SwerveSettings {
      */
     static final DoubleSetting LOOP_HZ = G.number("loopHz", 250, "Hz", 50, 250);
 
+    /**
+     * CANcoder position and velocity frame rate (Hz), read at boot: what each steer motor fuses.
+     * 250 as on CTRE's CANivore template; on a CAN 2.0 bus each 100 Hz here costs about 400-800
+     * frames/s, so watch SystemStats/Network/CAN0/Utilization if raising it.
+     */
+    static final DoubleSetting ENCODER_SIGNAL_HZ = G.number("encoderSignalHz", 250, "Hz", 50, 250);
+
     static final DoubleSetting WHEEL_RADIUS =
             G.number("wheelRadius", Hardware.MK4iL2.NOMINAL_WHEEL_RADIUS_METERS, "m", 0.04, 0.06);
 
