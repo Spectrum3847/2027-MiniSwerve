@@ -9,5 +9,7 @@
   "magnetOffsetFR": -0.01912,
   "magnetOffsetBL": 0.09034,
   "magnetOffsetBR": 0.12992,
-  "track": 0.32385
+  "track": 0.32385,
+  "wheelRadius": 0.049,
+  "maxAngularVelocity": 12
 }
