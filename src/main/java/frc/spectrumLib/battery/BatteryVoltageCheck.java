@@ -19,6 +19,7 @@ public final class BatteryVoltageCheck {
     private double disabledSince = Double.NaN;
     private double resting = Double.NaN;
     private double shown = Double.NaN;
+    private boolean isLow;
 
     /**
      * @param lowVolts resting voltage below which to warn (V)
@@ -47,7 +48,7 @@ public final class BatteryVoltageCheck {
         if (settled && valid) {
             resting = volts;
         }
-        boolean isLow = !Double.isNaN(resting) && resting < lowVolts;
+        isLow = !Double.isNaN(resting) && resting < lowVolts;
         // Reword only when the reading moves, so the loop does not format a string every time.
         if (isLow && !(Math.abs(resting - shown) < 0.05)) {
             shown = resting;
@@ -60,6 +61,11 @@ public final class BatteryVoltageCheck {
         Logger.recordOutput("Battery/RestingVoltage", resting);
         // Resting voltage is below the low-battery threshold.
         Logger.recordOutput("Battery/Low", isLow);
+    }
+
+    /** The last resting voltage was below the low-battery threshold (as of the last periodic). */
+    public boolean isLow() {
+        return isLow;
     }
 
     /** Last resting voltage (V), NaN until the robot has rested once. */

@@ -13,5 +13,6 @@
 | `subsystems/swerve/` | The drivetrain |
 | `subsystems/vision/` | The cameras |
 | `subsystems/pose/` | Where the robot is: TagEKF, with WPILib's estimator as a shadow |
+| `subsystems/leds/` | The LED strip: mode and alerts in purple and white |
 | `pilot/` | Driver controller |
 | `opmodes/` | What the Driver Station can pick: autos, teleop and utility modes |

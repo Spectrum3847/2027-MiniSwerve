@@ -8,6 +8,8 @@ import frc.robot.opmodes.DriveForwardAuto;
 import frc.robot.opmodes.DriveTeleop;
 import frc.robot.opmodes.WheelRadiusUtility;
 import frc.robot.pilot.Pilot;
+import frc.robot.subsystems.leds.LedSettings;
+import frc.robot.subsystems.leds.Leds;
 import frc.robot.subsystems.pose.Localization;
 import frc.robot.subsystems.swerve.Swerve;
 import frc.robot.subsystems.vision.Vision;
@@ -23,6 +25,8 @@ import frc.spectrumLib.framework.OpModeLoop;
 import frc.spectrumLib.framework.RobotLoop;
 import frc.spectrumLib.framework.SpectrumRobot;
 import frc.spectrumLib.hardware.SimFaults;
+import frc.spectrumLib.leds.ShineIO;
+import frc.spectrumLib.leds.ShineIOCan;
 import frc.spectrumLib.power.PowerDistributionIO;
 import frc.spectrumLib.power.PowerDistributionIOWpilib;
 import frc.spectrumLib.power.PowerDistributionInputs;
@@ -58,7 +62,8 @@ import org.wpilib.util.Alert.Level;
  *   <li>{@link OpModeLoop#run()} - the running OpMode's requests
  *   <li>{@link CommandScheduler#run()} - wanted-state requests and commands
  *   <li>{@link Swerve#applyWantedState()} - wanted state to the swerve thread
- *   <li>alerts and telemetry
+ *   <li>alerts, then {@link Leds#periodic} - the LED strip shows the mode and the alerts
+ *   <li>telemetry
  * </ol>
  *
  * <p>Every step runs as a {@link LoopStage}: if one throws, it is counted and alerted and the rest
@@ -82,6 +87,7 @@ public class Robot extends SpectrumRobot {
     private final PowerDistributionIO pdp;
     private final PowerDistributionInputs pdpInputs = new PowerDistributionInputs();
     private final Localization localization;
+    private final Leds leds;
     private final SimScript simScript;
     private final DesktopSim desktopSim;
     private final OpModeLoop opModeLoop = new OpModeLoop();
@@ -98,6 +104,7 @@ public class Robot extends SpectrumRobot {
     private final LoopStage swerveApplyStage = new LoopStage("SwerveApply");
     private final LoopStage limpStage = new LoopStage("SwerveLimp");
     private final LoopStage alertsStage = new LoopStage("Alerts");
+    private final LoopStage ledsStage = new LoopStage("Leds");
     private final LoopStage telemetryStage = new LoopStage("Telemetry");
     private final Runnable settingsWork = RobotSettings::periodic;
     private final Runnable swerveInputsWork;
@@ -110,6 +117,7 @@ public class Robot extends SpectrumRobot {
     private final Runnable swerveApplyWork;
     private final Runnable limpWork;
     private final Runnable alertsWork = Alert::periodic;
+    private final Runnable ledsWork = this::ledsPeriodic;
     private final Runnable telemetryWork =
             () -> {
                 Telemetry.periodic();
@@ -208,6 +216,7 @@ public class Robot extends SpectrumRobot {
                                                                 .ModuleType.CTRE))
                         : null;
         pdp = madePdp != null ? madePdp : PowerDistributionIO.NONE;
+        leds = new LoopStage("Boot/Leds").make(Robot::makeLeds);
         // The pilot only binds controls; the bindings keep it alive.
         new Pilot(swerve);
         registerOpModes();
@@ -233,6 +242,27 @@ public class Robot extends SpectrumRobot {
         };
     }
 
+    /**
+     * The LED strip on its SpectrumShine board: on CAN on the robot, a healthy stand-in on the
+     * desktop, the log in replay.
+     */
+    private static Leds makeLeds() {
+        int count = LedSettings.COUNT.get();
+        boolean onB = LedSettings.ON_OUTPUT_B.get();
+        ShineIO io =
+                switch (RunMode.CURRENT) {
+                    case REAL ->
+                            new ShineIOCan(
+                                    Hardware.LED_BUS,
+                                    Hardware.LED_ID,
+                                    onB ? 0 : count,
+                                    onB ? count : 0);
+                    case SIM -> ShineIO.simulated();
+                    case REPLAY -> ShineIO.NONE;
+                };
+        return new Leds(io, count, LedSettings.END_LEDS.get(), LedSettings.BRIGHTNESS.get());
+    }
+
     @Override
     public void robotPeriodic() {
         if (desktopSim != null) {
@@ -255,6 +285,7 @@ public class Robot extends SpectrumRobot {
             limpStage.run(limpWork);
         }
         alertsStage.run(alertsWork);
+        ledsStage.run(ledsWork);
         telemetryStage.run(telemetryWork);
         if (desktopSim != null) {
             desktopSim.loopDone();
@@ -268,6 +299,20 @@ public class Robot extends SpectrumRobot {
         }
         batteryVoltage.periodic(
                 swerve.supplyVoltage(), disabled, org.wpilib.system.Timer.getTimestamp());
+    }
+
+    private void ledsPeriodic() {
+        if (leds != null) {
+            leds.periodic(
+                    org.wpilib.driverstation.RobotState.isEStopped(),
+                    org.wpilib.driverstation.RobotState.isDSAttached(),
+                    org.wpilib.driverstation.RobotState.isEnabled(),
+                    org.wpilib.driverstation.RobotState.isAutonomous(),
+                    org.wpilib.driverstation.RobotState.isUtility(),
+                    batteryVoltage.isLow(),
+                    Alert.activeCount(Level.HIGH),
+                    Alert.activeCount(Level.MEDIUM));
+        }
     }
 
     private void pdpPeriodic() {

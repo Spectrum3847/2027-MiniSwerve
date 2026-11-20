@@ -58,6 +58,17 @@ public class Alert extends org.wpilib.util.Alert {
      */
     private static java.util.function.BiConsumer<Level, String> raisedListener;
 
+    /** Active alerts per level at the last {@link #periodic()}, indexed by the level's ordinal. */
+    private static final int[] ACTIVE_COUNTS = new int[Level.values().length];
+
+    /**
+     * How many alerts of a level were active at the last {@link #periodic()}: for code that reacts
+     * to "something needs attention" (the LEDs) without knowing which alert. Main thread.
+     */
+    public static int activeCount(Level level) {
+        return ACTIVE_COUNTS[level.ordinal()];
+    }
+
     /** Whether this alert was on at the last {@link #periodic()}. */
     private boolean reported;
 
@@ -161,6 +172,9 @@ public class Alert extends org.wpilib.util.Alert {
         String[] e = active(Level.HIGH);
         String[] w = active(Level.MEDIUM);
         String[] i = active(Level.LOW);
+        ACTIVE_COUNTS[Level.HIGH.ordinal()] = e.length;
+        ACTIVE_COUNTS[Level.MEDIUM.ordinal()] = w.length;
+        ACTIVE_COUNTS[Level.LOW.ordinal()] = i.length;
         // Active error alerts, newest first.
         Logger.recordOutput("Alerts/Errors", e);
         // Active warning alerts, newest first.
