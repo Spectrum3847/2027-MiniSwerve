@@ -186,7 +186,16 @@ public final class RobotAccelerationLimiter {
         if (now > STOPPED && want > STOPPED && fvx * tx + fvy * ty < REVERSAL_COS * now * want) {
             // The straight line to a near-reversal passes close to zero without reaching it, and
             // the wheels would swing around 180 deg; from zero they flip instead.
-            tx = ty = 0;
+            double reach = maxAcceleration * dt;
+            if (now >= reach) {
+                tx = ty = 0;
+            } else {
+                // This cycle gets to zero: spend the rest of its step on the way out the other
+                // side, so the plan does not sit at zero for a cycle in the middle of a reversal.
+                double out = Math.min(want, reach - now);
+                tx *= out / want;
+                ty *= out / want;
+            }
         }
         double wantDvx = tx - fvx;
         double wantDvy = ty - fvy;

@@ -93,17 +93,23 @@ class RobotAccelerationLimiterTest {
     void aReversalFlipsTheWheelsInsteadOfTurningThem() {
         var g = stopped();
         for (int k = 0; k < 60; k++) {
-            step(g, 3, 0, 0, 0);
+            // Not a whole number of steps from zero, so braking cannot land on it by luck.
+            step(g, 3.05, 0, 0, 0);
         }
-        assertEquals(3.0, g.velocity()[0], 1e-6);
+        assertEquals(3.05, g.velocity()[0], 1e-6);
         double worstAngle = 0;
+        int cyclesAtZero = 0;
         for (int k = 0; k < 100; k++) {
             // Not quite straight back: the line to it misses zero.
             step(g, -3, 0.3, 0, 0);
             if (k < 30) {
                 worstAngle = Math.max(worstAngle, Math.abs(g.angle()[0]));
             }
+            if (Math.abs(g.velocity()[0]) < 1e-9) {
+                cyclesAtZero++;
+            }
         }
+        assertEquals(0, cyclesAtZero, "the plan sat at zero in the middle of the reversal");
         // Braked with the wheels held, then drove backward (negative speed), a few degrees over.
         assertTrue(worstAngle < 0.02, "wheel turned " + worstAngle + " rad while braking");
         assertTrue(g.velocity()[0] < -2.9, "speed " + g.velocity()[0]);
