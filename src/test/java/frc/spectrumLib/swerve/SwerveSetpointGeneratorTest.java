@@ -89,6 +89,40 @@ class SwerveSetpointGeneratorTest {
     }
 
     @Test
+    void stoppingASweptStickSlowsTheWheelsWithinTheSteerLimit() {
+        // A fast sweep, then the stick held still: the wheels were planned to stop turning in one
+        // cycle from ~17 rad/s, and the steer motors slammed and overshot ~20 deg on the robot.
+        var g = stopped();
+        double maxRateStep = SwerveSetpointGenerator.DEFAULT_STEER_ACCELERATION * DT + 1e-6;
+        double[] lastA = new double[4];
+        double[] lastRate = new double[4];
+        double dir = 0;
+        for (int k = 0; k < 600; k++) {
+            if (k < 300) {
+                dir = 2 * Math.PI * 1.6 * k * DT; // then held where it stopped
+            }
+            g.generate(4 * Math.cos(dir), 4 * Math.sin(dir), 0, DT, 4.5, ACCEL, STEER, null);
+            for (int i = 0; i < 4; i++) {
+                double rate = SwerveMath.angleModulus(g.angle()[i] - lastA[i]) / DT;
+                if (k > 1) {
+                    assertTrue(
+                            Math.abs(rate - lastRate[i]) <= maxRateStep,
+                            "turn rate jumped "
+                                    + Math.abs(rate - lastRate[i])
+                                    + " rad/s at step "
+                                    + k);
+                }
+                lastA[i] = g.angle()[i];
+                lastRate[i] = rate;
+            }
+        }
+        for (int i = 0; i < 4; i++) {
+            double off = Math.abs(SwerveMath.angleModulus(g.angle()[i] - dir));
+            assertTrue(Math.min(off, Math.PI - off) < Math.toRadians(1), "settled on the stick");
+        }
+    }
+
+    @Test
     void reversingAFewDegreesOffStraightFlipsTheWheelsInsteadOfTurningThem() {
         // Field-relative driving is never exactly along the robot's x: the stick and heading put
         // a small sideways part in both requests, so a straight line between them misses zero.

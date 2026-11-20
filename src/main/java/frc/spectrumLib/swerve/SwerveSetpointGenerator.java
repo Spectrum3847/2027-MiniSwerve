@@ -264,8 +264,11 @@ public final class SwerveSetpointGenerator {
             double dv = maxSteerAcceleration * dt;
             rate = Math.max(steerVelocity[i] - dv, Math.min(steerVelocity[i] + dv, rate));
             double turn = rate * dt;
-            if (Math.abs(turn) > Math.abs(err)) {
-                turn = err; // land exactly
+            // Land exactly only if that is within the turn acceleration limit; otherwise keep
+            // slowing at the limit, pass the target a little and come back. Stopping dead from a
+            // fast turn slammed the steer motors (20 deg overshoot on the robot).
+            if (Math.abs(turn) > Math.abs(err) && Math.abs(err / dt - steerVelocity[i]) <= dv) {
+                turn = err;
                 rate = turn / dt;
             }
             turn = Math.max(-maxTurn, Math.min(maxTurn, turn));
