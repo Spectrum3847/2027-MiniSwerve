@@ -10,8 +10,8 @@ package frc.spectrumLib.swerve;
  *   <li>Move the chassis setpoint from last cycle's toward the request by the largest fraction
  *       {@code s} that keeps every wheel's speed change within {@code maxDriveAcceleration * dt}
  *       (bisection; s = 0 always fits). Acceleration, braking and reversing through zero are all
- *       limited the same way. A request that reverses every wheel brakes straight to zero first, so
- *       the wheels flip their drive direction instead of turning around. With a {@link
+ *       limited the same way. A near-reversal of every wheel brakes straight to zero first, so the
+ *       wheels flip their drive direction instead of turning around. With a {@link
  *       DriveMotorLimit}, a wheel speeding up is also held to what its motor can give at its speed
  *       and the battery voltage.
  *   <li>Turn each module toward its new direction (the short way) by at most {@code
@@ -182,18 +182,12 @@ public final class SwerveSetpointGenerator {
             omega *= k;
         }
 
-        // A request that reverses every moving wheel: brake straight to zero first. A straight
-        // line from here to the request passes near zero without reaching it (any sideways part,
-        // a degree of heading), so the velocity direction would sweep 180 deg and the wheels,
-        // following it a little each cycle, would turn around instead of driving backward. From
-        // zero the short-way turn flips each wheel's drive direction instead (254's rule).
+        // A near-reversal: brake straight to zero first. The straight line to the request passes
+        // near zero without reaching it, so the wheels would follow the velocity around 180 deg
+        // instead of driving backward; from zero they flip instead (254's rule).
         if (reversesEveryWheel(vx, vy, omega)) {
-            vx = 0;
-            vy = 0;
-            omega = 0;
-            // Keep the wheels where they point while braking. Aiming them at the new request
-            // would block the stop itself: the last step to zero would need a turn bigger than
-            // one cycle allows. Once stopped, the usual turn-then-go takes over.
+            vx = vy = omega = 0;
+            // Hold the wheels while braking: aiming them at the request would stall the stop.
             java.util.Arrays.fill(requestDir, Double.NaN);
         }
 
@@ -253,8 +247,16 @@ public final class SwerveSetpointGenerator {
                 err = SwerveMath.angleModulus(err + Math.PI);
             }
             // A trapezoid in turn rate: speed up and slow down at maxSteerAcceleration, so the
-            // steer feedforward ends at zero on the target instead of overshooting it.
-            double stopRate = Math.sqrt(2 * maxSteerAcceleration * Math.abs(err));
+            // steer feedforward ends at zero on the request's direction instead of overshooting.
+            // Slow down for the turn left to the request, not this cycle's step: the step is only
+            // as big as the current rate allows, so braking for it held turns to ~3.3 rad/s.
+            double left = err;
+            if (!Double.isNaN(requestDir[i])) {
+                double e = SwerveMath.angleModulus(requestDir[i] - lastAngle[i]);
+                e = Math.abs(e) > Math.PI / 2 ? SwerveMath.angleModulus(e + Math.PI) : e;
+                left = e * err > 0 && Math.abs(e) > Math.abs(err) ? e : err;
+            }
+            double stopRate = Math.sqrt(2 * maxSteerAcceleration * Math.abs(left));
             double rate = Math.copySign(Math.min(maxSteerVelocity, stopRate), err);
             double dv = maxSteerAcceleration * dt;
             rate = Math.max(steerVelocity[i] - dv, Math.min(steerVelocity[i] + dv, rate));
@@ -343,23 +345,25 @@ public final class SwerveSetpointGenerator {
     }
 
     /**
-     * Whether the request points every moving pushing wheel more than 90 deg from where last
-     * cycle's setpoint moves it (and at least one wheel is moving and asked to move).
+     * A reversal is a request over 150 deg from the wheel's motion. A stick swept in a circle runs
+     * 80-110 deg ahead of the wheels; braking for that stopped them on every pass.
      */
+    private static final double REVERSAL_COS = Math.cos(Math.toRadians(150));
+
+    /** Every moving pushing wheel is asked to reverse (and at least one is moving and asked). */
     private boolean reversesEveryWheel(double vx, double vy, double omega) {
         boolean any = false;
         for (int i = 0; i < n; i++) {
-            if (!pushes(i)) {
-                continue;
-            }
             double nowX = pvx - pw * my[i];
             double nowY = pvy + pw * mx[i];
             double wantX = vx - omega * my[i];
             double wantY = vy + omega * mx[i];
-            if (Math.hypot(nowX, nowY) <= STOPPED || Math.hypot(wantX, wantY) <= STOPPED) {
+            double now = Math.hypot(nowX, nowY);
+            double want = Math.hypot(wantX, wantY);
+            if (!pushes(i) || now <= STOPPED || want <= STOPPED) {
                 continue;
             }
-            if (nowX * wantX + nowY * wantY >= 0) {
+            if (nowX * wantX + nowY * wantY > REVERSAL_COS * now * want) {
                 return false;
             }
             any = true;

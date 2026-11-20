@@ -69,6 +69,26 @@ class SwerveSetpointGeneratorTest {
     }
 
     @Test
+    void aStickSweptInACircleNeverStopsTheWheels() {
+        // Full stick swept around at 1.6 rev/s, as drivers did on the stand: about 10 rad/s, well
+        // under the steer limit. The wheels must turn to follow it, not stop: braking for each
+        // cycle's own step once held turns to ~3.3 rad/s, and the lag that built up then looked
+        // like a reversal.
+        var g = stopped();
+        double slowest = Double.MAX_VALUE;
+        for (int k = 0; k < 2500; k++) {
+            double dir = 2 * Math.PI * 1.6 * k * DT;
+            g.generate(4 * Math.cos(dir), 4 * Math.sin(dir), 0, DT, 4.5, ACCEL, STEER, null);
+            if (k > 250) {
+                for (int i = 0; i < 4; i++) {
+                    slowest = Math.min(slowest, Math.abs(g.velocity()[i]));
+                }
+            }
+        }
+        assertTrue(slowest > 3.5, "slowest wheel " + slowest + " m/s");
+    }
+
+    @Test
     void reversingAFewDegreesOffStraightFlipsTheWheelsInsteadOfTurningThem() {
         // Field-relative driving is never exactly along the robot's x: the stick and heading put
         // a small sideways part in both requests, so a straight line between them misses zero.
