@@ -56,6 +56,27 @@ public final class SwerveSample {
     /** Drive feedforward force sent this cycle, along each wheel (N). */
     public final double[] wheelForce;
 
+    /**
+     * Each drive motor's torque current (A, signed: negative pushes the wheel backward). 0 when the
+     * diagnostic signals are off.
+     */
+    public final double[] driveCurrent;
+
+    /** Each drive motor's applied voltage (V, signed). 0 when the diagnostic signals are off. */
+    public final double[] driveVoltage;
+
+    /** Each steer motor's torque current (A, signed). 0 when the diagnostic signals are off. */
+    public final double[] steerCurrent;
+
+    /**
+     * What the gyro's accelerometer reads along its x, y and z (m/s^2), gravity included, in the
+     * frame Phoenix reports it. 0 when the diagnostic signals are off.
+     */
+    public double accelerationX;
+
+    public double accelerationY;
+    public double accelerationZ;
+
     public SwerveSample(int modules) {
         distance = new double[modules];
         velocity = new double[modules];
@@ -63,6 +84,9 @@ public final class SwerveSample {
         targetAngle = new double[modules];
         targetVelocity = new double[modules];
         wheelForce = new double[modules];
+        driveCurrent = new double[modules];
+        driveVoltage = new double[modules];
+        steerCurrent = new double[modules];
         moduleOk = new boolean[modules];
     }
 
@@ -85,5 +109,11 @@ public final class SwerveSample {
         System.arraycopy(from.targetAngle, 0, targetAngle, 0, targetAngle.length);
         System.arraycopy(from.targetVelocity, 0, targetVelocity, 0, targetVelocity.length);
         System.arraycopy(from.wheelForce, 0, wheelForce, 0, wheelForce.length);
+        System.arraycopy(from.driveCurrent, 0, driveCurrent, 0, driveCurrent.length);
+        System.arraycopy(from.driveVoltage, 0, driveVoltage, 0, driveVoltage.length);
+        System.arraycopy(from.steerCurrent, 0, steerCurrent, 0, steerCurrent.length);
+        accelerationX = from.accelerationX;
+        accelerationY = from.accelerationY;
+        accelerationZ = from.accelerationZ;
     }
 }

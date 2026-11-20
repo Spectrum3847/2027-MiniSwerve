@@ -44,6 +44,15 @@ final class SwerveSettings {
     static final DoubleSetting ENCODER_SIGNAL_HZ = G.number("encoderSignalHz", 250, "Hz", 50, 250);
 
     /**
+     * Rate of the signals that are only logged (Hz), read at boot: each drive motor's torque
+     * current and voltage, each steer motor's torque current, and the gyro's accelerometer, logged
+     * with every swerve sample. 0 turns them off. They cost CAN frames: on MiniSwerve's CAN 2.0 bus
+     * watch SystemStats/Network/CAN0/Utilization and lower this if the bus gets busy.
+     */
+    static final DoubleSetting DIAGNOSTIC_SIGNAL_HZ =
+            G.number("diagnosticSignalHz", 100, "Hz", 0, 250);
+
+    /**
      * How each steer motor reads its CANcoder, CTRE's FeedbackSensorSource names, read at boot
      * (anything else is FusedCANcoder):
      *

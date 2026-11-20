@@ -62,6 +62,16 @@ public final class SwerveIOPhoenix implements SwerveIO {
 
     private final SwerveRequests requests;
     private final double[] measuredSteerRps;
+
+    /**
+     * Logged only, never waited on: per module the drive torque current, drive voltage and steer
+     * torque current, then the Pigeon's accelerometer x, y, z. Off the bus when diagnosticSignalHz
+     * is 0.
+     */
+    private final BaseStatusSignal[] diagnostic;
+
+    private static final int DIAGNOSTIC_PER_MODULE = 3;
+    private static final double GRAVITY = 9.80665;
     private final SwerveRequests.Motors motors =
             new SwerveRequests.Motors() {
                 @Override
@@ -215,6 +225,15 @@ public final class SwerveIOPhoenix implements SwerveIO {
         groups[2 * n] = new int[] {4 * n, 4 * n + 1};
         paced = new PacedSignals(fast, groups);
         slow = slowList.toArray(new BaseStatusSignal[0]);
+        diagnostic = new BaseStatusSignal[DIAGNOSTIC_PER_MODULE * n + 3];
+        for (int i = 0; i < n; i++) {
+            diagnostic[DIAGNOSTIC_PER_MODULE * i] = drive[i].getTorqueCurrent();
+            diagnostic[DIAGNOSTIC_PER_MODULE * i + 1] = drive[i].getMotorVoltage();
+            diagnostic[DIAGNOSTIC_PER_MODULE * i + 2] = steer[i].getTorqueCurrent();
+        }
+        diagnostic[DIAGNOSTIC_PER_MODULE * n] = pigeon.getAccelerationX();
+        diagnostic[DIAGNOSTIC_PER_MODULE * n + 1] = pigeon.getAccelerationY();
+        diagnostic[DIAGNOSTIC_PER_MODULE * n + 2] = pigeon.getAccelerationZ();
         // Before the signal setup below turns the version frames off.
         driveFirmware = new String[n];
         steerFirmware = new String[n];
@@ -230,8 +249,10 @@ public final class SwerveIOPhoenix implements SwerveIO {
                         SwervePhoenixConfigs.signals(
                                 cfg.signalHz(),
                                 cfg.encoderSignalHz(),
+                                cfg.diagnosticSignalHz(),
                                 fast,
                                 slow,
+                                diagnostic,
                                 drive,
                                 steer,
                                 encoder,
@@ -338,6 +359,20 @@ public final class SwerveIOPhoenix implements SwerveIO {
         }
         out.yaw = Math.toRadians(BaseStatusSignal.getLatencyCompensatedValueAsDouble(yaw, yawRate));
         out.angularVelocityZWorld = Math.toRadians(yawRate.getValueAsDouble());
+        if (cfg.diagnosticSignalHz() > 0) {
+            // Takes what has arrived, without waiting: these are for the log only.
+            BaseStatusSignal.refreshAll(diagnostic);
+            for (int i = 0; i < n; i++) {
+                int b = DIAGNOSTIC_PER_MODULE * i;
+                out.driveCurrent[i] = diagnostic[b].getValueAsDouble();
+                out.driveVoltage[i] = diagnostic[b + 1].getValueAsDouble();
+                out.steerCurrent[i] = diagnostic[b + 2].getValueAsDouble();
+            }
+            int a = DIAGNOSTIC_PER_MODULE * n;
+            out.accelerationX = diagnostic[a].getValueAsDouble() * GRAVITY;
+            out.accelerationY = diagnostic[a + 1].getValueAsDouble() * GRAVITY;
+            out.accelerationZ = diagnostic[a + 2].getValueAsDouble() * GRAVITY;
+        }
     }
 
     private boolean unheard(String device) {

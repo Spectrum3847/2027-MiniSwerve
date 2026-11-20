@@ -70,7 +70,8 @@ final class SwerveConfigs {
                 Hardware.DRIVE_SUPPLY_LIMIT_AMPS,
                 Hardware.STEER_SUPPLY_LIMIT_AMPS,
                 SwerveSettings.ENCODER_SIGNAL_HZ.get(),
-                SwerveSettings.STEER_FEEDBACK.get());
+                SwerveSettings.STEER_FEEDBACK.get(),
+                SwerveSettings.DIAGNOSTIC_SIGNAL_HZ.get());
     }
 
     /**
