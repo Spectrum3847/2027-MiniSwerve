@@ -1,4 +1,5 @@
 {
+  "driveAccelerationFeedforward": 0,
   "loopHz": 100,
   "encoderSignalHz": 100,
   "steerFeedback": "FusedCANcoder",
