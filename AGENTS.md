@@ -43,10 +43,13 @@ stops are the ones the Driver Station or the rules make (disabled, e-stop).
 
 - No RobotContainer, no static subsystem globals. `Robot` owns subsystems as fields and passes
   dependencies through constructors.
-- Keep files under ~400 lines. Split by job, not by size alone. A file over 400 lines needs a reason
-  in its header.
-- Every class header says what it is for and, for anything over ~150 lines, has an `Index:` line
-  naming its main parts.
+- One job per file. Split by job, never to hit a line count: an algorithm or a device layer reads
+  better whole than spread across files. Around 400 lines is a prompt to ask "is this still one
+  job?", not a limit; a longer file says in its header why it is one job. Never trim why-comments
+  to make a file shorter.
+- Files are read in pieces, by grep and line range, so make them easy to jump into: every class
+  header says what it is for and, for anything over ~150 lines, has an `Index:` line naming its
+  main parts by the names you would grep for (methods, sections).
 - Every package has a `README.md`: one line per file. Update it in the same change.
 - One subsystem = one folder: `Thing.java` (wanted states and logic), `ThingIO.java` (hardware
   interface), `ThingIOReal`/`ThingIOSim`, `ThingInputs` (logged inputs), `ThingSettings`.
