@@ -2,6 +2,7 @@ package frc.robot.subsystems.swerve;
 
 import frc.robot.config.Hardware;
 import frc.robot.config.ImuSettings;
+import frc.spectrumLib.swerve.DriveAccelerationFeedforward;
 import frc.spectrumLib.swerve.DriveMotorLimit;
 import frc.spectrumLib.swerve.PhoenixSwerveConfig;
 import org.littletonrobotics.junction.Logger;
@@ -130,13 +131,50 @@ final class SwerveConfigs {
                 wheels);
     }
 
+    /**
+     * The drive feedforward for the setpoint generator's planned acceleration, or null when its
+     * gain is 0.
+     */
+    static DriveAccelerationFeedforward accelerationFeedforward(double[] mx, double[] my) {
+        double gain = SwerveSettings.DRIVE_ACCELERATION_FEEDFORWARD.get();
+        if (!(gain > 0)) {
+            return null;
+        }
+        return new DriveAccelerationFeedforward(
+                mx, my, SwerveSettings.robotMassKg(), turningInertia(mx, my), rotorMass(), gain);
+    }
+
+    /** Robot inertia about the vertical (kg m^2): turningInertiaFactor of mass x radius^2. */
+    static double turningInertia(double[] mx, double[] my) {
+        double radiusSquared = 0;
+        for (int i = 0; i < mx.length; i++) {
+            radiusSquared += (mx[i] * mx[i] + my[i] * my[i]) / mx.length;
+        }
+        return SwerveSettings.TURNING_INERTIA_FACTOR.get()
+                * SwerveSettings.robotMassKg()
+                * radiusSquared;
+    }
+
+    /** One drive rotor's inertia as a mass at the wheel's tread (kg). */
+    static double rotorMass() {
+        double perMeter = Hardware.MK4iL2.DRIVE_RATIO / SwerveSettings.WHEEL_RADIUS.get();
+        return FALCON_ROTOR_INERTIA * perMeter * perMeter;
+    }
+
     private static final double GRAVITY = 9.81;
 
     /** Falcon 500 rotor inertia (kg m^2). */
     private static final double FALCON_ROTOR_INERTIA = 0.0000565;
 
     /** Logs the traction numbers once at boot. */
-    static void logTraction() {
+    static void logTraction(double[] mx, double[] my) {
+        // Share of the planned acceleration's force sent as drive feedforward (0: off).
+        Logger.recordOutput(
+                "Swerve/Traction/AccelerationFeedforward",
+                SwerveSettings.DRIVE_ACCELERATION_FEEDFORWARD.get());
+        // Turning inertia the feedforward uses (kg m^2), and one drive rotor as a mass (kg).
+        Logger.recordOutput("Swerve/Traction/TurningInertia", turningInertia(mx, my));
+        Logger.recordOutput("Swerve/Traction/RotorMass", rotorMass());
         // Robot weight used (lb).
         Logger.recordOutput(
                 "Swerve/Traction/RobotWeightLbs", SwerveSettings.ROBOT_WEIGHT_LBS.get());

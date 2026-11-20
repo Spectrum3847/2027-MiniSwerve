@@ -88,6 +88,25 @@ final class SwerveSettings {
      */
     static final BooleanSetting MOTOR_ACCELERATION_LIMIT = G.bool("motorAccelerationLimit", true);
 
+    /**
+     * Share of the force the planned acceleration needs that is sent to the drive motors as
+     * torque-current feedforward (mass and turning inertia times the setpoint generator's planned
+     * acceleration, plus the drive rotors). 1: all of it, so the velocity loop corrects only what
+     * is left; 0: off, and a wheel must fall behind its setpoint before kP supplies the current.
+     * With the wheels off the floor it is far too much (there is no robot to push): the wheels run
+     * ahead of their setpoints on the stand.
+     */
+    static final DoubleSetting DRIVE_ACCELERATION_FEEDFORWARD =
+            G.number("driveAccelerationFeedforward", 1.0, "", 0, 1.5);
+
+    /**
+     * The robot's turning inertia as a share of mass times module radius squared (a box robot with
+     * its weight spread evenly: about 0.6; more with the weight at the corners). Sets the drive
+     * feedforward for turn acceleration.
+     */
+    static final DoubleSetting TURNING_INERTIA_FACTOR =
+            G.number("turningInertiaFactor", 0.6, "", 0.2, 1.5);
+
     /** Fastest module turn the setpoint generator plans (rad/s); MK4i free speed is about 29. */
     static final DoubleSetting MAX_STEER_VELOCITY =
             G.number("maxSteerVelocity", 20.0, "rad/s", 2, 30);

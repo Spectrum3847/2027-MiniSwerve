@@ -193,7 +193,8 @@ public final class Swerve implements Subsystem {
                 SwerveSettings.MAX_STEER_VELOCITY.get(),
                 SwerveSettings.MAX_STEER_ACCELERATION.get());
         thread.setMotorLimit(SwerveConfigs.motorLimit(mx.length));
-        SwerveConfigs.logTraction();
+        thread.setAccelerationFeedforward(SwerveConfigs.accelerationFeedforward(mx, my));
+        SwerveConfigs.logTraction(mx, my);
         threadWatch = new SwerveThreadWatch(thread, io.hasHardware());
         if (io.hasHardware()) {
             thread.start();

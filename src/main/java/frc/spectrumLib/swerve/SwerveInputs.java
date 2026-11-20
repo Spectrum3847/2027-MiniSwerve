@@ -80,6 +80,7 @@ public final class SwerveInputs implements LoggableInputs {
         final double[] angle;
         final double[] targetAngle;
         final double[] targetVelocity;
+        final double[] wheelForce;
 
         LogArrays(int n, int modules) {
             ts = new double[n];
@@ -94,6 +95,7 @@ public final class SwerveInputs implements LoggableInputs {
             angle = new double[n * modules];
             targetAngle = new double[n * modules];
             targetVelocity = new double[n * modules];
+            wheelForce = new double[n * modules];
         }
     }
 
@@ -126,6 +128,7 @@ public final class SwerveInputs implements LoggableInputs {
         double[] angle = a.angle;
         double[] targetAngle = a.targetAngle;
         double[] targetVelocity = a.targetVelocity;
+        double[] wheelForce = a.wheelForce;
         for (int s = 0; s < n; s++) {
             SwerveSample x = samples[s];
             ts[s] = x.timestamp;
@@ -140,6 +143,7 @@ public final class SwerveInputs implements LoggableInputs {
             System.arraycopy(x.angle, 0, angle, s * modules, modules);
             System.arraycopy(x.targetAngle, 0, targetAngle, s * modules, modules);
             System.arraycopy(x.targetVelocity, 0, targetVelocity, s * modules, modules);
+            System.arraycopy(x.wheelForce, 0, wheelForce, s * modules, modules);
         }
         // Capture time of each 250 Hz sample this loop (s).
         t.put("Samples/Timestamp", ts);
@@ -165,6 +169,8 @@ public final class SwerveInputs implements LoggableInputs {
         t.put("Samples/TargetAngle", targetAngle);
         // Commanded wheel speed (m/s).
         t.put("Samples/TargetVelocity", targetVelocity);
+        // Drive feedforward force sent, along each wheel (N), [sample * 4 + module].
+        t.put("Samples/WheelForce", wheelForce);
 
         SwerveHealth h = health;
         // Device connected flags, FL FR BL BR.
@@ -274,6 +280,7 @@ public final class SwerveInputs implements LoggableInputs {
         double[] angle = t.get("Samples/Angle", new double[n * modules]);
         double[] targetAngle = t.get("Samples/TargetAngle", new double[n * modules]);
         double[] targetVelocity = t.get("Samples/TargetVelocity", new double[n * modules]);
+        double[] wheelForce = t.get("Samples/WheelForce", new double[n * modules]);
         for (int s = 0; s < n; s++) {
             SwerveSample x = samples[s];
             x.timestamp = ts[s];
@@ -288,6 +295,9 @@ public final class SwerveInputs implements LoggableInputs {
             System.arraycopy(angle, s * modules, x.angle, 0, modules);
             System.arraycopy(targetAngle, s * modules, x.targetAngle, 0, modules);
             System.arraycopy(targetVelocity, s * modules, x.targetVelocity, 0, modules);
+            if (wheelForce.length >= (s + 1) * modules) { // absent in logs from before it existed
+                System.arraycopy(wheelForce, s * modules, x.wheelForce, 0, modules);
+            }
         }
         count = n;
 

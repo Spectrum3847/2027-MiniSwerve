@@ -24,7 +24,7 @@ package frc.spectrumLib.swerve;
  * <p>Over 400 lines: one algorithm whose steps share state each cycle; splitting it would spread
  * one plan across files.
  *
- * <p>Index: {@link #reset} | {@link #generate} | reversal | outputs
+ * <p>Index: {@link #reset} | {@link #generate} | reversal | outputs (setpoints, accelerations)
  */
 public final class SwerveSetpointGenerator {
     private static final int BISECTION_STEPS = 12;
@@ -54,6 +54,10 @@ public final class SwerveSetpointGenerator {
     private final double[] velocity;
     private final double[] angle;
     private final double[] steerVelocity;
+    private final double[] wheelAcceleration;
+    private double accelerationX;
+    private double accelerationY;
+    private double angularAcceleration;
 
     public SwerveSetpointGenerator(double[] mx, double[] my) {
         this.mx = mx.clone();
@@ -68,6 +72,7 @@ public final class SwerveSetpointGenerator {
         velocity = new double[n];
         angle = new double[n];
         steerVelocity = new double[n];
+        wheelAcceleration = new double[n];
         turnAtZero = new double[n];
         requestDir = new double[n];
         reachable = new double[n];
@@ -98,6 +103,7 @@ public final class SwerveSetpointGenerator {
         for (int i = 0; i < n; i++) {
             lastAngle[i] = measuredAngle[i];
             steerVelocity[i] = 0;
+            wheelAcceleration[i] = 0;
             dx[i] = measuredVelocity[i] * Math.cos(measuredAngle[i]);
             dy[i] = measuredVelocity[i] * Math.sin(measuredAngle[i]);
         }
@@ -105,6 +111,7 @@ public final class SwerveSetpointGenerator {
         pvx = chassis[0];
         pvy = chassis[1];
         pw = chassis[2];
+        accelerationX = accelerationY = angularAcceleration = 0;
         // Wheel speeds consistent with the fitted chassis velocity, so the first step is not an
         // unlimited jump by each wheel's slip residual.
         for (int i = 0; i < n; i++) {
@@ -232,9 +239,17 @@ public final class SwerveSetpointGenerator {
             s = lo;
         }
         lastFraction = s;
-        pvx += s * (vx - pvx);
-        pvy += s * (vy - pvy);
-        pw += s * (omega - pw);
+        double dvx = s * (vx - pvx);
+        double dvy = s * (vy - pvy);
+        double dw = s * (omega - pw);
+        pvx += dvx;
+        pvy += dvy;
+        pw += dw;
+        // The robot frame turns with the robot: as the floor sees it, the acceleration is the
+        // change in the robot-frame velocity plus the turn rate crossed with the velocity.
+        accelerationX = dvx / dt - pw * pvy;
+        accelerationY = dvy / dt + pw * pvx;
+        angularAcceleration = dw / dt;
 
         // 3. Module targets for the new chassis setpoint, with the steer rate limited.
         SwerveMath.toSwerveModuleVelocities(pvx, pvy, pw, mx, my, speed, dir);
@@ -280,6 +295,7 @@ public final class SwerveSetpointGenerator {
             // Turning the wheel also changes its speed along where it points; keep that change
             // within the acceleration limit too. What is stored is exactly what is sent.
             velocity[i] = step(lastVelocity[i], v, maxDelta, speedUpDelta[i]);
+            wheelAcceleration[i] = (velocity[i] - lastVelocity[i]) / dt;
             lastAngle[i] = angle[i];
             lastVelocity[i] = velocity[i];
         }
@@ -410,5 +426,25 @@ public final class SwerveSetpointGenerator {
     /** Module turn rates this cycle (rad/s), the steer velocity feedforward. */
     public double[] steerVelocity() {
         return steerVelocity;
+    }
+
+    /** Each wheel's planned speed change along where it points this cycle (m/s^2). */
+    public double[] wheelAcceleration() {
+        return wheelAcceleration;
+    }
+
+    /** Planned robot acceleration along robot x this cycle, as the floor sees it (m/s^2). */
+    public double accelerationX() {
+        return accelerationX;
+    }
+
+    /** Planned robot acceleration along robot y this cycle, as the floor sees it (m/s^2). */
+    public double accelerationY() {
+        return accelerationY;
+    }
+
+    /** Planned turn acceleration this cycle (rad/s^2). */
+    public double angularAcceleration() {
+        return angularAcceleration;
     }
 }

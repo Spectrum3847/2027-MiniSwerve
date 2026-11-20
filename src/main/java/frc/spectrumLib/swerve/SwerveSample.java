@@ -53,12 +53,16 @@ public final class SwerveSample {
     /** Commanded wheel speed this cycle (m/s), after optimize and cosine scale. */
     public final double[] targetVelocity;
 
+    /** Drive feedforward force sent this cycle, along each wheel (N). */
+    public final double[] wheelForce;
+
     public SwerveSample(int modules) {
         distance = new double[modules];
         velocity = new double[modules];
         angle = new double[modules];
         targetAngle = new double[modules];
         targetVelocity = new double[modules];
+        wheelForce = new double[modules];
         moduleOk = new boolean[modules];
     }
 
@@ -80,5 +84,6 @@ public final class SwerveSample {
         System.arraycopy(from.angle, 0, angle, 0, angle.length);
         System.arraycopy(from.targetAngle, 0, targetAngle, 0, targetAngle.length);
         System.arraycopy(from.targetVelocity, 0, targetVelocity, 0, targetVelocity.length);
+        System.arraycopy(from.wheelForce, 0, wheelForce, 0, wheelForce.length);
     }
 }

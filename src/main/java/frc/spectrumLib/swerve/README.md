@@ -14,6 +14,7 @@ Phoenix (`toSwerveModuleVelocities`, `optimize`, `cosineScale`, `TorqueCurrentFO
 | `HeadingMemory` | Field heading kept in memory-backed storage across a code restart (never a power cycle or an old run) |
 | `CoastOnDisable` | Brake while enabled or still rolling after a disable; then coast until the next enable (pushable in the pit) |
 | `WheelRadiusCharacterizer` | Spin-in-place wheel radius measurement (gyro turn vs wheel travel) |
+| `DriveAccelerationFeedforward` | Drive force per wheel for the generator's planned acceleration (mass, turning inertia, rotors) |
 | `SwerveThread` | The 250 Hz loop: read devices, request to module targets, send, queue the sample |
 | `SwerveSample` | One 250 Hz reading (distance, velocity, angle, yaw) plus the targets sent |
 | `SampleQueue` | Preallocated ring handing samples from the thread to the main loop |

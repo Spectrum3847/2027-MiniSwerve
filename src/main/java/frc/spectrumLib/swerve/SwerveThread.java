@@ -50,6 +50,11 @@ public final class SwerveThread {
     private final double[] robotFx;
     private final double[] robotFy;
 
+    /** Force for the planned acceleration (null: none); replaced by the main thread at boot. */
+    private volatile DriveAccelerationFeedforward accelerationFeedforward;
+
+    private final double[] planForce;
+
     /** How each motor is commanded; replaced (never mutated) by the main thread. */
     private volatile ModuleCommands commands;
 
@@ -134,6 +139,7 @@ public final class SwerveThread {
         pushing = new boolean[n];
         robotFx = new double[n];
         robotFy = new double[n];
+        planForce = new double[n];
         commands = ModuleCommands.allNormal(n);
         zeros = new double[n];
         staleRequestCycles = (int) Math.ceil(STALE_REQUEST_SECONDS / periodSeconds);
@@ -254,6 +260,15 @@ public final class SwerveThread {
      */
     public void setMotorLimit(DriveMotorLimit limit) {
         generator.setMotorLimit(limit);
+    }
+
+    /**
+     * Sends the drive force the setpoint generator's planned acceleration needs as feedforward
+     * (null: off). Used only with the generator, and only when the request carries no wheel forces
+     * of its own (a path follower's already include its acceleration). Main thread, at boot.
+     */
+    public void setAccelerationFeedforward(DriveAccelerationFeedforward feedforward) {
+        accelerationFeedforward = feedforward;
     }
 
     /**
@@ -437,6 +452,8 @@ public final class SwerveThread {
         double[] velocity = sample.targetVelocity;
         System.arraycopy(lastTargetAngle, 0, angle, 0, n);
         java.util.Arrays.fill(wheelForce, 0.0);
+        java.util.Arrays.fill(sample.wheelForce, 0.0);
+        java.util.Arrays.fill(planForce, 0.0);
         // Wheels that can push this cycle: driven at the full rate.
         ModuleCommands cmd = commands;
         allPushing = true;
@@ -547,6 +564,17 @@ public final class SwerveThread {
                         System.arraycopy(generator.angle(), 0, angle, 0, n);
                         System.arraycopy(generator.velocity(), 0, velocity, 0, n);
                         System.arraycopy(generator.steerVelocity(), 0, steerVelocity, 0, n);
+                        DriveAccelerationFeedforward ff = accelerationFeedforward;
+                        if (ff != null) {
+                            ff.calculate(
+                                    generator.accelerationX(),
+                                    generator.accelerationY(),
+                                    generator.angularAcceleration(),
+                                    angle,
+                                    generator.wheelAcceleration(),
+                                    pushing,
+                                    planForce);
+                        }
                     } else {
                         // The plan went non-finite (a NaN reading in its state): it would never
                         // recover on its own. Hold the last angles at rest this cycle and plan
@@ -597,7 +625,11 @@ public final class SwerveThread {
                 // Onto the wheel's (optimized) direction.
                 wheelForce[i] = robotFx[i] * Math.cos(angle[i]) + robotFy[i] * Math.sin(angle[i]);
             }
+        } else {
+            // No forces with the request: the plan's own (all 0 without a generator plan).
+            System.arraycopy(planForce, 0, wheelForce, 0, n);
         }
+        System.arraycopy(wheelForce, 0, sample.wheelForce, 0, n);
         io.setModules(angle, velocity, steerVelocity, wheelForce, commands);
     }
 
