@@ -44,16 +44,19 @@ final class SwerveSettings {
     static final DoubleSetting ENCODER_SIGNAL_HZ = G.number("encoderSignalHz", 250, "Hz", 50, 250);
 
     /**
-     * How each steer motor reads its CANcoder, CTRE's FeedbackSensorSource names, read at boot:
-     * "FusedCANcoder" (Pro: the CANcoder's absolute angle blended with the rotor between frames) or
-     * "RemoteCANcoder" (the CANcoder alone, updated once per frame). RemoteCANcoder tests whether
-     * the fusion itself flags the CANcoder data invalid while steering.
+     * How each steer motor reads its CANcoder, CTRE's FeedbackSensorSource names, read at boot
+     * (anything else is FusedCANcoder):
+     *
+     * <ul>
+     *   <li>"FusedCANcoder" (Pro): the CANcoder's absolute angle blended with the rotor.
+     *   <li>"SyncCANcoder" (Pro): control on the rotor, re-synced to the CANcoder.
+     *   <li>"RemoteCANcoder": the CANcoder alone, updated once per frame (rougher steering).
+     * </ul>
+     *
+     * On MiniSwerve (Phoenix 26.70 alpha, SystemCore) FusedCANcoder flagged the CANcoder data
+     * invalid 30-84% of the time while steering; RemoteCANcoder never did but steered worse.
      */
     static final StringSetting STEER_FEEDBACK = G.string("steerFeedback", "FusedCANcoder");
-
-    static boolean steerRemoteCANcoder() {
-        return "RemoteCANcoder".equals(STEER_FEEDBACK.get());
-    }
 
     static final DoubleSetting WHEEL_RADIUS =
             G.number("wheelRadius", Hardware.MK4iL2.NOMINAL_WHEEL_RADIUS_METERS, "m", 0.04, 0.06);
