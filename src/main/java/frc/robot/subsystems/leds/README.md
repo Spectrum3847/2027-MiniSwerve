@@ -18,6 +18,9 @@ The LED strip: 16 LEDs across the middle of the robot, facing up, on a SpectrumS
 | Purple and white halves swapping | Utility OpMode |
 | White band flowing through purple | Teleop |
 
+Three LEDs at each end (`leds/endLeds`) light only when something needs attention; the mode pattern
+then keeps to the middle.
+
 | Ends of the strip | Meaning |
 |---|---|
 | Red fast flash | A high-level alert is active |

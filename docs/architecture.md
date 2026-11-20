@@ -441,7 +441,9 @@ One strip of 16 LEDs across the middle of the robot, facing up, on a SpectrumShi
 animations; the robot only says what each slot shows, so the LEDs cost the main loop a few CAN
 frames when something changes and one repeat a second. **Not yet run on the robot** (first boards
 arrive 2026-11-20): still to prove are WPILib's `CAN` reaching the board on SystemCore's bus 0 and
-the patterns by eye.
+the patterns by eye. The board is classic CAN only and must never share a bus with CAN FD traffic
+(SpectrumShine SPEC_V3): bus 0 is classic today; if it ever runs FD, move the board
+(`Hardware.LED_BUS`).
 
 - `frc.spectrumLib.leds` is the board (`ShineIOCan`, protocol, patterns, logged inputs under
   `Leds/`: connected, faults, the board's own battery and LED current readings, firmware, boots).
@@ -453,7 +455,7 @@ the patterns by eye.
   flashes orange while disabled, the ends while enabled.
 - Finish the match: a missing board is a LOW alert, a board fault a MEDIUM one, and nothing else
   changes. A board that reboots or is plugged in late gets its LED counts and slots again within a
-  second.
+  second. A silent board is sent a repeat only every 5 s, so an unplugged board adds no bus load.
 - Sim has a stand-in board that is always healthy; replay reads the log. Checked 2026-11-19 on the
   `auto` script: DISABLED, AUTO, DISABLED, TELEOP at the mode changes, and replay gives the same.
 

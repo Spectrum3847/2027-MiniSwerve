@@ -178,7 +178,10 @@ public final class Leds {
         Strip strip =
                 strip(eStopped, driverStationAttached, enabled, autonomous, utility, batteryLow);
         Ends ends = ends(faults, warnings, batteryLow, strip);
-        io.setSlot(SLOT_STRIP, strip.pattern, 0, count, brightness);
+        // With end markers on, the mode keeps to the middle: a moving pattern (the sweeping eye)
+        // would otherwise spend part of each pass hidden under them.
+        int covered = ends == Ends.NONE ? 0 : endLeds;
+        io.setSlot(SLOT_STRIP, strip.pattern, covered, count - 2 * covered, brightness);
         io.setSlot(SLOT_LEFT_END, ends.pattern, 0, endLeds, brightness);
         io.setSlot(SLOT_RIGHT_END, ends.pattern, count - endLeds, endLeds, brightness);
         io.send();
