@@ -1,5 +1,6 @@
 package frc.robot.subsystems.swerve;
 
+import frc.spectrumLib.hardware.FirmwareCheck;
 import frc.spectrumLib.swerve.CoastOnDisable;
 import frc.spectrumLib.swerve.SwerveIO;
 import frc.spectrumLib.swerve.SwerveInputs;
@@ -25,6 +26,49 @@ final class SwerveUtilities {
     private double characterizingFor;
     private double sinceBrakeRequest;
     private boolean radiusStarted;
+
+    private static final String[] MODULE = {"FL", "FR", "BL", "BR"};
+    private String[] firmwareProblems = new String[0];
+    private final frc.spectrumLib.telemetry.Alert firmwareAlert =
+            new frc.spectrumLib.telemetry.Alert(
+                    "Swerve firmware", frc.spectrumLib.telemetry.Alert.Level.MEDIUM);
+
+    /**
+     * Once, when the first health reading has the boot firmware versions: every TalonFX should be
+     * on one version and every CANcoder on one, so a missed update or a swapped-in spare shows
+     * before a match.
+     */
+    private void checkFirmware(SwerveInputs inputs) {
+        var h = inputs.health;
+        if (firmwareProblems.length == 0 && !"unknown".equals(h.driveFirmware[0])) {
+            int n = h.driveFirmware.length;
+            String[] talonNames = new String[2 * n];
+            String[] talons = new String[2 * n];
+            String[] encoderNames = new String[n];
+            for (int i = 0; i < n; i++) {
+                talonNames[i] = MODULE[i] + " drive";
+                talonNames[n + i] = MODULE[i] + " steer";
+                talons[i] = h.driveFirmware[i];
+                talons[n + i] = h.steerFirmware[i];
+                encoderNames[i] = MODULE[i] + " CANcoder";
+            }
+            var all = new java.util.ArrayList<String>();
+            all.addAll(FirmwareCheck.problems(talonNames, talons));
+            all.addAll(FirmwareCheck.problems(encoderNames, h.encoderFirmware));
+            all.addAll(
+                    FirmwareCheck.problems(
+                            new String[] {"Pigeon"}, new String[] {h.pigeonFirmware}));
+            // An empty result still marks the check as done.
+            firmwareProblems = all.isEmpty() ? new String[] {"none"} : all.toArray(new String[0]);
+            if (!all.isEmpty()) {
+                firmwareAlert.setText("Swerve firmware: " + String.join("; ", all));
+                firmwareAlert.set(true);
+            }
+        }
+        // Firmware problems found at boot (one line each; "none" when all match), empty until
+        // the versions have been read.
+        Logger.recordOutput("Swerve/Firmware/Problems", firmwareProblems);
+    }
 
     /** Seconds of spinning before the wheel-radius measurement starts. */
     private static final double SETTLE_SECONDS = 1.0;
@@ -61,6 +105,7 @@ final class SwerveUtilities {
         // Drive and steer motors should brake (false: coast); Health/DriveBrake and
         // Health/SteerBrake are what was applied.
         Logger.recordOutput("Swerve/DriveBrakeWanted", brake);
+        checkFirmware(inputs);
 
         if (characterizing) {
             characterizingFor += dt;

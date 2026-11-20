@@ -343,6 +343,10 @@ public final class SwerveIOSim implements SwerveIO {
             h.fusedOk[i] = !h.remoteSensorInvalid[i];
             h.magnetOk[i] = true;
             h.magnetHealth[i] = "Magnet_Green";
+            h.driveFirmware[i] = "sim";
+            h.steerFirmware[i] = "sim";
+            h.encoderFirmware[i] = "sim";
+            h.pigeonFirmware = "sim";
         }
         h.supplyVoltage = volts;
         // No wiring resistance modeled: every motor sees the battery.

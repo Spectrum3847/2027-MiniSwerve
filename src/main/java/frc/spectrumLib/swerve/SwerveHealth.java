@@ -87,6 +87,18 @@ public final class SwerveHealth {
     /** Result of clearing the sticky faults at boot (Phoenix StatusCode name; "not run" in sim). */
     public String stickyClear = "not run";
 
+    /** Firmware version of each drive motor, read at boot ("major.minor.bugfix.build"). */
+    public final String[] driveFirmware;
+
+    /** Firmware version of each steer motor, read at boot. */
+    public final String[] steerFirmware;
+
+    /** Firmware version of each CANcoder, read at boot. */
+    public final String[] encoderFirmware;
+
+    /** Firmware version of the Pigeon, read at boot. */
+    public String pigeonFirmware = "unknown";
+
     /** Amps. */
     public final double[] driveStatorCurrent;
 
@@ -120,6 +132,12 @@ public final class SwerveHealth {
         magnetOk = new boolean[modules];
         magnetHealth = new String[modules];
         steerSticky = new long[modules];
+        driveFirmware = new String[modules];
+        steerFirmware = new String[modules];
+        encoderFirmware = new String[modules];
+        java.util.Arrays.fill(driveFirmware, "unknown");
+        java.util.Arrays.fill(steerFirmware, "unknown");
+        java.util.Arrays.fill(encoderFirmware, "unknown");
         encoderSticky = new long[modules];
         java.util.Arrays.fill(magnetHealth, "Magnet_Invalid");
         driveStatorCurrent = new double[modules];

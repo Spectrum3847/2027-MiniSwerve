@@ -214,6 +214,12 @@ public final class SwerveInputs implements LoggableInputs {
         t.put("Health/EncoderSticky", h.encoderSticky);
         // Clearing the sticky faults at boot: Phoenix status name (OK, or why it failed).
         t.put("Health/StickyClear", h.stickyClear);
+        // Firmware versions read at boot, "major.minor.bugfix.build", FL FR BL BR.
+        t.put("Health/DriveFirmware", h.driveFirmware);
+        t.put("Health/SteerFirmware", h.steerFirmware);
+        t.put("Health/EncoderFirmware", h.encoderFirmware);
+        // Pigeon firmware version read at boot.
+        t.put("Health/PigeonFirmware", h.pigeonFirmware);
         // Swerve thread cycles in a row with stale or failed signals.
         t.put("Thread/StaleCycles", staleCycles);
         // Motor currents (A).
@@ -307,6 +313,10 @@ public final class SwerveInputs implements LoggableInputs {
         copy(t.get("Health/SteerSticky", h.steerSticky), h.steerSticky);
         copy(t.get("Health/EncoderSticky", h.encoderSticky), h.encoderSticky);
         h.stickyClear = t.get("Health/StickyClear", h.stickyClear);
+        copy(t.get("Health/DriveFirmware", h.driveFirmware), h.driveFirmware);
+        copy(t.get("Health/SteerFirmware", h.steerFirmware), h.steerFirmware);
+        copy(t.get("Health/EncoderFirmware", h.encoderFirmware), h.encoderFirmware);
+        h.pigeonFirmware = t.get("Health/PigeonFirmware", h.pigeonFirmware);
         h.deviceResets = t.get("Health/DeviceResets", h.deviceResets);
         long[] steerResets = t.get("Health/SteerResets", h.steerResets);
         System.arraycopy(steerResets, 0, h.steerResets, 0, Math.min(steerResets.length, modules));

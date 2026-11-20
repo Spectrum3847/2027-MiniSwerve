@@ -28,7 +28,8 @@ import org.wpilib.system.RobotController;
  * with {@link #setSimPacer}.
  *
  * <p>Device configs are in {@link SwervePhoenixConfigs}; reboot detection and endless config
- * retries in {@code PhoenixDeviceSet}; sticky faults in {@link SwerveStickyFaults}.
+ * retries in {@code PhoenixDeviceSet}; sticky faults in {@link SwerveStickyFaults}; firmware
+ * versions in {@link SwerveFirmware}.
  *
  * <p>Over 400 lines: it is the one place that holds every swerve device and signal. Further jobs go
  * in their own class, as configs, neutral mode and sticky faults do.
@@ -82,6 +83,10 @@ public final class SwerveIOPhoenix implements SwerveIO {
     private final MotorNeutralMode steerNeutral;
     private final SwerveStickyFaults sticky;
     private String stickyClear = "not run";
+    private final String[] driveFirmware;
+    private final String[] steerFirmware;
+    private final String[] encoderFirmware;
+    private final String pigeonFirmware;
 
     private final SimFaults faults;
 
@@ -210,6 +215,16 @@ public final class SwerveIOPhoenix implements SwerveIO {
         groups[2 * n] = new int[] {4 * n, 4 * n + 1};
         paced = new PacedSignals(fast, groups);
         slow = slowList.toArray(new BaseStatusSignal[0]);
+        // Before the signal setup below turns the version frames off.
+        driveFirmware = new String[n];
+        steerFirmware = new String[n];
+        encoderFirmware = new String[n];
+        for (int i = 0; i < n; i++) {
+            driveFirmware[i] = SwerveFirmware.of(drive[i]);
+            steerFirmware[i] = SwerveFirmware.of(steer[i]);
+            encoderFirmware[i] = SwerveFirmware.of(encoder[i]);
+        }
+        pigeonFirmware = SwerveFirmware.of(pigeon);
         devices.setSignals(
                 () ->
                         SwervePhoenixConfigs.signals(
@@ -422,5 +437,9 @@ public final class SwerveIOPhoenix implements SwerveIO {
         h.steerBrake = steerNeutral.allBrake();
         sticky.read(h.steerSticky, h.encoderSticky);
         h.stickyClear = stickyClear;
+        System.arraycopy(driveFirmware, 0, h.driveFirmware, 0, n);
+        System.arraycopy(steerFirmware, 0, h.steerFirmware, 0, n);
+        System.arraycopy(encoderFirmware, 0, h.encoderFirmware, 0, n);
+        h.pigeonFirmware = pigeonFirmware;
     }
 }

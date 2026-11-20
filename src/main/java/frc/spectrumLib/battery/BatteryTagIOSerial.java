@@ -46,6 +46,10 @@ public final class BatteryTagIOSerial implements BatteryTagIO {
     static final String STARTING = "starting";
 
     private volatile boolean mayRead;
+
+    /** The PN532's firmware reply from its last start, "" before one has answered. */
+    private volatile String readerFirmware = "";
+
     private long lastReadNanos;
     private final Supplier<Optional<String>> findPort;
     private final PortOpener open;
@@ -82,6 +86,7 @@ public final class BatteryTagIOSerial implements BatteryTagIO {
         inputs.tagName = s.tagName();
         inputs.reads = s.reads();
         inputs.error = s.error();
+        inputs.readerFirmware = readerFirmware;
         // Elapsed wall time, as a logged input: replay reads it back rather than recomputing it.
         inputs.secondsSinceRead =
                 s.readNanos() == 0 ? -1 : (System.nanoTime() - s.readNanos()) * 1e-9;
@@ -124,7 +129,7 @@ public final class BatteryTagIOSerial implements BatteryTagIO {
             return POLL_MILLIS;
         }
         try (Pn532 reader = new Pn532(open.open(port.get()))) {
-            reader.begin(ACTIVATION_RETRIES);
+            readerFirmware = reader.begin(ACTIVATION_RETRIES).toString();
             boolean first = true;
             while (true) {
                 if (first || mayRead) {
