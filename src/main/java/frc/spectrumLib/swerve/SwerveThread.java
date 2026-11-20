@@ -43,6 +43,19 @@ public final class SwerveThread {
     private volatile double maxSteerAcceleration =
             SwerveSetpointGenerator.DEFAULT_STEER_ACCELERATION;
     private final SwerveSetpointGenerator generator;
+
+    /** Plans by the robot's own acceleration instead of the generator's wheel acceleration. */
+    private volatile boolean useRobotAccelerationLimiter;
+
+    private volatile double maxAngularAcceleration = 60.0;
+    private final RobotAccelerationLimiter limiter;
+
+    /**
+     * The robot's heading in a frame that does not turn (rad), for the limiter: the yaw rate summed
+     * up (the commanded rate while the gyro is stale). Only its changes matter.
+     */
+    private double frameHeading;
+
     private final double[] steerVelocity;
     private final double[] current;
     private final boolean[] pushing;
@@ -144,6 +157,7 @@ public final class SwerveThread {
         zeros = new double[n];
         staleRequestCycles = (int) Math.ceil(STALE_REQUEST_SECONDS / periodSeconds);
         generator = new SwerveSetpointGenerator(mx, my);
+        limiter = new RobotAccelerationLimiter(mx, my);
         guard =
                 new SampleGuard(
                         n,
@@ -260,12 +274,26 @@ public final class SwerveThread {
      */
     public void setMotorLimit(DriveMotorLimit limit) {
         generator.setMotorLimit(limit);
+        limiter.setMotorLimit(limit);
+    }
+
+    /**
+     * Plans with {@link RobotAccelerationLimiter} instead of the setpoint generator: the robot's
+     * acceleration is limited, not each wheel's. Uses the drive acceleration and steer limits given
+     * to {@link #setSetpointGenerator}. Main thread, at boot.
+     *
+     * @param maxAngularAcceleration largest turn acceleration (rad/s^2)
+     */
+    public void setRobotAccelerationLimiter(boolean enabled, double maxAngularAcceleration) {
+        this.maxAngularAcceleration = maxAngularAcceleration;
+        useRobotAccelerationLimiter = enabled;
     }
 
     /**
      * Sends the drive force the setpoint generator's planned acceleration needs as feedforward
-     * (null: off). Used only with the generator, and only when the request carries no wheel forces
-     * of its own (a path follower's already include its acceleration). Main thread, at boot.
+     * (null: off). Used only with a planner (generator or limiter), and only when the request
+     * carries no wheel forces of its own (a path follower's already include its acceleration). Main
+     * thread, at boot.
      */
     public void setAccelerationFeedforward(DriveAccelerationFeedforward feedforward) {
         accelerationFeedforward = feedforward;
@@ -411,10 +439,16 @@ public final class SwerveThread {
             finite &= Double.isFinite(sample.velocity[i]) && Double.isFinite(sample.angle[i]);
         }
         if (finite) {
-            generator.reset(sample.velocity, sample.angle);
+            resetPlanners(sample.velocity, sample.angle);
         } else {
-            generator.reset(zeros, zeros);
+            resetPlanners(zeros, zeros);
         }
+    }
+
+    /** Both planners start again from these wheels, so either can take over at any time. */
+    private void resetPlanners(double[] velocity, double[] angle) {
+        generator.reset(velocity, angle);
+        limiter.reset(velocity, angle, frameHeading);
     }
 
     private static boolean finite(double[] a) {
@@ -447,6 +481,10 @@ public final class SwerveThread {
         if (!haveTargets) {
             System.arraycopy(sample.angle, 0, lastTargetAngle, 0, n);
             haveTargets = true;
+        }
+        double turned = (sample.gyroOk ? sample.angularVelocityZWorld : lastOmega) * dt;
+        if (Double.isFinite(turned)) {
+            frameHeading = SwerveMath.angleModulus(frameHeading + turned);
         }
         double[] angle = sample.targetAngle;
         double[] velocity = sample.targetVelocity;
@@ -483,13 +521,13 @@ public final class SwerveThread {
             case NEUTRAL -> {
                 System.arraycopy(sample.angle, 0, angle, 0, n);
                 java.util.Arrays.fill(velocity, 0.0);
-                generator.reset(sample.velocity, sample.angle);
+                resetPlanners(sample.velocity, sample.angle);
                 lastOmega = sample.angularVelocityZWorld;
                 io.setNeutral();
                 return;
             }
             case X_LOCK -> {
-                generator.reset(sample.velocity, sample.angle);
+                resetPlanners(sample.velocity, sample.angle);
                 lastOmega = sample.angularVelocityZWorld;
                 for (int i = 0; i < n; i++) {
                     angle[i] = Math.atan2(my[i], mx[i]);
@@ -545,7 +583,48 @@ public final class SwerveThread {
                 // A request may lower this cycle's limits (never raise them).
                 double topSpeed = limit(maxWheelVelocity, r.maxWheelVelocity(), 0.0);
                 double topAccel = limit(maxDriveAcceleration, r.maxDriveAcceleration(), 0.5);
-                if (useSetpointGenerator) {
+                if (useRobotAccelerationLimiter) {
+                    limiter.setBusVoltage(busVoltage);
+                    limiter.generate(
+                            vx,
+                            vy,
+                            omega,
+                            frameHeading,
+                            dt,
+                            topSpeed,
+                            topAccel,
+                            maxAngularAcceleration,
+                            maxSteerVelocity,
+                            maxSteerAcceleration,
+                            pushing);
+                    sample.setpointFraction = limiter.lastFraction();
+                    if (finite(limiter.angle())
+                            && finite(limiter.velocity())
+                            && finite(limiter.steerVelocity())) {
+                        System.arraycopy(limiter.angle(), 0, angle, 0, n);
+                        System.arraycopy(limiter.velocity(), 0, velocity, 0, n);
+                        System.arraycopy(limiter.steerVelocity(), 0, steerVelocity, 0, n);
+                        DriveAccelerationFeedforward ff = accelerationFeedforward;
+                        if (ff != null) {
+                            ff.calculate(
+                                    limiter.accelerationX(),
+                                    limiter.accelerationY(),
+                                    limiter.angularAcceleration(),
+                                    angle,
+                                    limiter.wheelAcceleration(),
+                                    pushing,
+                                    planForce);
+                        }
+                    } else {
+                        // As for the generator below: a non-finite plan never recovers alone.
+                        nonFinite++;
+                        System.arraycopy(lastTargetAngle, 0, angle, 0, n);
+                        java.util.Arrays.fill(velocity, 0.0);
+                        java.util.Arrays.fill(steerVelocity, 0.0);
+                        lastOmega = 0;
+                        resetGenerator();
+                    }
+                } else if (useSetpointGenerator) {
                     generator.setBusVoltage(busVoltage);
                     generator.generate(
                             chassis[0],
@@ -593,8 +672,9 @@ public final class SwerveThread {
                 }
             }
         }
-        if (!(useSetpointGenerator && r.mode() == DriveRequest.Mode.VELOCITY)) {
-            // The generator already turns the short way and cosine-scales against its own plan;
+        boolean planned = useSetpointGenerator || useRobotAccelerationLimiter;
+        if (!(planned && r.mode() == DriveRequest.Mode.VELOCITY)) {
+            // A planner already turns the short way and cosine-scales against its own plan;
             // doing it again here would scale twice and could flip the target against the steer
             // feedforward.
             // Where each module points: measured, or last target if its reading is stale.

@@ -248,6 +248,20 @@ final class SimScripts {
         new SimScript.Step(0.5, "stop", 0, 0, 0),
     };
 
+    /**
+     * Driving a straight line on the field while spinning at full rate, at full and at half stick:
+     * the robot must hold its line and its spin (the plan may not be held back by each wheel's
+     * speed changing as the robot turns).
+     */
+    static final SimScript.Step[] SPIN = {
+        new SimScript.Step(1.0, "disabled", 0, 0, 0),
+        new SimScript.Step(1.0, "spin", 0, 0, -1.0),
+        new SimScript.Step(2.0, "forward while spinning fast", 0, -1.0, -1.0),
+        new SimScript.Step(1.0, "spin", 0, 0, -1.0),
+        new SimScript.Step(2.0, "left at half stick while spinning", -0.7, 0, -1.0),
+        new SimScript.Step(1.0, "stop", 0, 0, 0),
+    };
+
     /** The script with this name, or null. */
     static SimScript.Step[] byName(String name) {
         return switch (name) {
@@ -262,6 +276,7 @@ final class SimScripts {
             case "guards" -> GUARDS;
             case "red" -> RED;
             case "reverse" -> REVERSE;
+            case "spin" -> SPIN;
             default -> null;
         };
     }

@@ -114,6 +114,21 @@ final class SwerveConfigs {
                 SwerveSettings.TRACTION_USE.get() * tractionLimit());
     }
 
+    /**
+     * Turn acceleration the plan may use (rad/s^2): the planned acceleration's force from every
+     * wheel, at the modules' radius, over the turning inertia.
+     */
+    static double plannedAngularAccelerationLimit(double[] mx, double[] my) {
+        double radius = 0;
+        for (int i = 0; i < mx.length; i++) {
+            radius += Math.hypot(mx[i], my[i]) / mx.length;
+        }
+        return plannedAccelerationLimit()
+                * SwerveSettings.robotMassKg()
+                * radius
+                / turningInertia(mx, my);
+    }
+
     /** Each drive motor's speed-up limit for the setpoint generator, or null when turned off. */
     static DriveMotorLimit motorLimit(int wheels) {
         if (!SwerveSettings.MOTOR_ACCELERATION_LIMIT.get()) {
@@ -175,6 +190,13 @@ final class SwerveConfigs {
         // Turning inertia the feedforward uses (kg m^2), and one drive rotor as a mass (kg).
         Logger.recordOutput("Swerve/Traction/TurningInertia", turningInertia(mx, my));
         Logger.recordOutput("Swerve/Traction/RotorMass", rotorMass());
+        // What the plan limits: "WheelAcceleration" or "RobotAcceleration".
+        Logger.recordOutput(
+                "Swerve/Traction/AccelerationLimit", SwerveSettings.ACCELERATION_LIMIT.get());
+        // Turn acceleration the RobotAcceleration plan may use (rad/s^2).
+        Logger.recordOutput(
+                "Swerve/Traction/PlannedAngularAcceleration",
+                plannedAngularAccelerationLimit(mx, my));
         // Robot weight used (lb).
         Logger.recordOutput(
                 "Swerve/Traction/RobotWeightLbs", SwerveSettings.ROBOT_WEIGHT_LBS.get());

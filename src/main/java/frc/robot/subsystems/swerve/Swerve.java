@@ -192,6 +192,9 @@ public final class Swerve implements Subsystem {
                 SwerveConfigs.plannedAccelerationLimit(),
                 SwerveSettings.MAX_STEER_VELOCITY.get(),
                 SwerveSettings.MAX_STEER_ACCELERATION.get());
+        thread.setRobotAccelerationLimiter(
+                SwerveSettings.robotAccelerationLimit(),
+                SwerveConfigs.plannedAngularAccelerationLimit(mx, my));
         thread.setMotorLimit(SwerveConfigs.motorLimit(mx.length));
         thread.setAccelerationFeedforward(SwerveConfigs.accelerationFeedforward(mx, my));
         SwerveConfigs.logTraction(mx, my);

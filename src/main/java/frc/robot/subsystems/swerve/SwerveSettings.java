@@ -73,6 +73,19 @@ final class SwerveSettings {
     static final BooleanSetting SETPOINT_GENERATOR = G.bool("setpointGenerator", true);
 
     /**
+     * What the plan limits, read at boot: "WheelAcceleration" (the setpoint generator: each wheel's
+     * speed change) or "RobotAcceleration" (RobotAccelerationLimiter: the robot's own acceleration
+     * and turn acceleration, so driving straight while spinning, which changes every wheel's speed
+     * without accelerating the robot, is not held back). Both use the limits below.
+     */
+    static final StringSetting ACCELERATION_LIMIT =
+            G.string("accelerationLimit", "WheelAcceleration");
+
+    static boolean robotAccelerationLimit() {
+        return "RobotAcceleration".equals(ACCELERATION_LIMIT.get());
+    }
+
+    /**
      * Largest wheel speed change the setpoint generator plans (m/s^2). Default 30: above anything
      * the robot can do, so the motors always get full power. Traction is protected by the drive
      * slip current (stator and peak torque current at the point the wheels slip), not by this.
@@ -113,7 +126,9 @@ final class SwerveSettings {
 
     /**
      * Field-relative lookahead (s): aim with heading + yaw rate * this, so driving while spinning
-     * goes straight despite module lag. Tune on the robot by driving straight while spinning.
+     * goes straight despite module lag. Tune on the robot by driving straight while spinning. The
+     * default suits the WheelAcceleration plan, whose own lag it also covers; in sim the
+     * RobotAcceleration plan holds its line best at 0.
      */
     static final DoubleSetting ROTATION_LOOKAHEAD =
             G.number("rotationLookahead", 0.04, "s", 0.0, 0.15);

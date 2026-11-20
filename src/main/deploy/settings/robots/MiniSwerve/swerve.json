@@ -1,4 +1,6 @@
 {
+  "accelerationLimit": "RobotAcceleration",
+  "rotationLookahead": 0,
   "driveAccelerationFeedforward": 0,
   "loopHz": 100,
   "encoderSignalHz": 100,

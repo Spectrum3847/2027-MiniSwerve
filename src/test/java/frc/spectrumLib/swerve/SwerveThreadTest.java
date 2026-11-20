@@ -90,6 +90,22 @@ class SwerveThreadTest {
     }
 
     @Test
+    void robotAccelerationLimiterPlansTheTargetsAndTheForce() {
+        RecordingIO io = new RecordingIO();
+        SwerveThread t = thread(io);
+        t.setSetpointGenerator(true, 10, 20, 300);
+        t.setRobotAccelerationLimiter(true, 70);
+        t.setAccelerationFeedforward(new DriveAccelerationFeedforward(MX, MY, 40, 1.5, 0, 1));
+        t.computeTargets(DriveRequest.velocity(4, 0, 0, false, 0, true));
+        for (int i = 0; i < 4; i++) {
+            // One 4 ms step at 10 m/s^2, and the force for it.
+            assertEquals(0.04, io.velocity[i], 1e-9);
+            assertEquals(0.0, io.angle[i], 1e-9);
+            assertEquals(100.0, io.force[i], 1e-6);
+        }
+    }
+
+    @Test
     void aRequestsOwnWheelForcesReplaceThePlans() {
         RecordingIO io = new RecordingIO();
         SwerveThread t = thread(io);
