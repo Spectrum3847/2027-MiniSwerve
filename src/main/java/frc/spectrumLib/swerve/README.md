@@ -12,7 +12,7 @@ Phoenix (`toSwerveModuleVelocities`, `optimize`, `cosineScale`, `TorqueCurrentFO
 | `ModuleCommands` | Per motor: real command or coast, full or slow (10 Hz) rate |
 | `HeadingHold` | Optional heading hold that lets go after a hit (off by default) |
 | `HeadingMemory` | Field heading kept in memory-backed storage across a code restart (never a power cycle or an old run) |
-| `CoastOnDisable` | Brake while enabled or moving; coast once disabled and still (pushable in the pit) |
+| `CoastOnDisable` | Brake while enabled or still rolling after a disable; then coast until the next enable (pushable in the pit) |
 | `WheelRadiusCharacterizer` | Spin-in-place wheel radius measurement (gyro turn vs wheel travel) |
 | `SwerveThread` | The 250 Hz loop: read devices, request to module targets, send, queue the sample |
 | `SwerveSample` | One 250 Hz reading (distance, velocity, angle, yaw) plus the targets sent |
@@ -21,7 +21,9 @@ Phoenix (`toSwerveModuleVelocities`, `optimize`, `cosineScale`, `TorqueCurrentFO
 | `SwerveIO` | Hardware interface; `NONE` for replay |
 | `SwervePhoenixConfigs` | The TalonFX / CANcoder configs the Phoenix IO applies |
 | `DriveMotorLimit` | How hard a drive motor can speed its wheel up at a wheel speed and battery voltage (back-EMF, slip and supply limits) |
-| `DriveNeutralMode` | Drive brake/coast applied in the background; newest request wins |
+| `MotorNeutralMode` | Brake/coast for one motor set (drives or steers), applied in the background; newest request wins |
+| `SwerveFirmware` | Each swerve device's firmware version, read once at boot |
+| `SwerveStickyFaults` | Steer motor and CANcoder sticky faults as bit masks; cleared at boot |
 | `SwerveIOPhoenix` | TalonFX drive/steer, CANcoder, Pigeon 2; on-motor TorqueCurrentFOC loops |
 | `SwerveRequests` | Module targets to Phoenix control requests, shared by `SwerveIOPhoenix` and SpectrumSim's sim IO |
 | `SimulatedSwerve` | A drivetrain in the desktop sim: its IO and true-pose logging (SpectrumSim implements it) |

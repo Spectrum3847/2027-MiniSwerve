@@ -263,7 +263,7 @@ public final class SwerveIOSim implements SwerveIO {
     }
 
     @Override
-    public void setDriveBrake(boolean brake) {
+    public void setBrake(boolean brake) {
         driveBrake = brake;
         for (int i = 0; i < n; i++) {
             if (configured[i]) {
@@ -306,7 +306,7 @@ public final class SwerveIOSim implements SwerveIO {
         } else if (d < n) {
             m.configure(SwervePhoenixConfigs.drive(cfg, d, driveBrake));
         } else {
-            m.configure(SwervePhoenixConfigs.steer(cfg, d - n));
+            m.configure(SwervePhoenixConfigs.steer(cfg, d - n, driveBrake));
         }
     }
 
@@ -337,9 +337,16 @@ public final class SwerveIOSim implements SwerveIO {
                             .supplyCurrent(steerAmps, steerRotorRps[i] * 2 * Math.PI, volts);
             h.driveDeviceTemp[i] = 25;
             h.steerDeviceTemp[i] = 25;
-            // An unplugged CANcoder leaves the fused steer sensor out of sync.
-            h.fusedOk[i] = !unheard(names[2 * n + i]);
+            // An unplugged CANcoder's frames stop reaching the steer motor.
+            h.remoteSensorInvalid[i] = unheard(names[2 * n + i]);
+            h.fusedOutOfSync[i] = false;
+            h.fusedOk[i] = !h.remoteSensorInvalid[i];
             h.magnetOk[i] = true;
+            h.magnetHealth[i] = "Magnet_Green";
+            h.driveFirmware[i] = "sim";
+            h.steerFirmware[i] = "sim";
+            h.encoderFirmware[i] = "sim";
+            h.pigeonFirmware = "sim";
         }
         h.supplyVoltage = volts;
         // No wiring resistance modeled: every motor sees the battery.
@@ -356,6 +363,7 @@ public final class SwerveIOSim implements SwerveIO {
         System.arraycopy(steerResets, 0, h.steerResets, 0, n);
         h.signalsSet = true;
         h.driveBrake = driveBrake;
+        h.steerBrake = driveBrake;
     }
 
     private boolean unheard(String device) {

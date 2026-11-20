@@ -39,6 +39,9 @@ public final class BatteryTagInputs implements LoggableInputs {
      */
     public String listName = "";
 
+    /** The NFC reader's firmware (PN532 IC, version, support), "" until it has answered. */
+    public String readerFirmware = "";
+
     @Override
     public void toLog(LogTable table) {
         // The NFC reader answered its last command.
@@ -57,6 +60,8 @@ public final class BatteryTagInputs implements LoggableInputs {
         table.put("SecondsSinceRead", secondsSinceRead);
         // The team list's name for this UID (deploy batteries.csv), "" if not listed.
         table.put("ListName", listName);
+        // NFC reader chip firmware, "" until it has answered once.
+        table.put("ReaderFirmware", readerFirmware);
     }
 
     @Override
@@ -69,5 +74,6 @@ public final class BatteryTagInputs implements LoggableInputs {
         error = table.get("Error", "");
         secondsSinceRead = table.get("SecondsSinceRead", -1.0);
         listName = table.get("ListName", "");
+        readerFirmware = table.get("ReaderFirmware", "");
     }
 }

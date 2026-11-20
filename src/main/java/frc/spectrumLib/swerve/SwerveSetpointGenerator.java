@@ -10,8 +10,10 @@ package frc.spectrumLib.swerve;
  *   <li>Move the chassis setpoint from last cycle's toward the request by the largest fraction
  *       {@code s} that keeps every wheel's speed change within {@code maxDriveAcceleration * dt}
  *       (bisection; s = 0 always fits). Acceleration, braking and reversing through zero are all
- *       limited the same way. With a {@link DriveMotorLimit}, a wheel speeding up is also held to
- *       what its motor can give at its speed and the battery voltage.
+ *       limited the same way. A near-reversal of every wheel brakes straight to zero first, so the
+ *       wheels flip their drive direction instead of turning around. With a {@link
+ *       DriveMotorLimit}, a wheel speeding up is also held to what its motor can give at its speed
+ *       and the battery voltage.
  *   <li>Turn each module toward its new direction (the short way) by at most {@code
  *       maxSteerVelocity * dt}; that turn rate is the steer velocity feedforward.
  * </ol>
@@ -19,7 +21,10 @@ package frc.spectrumLib.swerve;
  * <p>Because setpoints move smoothly, the steer rate sent as feedforward is real (not a spike), and
  * the modules stay where the odometry thinks they are, which is most of the gain.
  *
- * <p>Index: {@link #reset} | {@link #generate} | outputs
+ * <p>Over 400 lines: one algorithm whose steps share state each cycle; splitting it would spread
+ * one plan across files.
+ *
+ * <p>Index: {@link #reset} | {@link #generate} | reversal | outputs
  */
 public final class SwerveSetpointGenerator {
     private static final int BISECTION_STEPS = 12;
@@ -180,6 +185,15 @@ public final class SwerveSetpointGenerator {
             omega *= k;
         }
 
+        // A near-reversal: brake straight to zero first. The straight line to the request passes
+        // near zero without reaching it, so the wheels would follow the velocity around 180 deg
+        // instead of driving backward; from zero they flip instead (254's rule).
+        if (reversesEveryWheel(vx, vy, omega)) {
+            vx = vy = omega = 0;
+            // Hold the wheels while braking: aiming them at the request would stall the stop.
+            java.util.Arrays.fill(requestDir, Double.NaN);
+        }
+
         // 2. Largest step toward the request that every wheel's acceleration allows.
         double maxDelta = maxDriveAcceleration * dt;
         maxTurnStep = maxSteerVelocity * dt;
@@ -236,14 +250,25 @@ public final class SwerveSetpointGenerator {
                 err = SwerveMath.angleModulus(err + Math.PI);
             }
             // A trapezoid in turn rate: speed up and slow down at maxSteerAcceleration, so the
-            // steer feedforward ends at zero on the target instead of overshooting it.
-            double stopRate = Math.sqrt(2 * maxSteerAcceleration * Math.abs(err));
+            // steer feedforward ends at zero on the request's direction instead of overshooting.
+            // Slow down for the turn left to the request, not this cycle's step: the step is only
+            // as big as the current rate allows, so braking for it held turns to ~3.3 rad/s.
+            double left = err;
+            if (!Double.isNaN(requestDir[i])) {
+                double e = SwerveMath.angleModulus(requestDir[i] - lastAngle[i]);
+                e = Math.abs(e) > Math.PI / 2 ? SwerveMath.angleModulus(e + Math.PI) : e;
+                left = e * err > 0 && Math.abs(e) > Math.abs(err) ? e : err;
+            }
+            double stopRate = Math.sqrt(2 * maxSteerAcceleration * Math.abs(left));
             double rate = Math.copySign(Math.min(maxSteerVelocity, stopRate), err);
             double dv = maxSteerAcceleration * dt;
             rate = Math.max(steerVelocity[i] - dv, Math.min(steerVelocity[i] + dv, rate));
             double turn = rate * dt;
-            if (Math.abs(turn) > Math.abs(err)) {
-                turn = err; // land exactly
+            // Land exactly only if that is within the turn acceleration limit; otherwise keep
+            // slowing at the limit, pass the target a little and come back. Stopping dead from a
+            // fast turn slammed the steer motors (20 deg overshoot on the robot).
+            if (Math.abs(turn) > Math.abs(err) && Math.abs(err / dt - steerVelocity[i]) <= dv) {
+                turn = err;
                 rate = turn / dt;
             }
             turn = Math.max(-maxTurn, Math.min(maxTurn, turn));
@@ -323,6 +348,33 @@ public final class SwerveSetpointGenerator {
         }
         double err = Math.abs(SwerveMath.angleModulus(Math.atan2(mvy, mvx) - lastAngle[i]));
         return Math.min(err, Math.PI - err); // driving backward is as good as turning around
+    }
+
+    /**
+     * A reversal is a request over 150 deg from the wheel's motion. A stick swept in a circle runs
+     * 80-110 deg ahead of the wheels; braking for that stopped them on every pass.
+     */
+    private static final double REVERSAL_COS = Math.cos(Math.toRadians(150));
+
+    /** Every moving pushing wheel is asked to reverse (and at least one is moving and asked). */
+    private boolean reversesEveryWheel(double vx, double vy, double omega) {
+        boolean any = false;
+        for (int i = 0; i < n; i++) {
+            double nowX = pvx - pw * my[i];
+            double nowY = pvy + pw * mx[i];
+            double wantX = vx - omega * my[i];
+            double wantY = vy + omega * mx[i];
+            double now = Math.hypot(nowX, nowY);
+            double want = Math.hypot(wantX, wantY);
+            if (!pushes(i) || now <= STOPPED || want <= STOPPED) {
+                continue;
+            }
+            if (nowX * wantX + nowY * wantY > REVERSAL_COS * now * want) {
+                return false;
+            }
+            any = true;
+        }
+        return any;
     }
 
     /** Whether wheel {@code i} can push this cycle (all, when not told otherwise). */

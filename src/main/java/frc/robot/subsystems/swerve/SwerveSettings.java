@@ -35,6 +35,29 @@ final class SwerveSettings {
      */
     static final DoubleSetting LOOP_HZ = G.number("loopHz", 250, "Hz", 50, 250);
 
+    /**
+     * CANcoder position and velocity frame rate (Hz), read at boot: what each steer motor fuses.
+     * 250 as on CTRE's CANivore template. Position and velocity share one frame, so on a CAN 2.0
+     * bus each 100 Hz here costs 400 frames/s for four CANcoders (MiniSwerve, measured: 100 to 250
+     * took CAN0 from 50% to 60%).
+     */
+    static final DoubleSetting ENCODER_SIGNAL_HZ = G.number("encoderSignalHz", 250, "Hz", 50, 250);
+
+    /**
+     * How each steer motor reads its CANcoder, CTRE's FeedbackSensorSource names, read at boot
+     * (anything else is FusedCANcoder):
+     *
+     * <ul>
+     *   <li>"FusedCANcoder" (Pro): the CANcoder's absolute angle blended with the rotor.
+     *   <li>"SyncCANcoder" (Pro): control on the rotor, re-synced to the CANcoder.
+     *   <li>"RemoteCANcoder": the CANcoder alone, updated once per frame (rougher steering).
+     * </ul>
+     *
+     * On MiniSwerve (Phoenix 26.70 alpha, SystemCore) FusedCANcoder flagged the CANcoder data
+     * invalid 30-84% of the time while steering; RemoteCANcoder never did but steered worse.
+     */
+    static final StringSetting STEER_FEEDBACK = G.string("steerFeedback", "FusedCANcoder");
+
     static final DoubleSetting WHEEL_RADIUS =
             G.number("wheelRadius", Hardware.MK4iL2.NOMINAL_WHEEL_RADIUS_METERS, "m", 0.04, 0.06);
 
@@ -113,8 +136,9 @@ final class SwerveSettings {
     static final BooleanSetting TIMESYNC = G.bool("timesync", true);
 
     /**
-     * Coast the drive motors once the robot has been disabled and still for coastDelaySeconds, so
-     * it can be pushed; brake while enabled and while still moving. HARD STOP (brake/coast).
+     * Coast the drive and steer motors once the robot has been disabled and still for
+     * coastDelaySeconds, so it can be pushed, and keep coasting until the next enable; brake while
+     * enabled and while still rolling after a disable. HARD STOP (brake/coast).
      */
     static final BooleanSetting COAST_ON_DISABLE = G.bool("coastOnDisable", true);
 

@@ -231,6 +231,23 @@ final class SimScripts {
         new SimScript.Step(0.5, "stop", 0, 0, 0).press(RED_ALLIANCE),
     };
 
+    /**
+     * Full stick forward, then straight back with no stop in between, then strafe and reverse that,
+     * then spin and reverse the spin. Each wheel must flip its drive direction instead of turning
+     * 180 deg ({@code Swerve/Samples/Angle} barely moves at each reversal).
+     */
+    static final SimScript.Step[] REVERSE = {
+        new SimScript.Step(1.0, "disabled", 0, 0, 0),
+        new SimScript.Step(1.5, "forward", 0, -1.0, 0),
+        new SimScript.Step(1.5, "back, no stop", 0, 1.0, 0),
+        new SimScript.Step(1.5, "left", -1.0, 0, 0),
+        new SimScript.Step(1.5, "right, no stop", 1.0, 0, 0),
+        new SimScript.Step(0.5, "stop", 0, 0, 0),
+        new SimScript.Step(1.5, "spin counterclockwise", 0, 0, -1.0),
+        new SimScript.Step(1.5, "spin clockwise, no stop", 0, 0, 1.0),
+        new SimScript.Step(0.5, "stop", 0, 0, 0),
+    };
+
     /** The script with this name, or null. */
     static SimScript.Step[] byName(String name) {
         return switch (name) {
@@ -244,6 +261,7 @@ final class SimScripts {
             case "bump" -> BUMP;
             case "guards" -> GUARDS;
             case "red" -> RED;
+            case "reverse" -> REVERSE;
             default -> null;
         };
     }

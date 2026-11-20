@@ -34,8 +34,28 @@ public final class SwerveHealth {
      */
     public final boolean[] fusedOk;
 
+    /**
+     * Each steer motor's FusedSensorOutOfSync fault: its rotor and its CANcoder disagree by more
+     * than the fused sensor allows (gear or belt skip, slop, a moved magnet). Part of {@link
+     * #fusedOk}.
+     */
+    public final boolean[] fusedOutOfSync;
+
+    /**
+     * Each steer motor's RemoteSensorDataInvalid fault: its CANcoder's frames are not arriving or
+     * are bad (CAN wiring, bus load, CANcoder reboot). Part of {@link #fusedOk}.
+     */
+    public final boolean[] remoteSensorInvalid;
+
     /** Each CANcoder's magnet is readable (no BadMagnet fault). */
     public final boolean[] magnetOk;
+
+    /**
+     * Each CANcoder's magnet health, Phoenix's MagnetHealthValue names: "Magnet_Green" (good),
+     * "Magnet_Orange" (weak or wobbling: still used), "Magnet_Red" (bad), "Magnet_Invalid"
+     * (unknown).
+     */
+    public final String[] magnetHealth;
 
     /** The bus is a CANivore (CAN FD) and controls and signals use Phoenix timesync. */
     public boolean timesync;
@@ -54,6 +74,30 @@ public final class SwerveHealth {
 
     /** The drive motors are in brake (false: coast), as last applied. */
     public boolean driveBrake = true;
+
+    /** The steer motors are in brake (false: coast), as last applied. */
+    public boolean steerBrake = true;
+
+    /** Each steer motor's sticky faults since boot, bits as SwerveStickyFaults.STEER_BITS. */
+    public final long[] steerSticky;
+
+    /** Each CANcoder's sticky faults since boot, bits as SwerveStickyFaults.ENCODER_BITS. */
+    public final long[] encoderSticky;
+
+    /** Result of clearing the sticky faults at boot (Phoenix StatusCode name; "not run" in sim). */
+    public String stickyClear = "not run";
+
+    /** Firmware version of each drive motor, read at boot ("major.minor.bugfix.build"). */
+    public final String[] driveFirmware;
+
+    /** Firmware version of each steer motor, read at boot. */
+    public final String[] steerFirmware;
+
+    /** Firmware version of each CANcoder, read at boot. */
+    public final String[] encoderFirmware;
+
+    /** Firmware version of the Pigeon, read at boot. */
+    public String pigeonFirmware = "unknown";
 
     /** Amps. */
     public final double[] driveStatorCurrent;
@@ -83,7 +127,19 @@ public final class SwerveHealth {
         steerConfigured = new boolean[modules];
         encoderConfigured = new boolean[modules];
         fusedOk = new boolean[modules];
+        fusedOutOfSync = new boolean[modules];
+        remoteSensorInvalid = new boolean[modules];
         magnetOk = new boolean[modules];
+        magnetHealth = new String[modules];
+        steerSticky = new long[modules];
+        driveFirmware = new String[modules];
+        steerFirmware = new String[modules];
+        encoderFirmware = new String[modules];
+        java.util.Arrays.fill(driveFirmware, "unknown");
+        java.util.Arrays.fill(steerFirmware, "unknown");
+        java.util.Arrays.fill(encoderFirmware, "unknown");
+        encoderSticky = new long[modules];
+        java.util.Arrays.fill(magnetHealth, "Magnet_Invalid");
         driveStatorCurrent = new double[modules];
         steerStatorCurrent = new double[modules];
         driveSupplyCurrent = new double[modules];

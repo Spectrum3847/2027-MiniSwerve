@@ -23,15 +23,20 @@ public final class SwervePhoenixConfigs {
         return c;
     }
 
-    public static TalonFXConfiguration steer(PhoenixSwerveConfig cfg, int i) {
+    public static TalonFXConfiguration steer(PhoenixSwerveConfig cfg, int i, boolean brake) {
         var c = new TalonFXConfiguration();
         c.MotorOutput.Inverted =
                 cfg.steerInverted()
                         ? InvertedValue.Clockwise_Positive
                         : InvertedValue.CounterClockwise_Positive;
-        c.MotorOutput.NeutralMode = NeutralModeValue.Brake;
+        c.MotorOutput.NeutralMode = brake ? NeutralModeValue.Brake : NeutralModeValue.Coast;
         c.Feedback.FeedbackRemoteSensorID = cfg.encoderIds()[i];
-        c.Feedback.FeedbackSensorSource = FeedbackSensorSourceValue.FusedCANcoder;
+        c.Feedback.FeedbackSensorSource =
+                switch (cfg.steerFeedback()) {
+                    case "RemoteCANcoder" -> FeedbackSensorSourceValue.RemoteCANcoder;
+                    case "SyncCANcoder" -> FeedbackSensorSourceValue.SyncCANcoder;
+                    default -> FeedbackSensorSourceValue.FusedCANcoder;
+                };
         c.Feedback.RotorToSensorRatio = cfg.steerRatio();
         c.Feedback.SensorToMechanismRatio = 1.0;
         c.ClosedLoopGeneral.ContinuousWrap = true;
@@ -91,6 +96,7 @@ public final class SwervePhoenixConfigs {
      */
     static com.ctre.phoenix6.StatusCode signals(
             double hz,
+            double encoderHz,
             com.ctre.phoenix6.BaseStatusSignal[] fast,
             com.ctre.phoenix6.BaseStatusSignal[] slow,
             com.ctre.phoenix6.hardware.TalonFX[] drive,
@@ -104,7 +110,7 @@ public final class SwervePhoenixConfigs {
         for (int i = 0; i < n; i++) {
             var c =
                     com.ctre.phoenix6.BaseStatusSignal.setUpdateFrequencyForAll(
-                            hz, encoder[i].getPosition(), encoder[i].getVelocity());
+                            encoderHz, encoder[i].getPosition(), encoder[i].getVelocity());
             code = code.isOK() ? c : code;
         }
         var c = com.ctre.phoenix6.BaseStatusSignal.setUpdateFrequencyForAll(10, slow);

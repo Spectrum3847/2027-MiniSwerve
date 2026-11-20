@@ -183,8 +183,15 @@ public final class SwerveInputs implements LoggableInputs {
         t.put("Health/EncoderConfigured", h.encoderConfigured);
         // Steer motors fusing their CANcoder (no fused-sensor faults).
         t.put("Health/FusedOk", h.fusedOk);
+        // Steer rotor and CANcoder disagree (FusedSensorOutOfSync fault), FL FR BL BR.
+        t.put("Health/FusedOutOfSync", h.fusedOutOfSync);
+        // Steer motor not getting good CANcoder frames (RemoteSensorDataInvalid fault), FL FR BL
+        // BR.
+        t.put("Health/RemoteSensorInvalid", h.remoteSensorInvalid);
         // CANcoder magnets readable.
         t.put("Health/MagnetOk", h.magnetOk);
+        // CANcoder magnet health: Magnet_Green, Magnet_Orange, Magnet_Red or Magnet_Invalid.
+        t.put("Health/MagnetHealth", h.magnetHealth);
         // CANivore timesync in use.
         t.put("Health/Timesync", h.timesync);
         // Drivetrain device reboots detected since boot.
@@ -195,6 +202,24 @@ public final class SwerveInputs implements LoggableInputs {
         t.put("Health/SignalsSet", h.signalsSet);
         // Drive motors in brake (false: coast), as last applied.
         t.put("Health/DriveBrake", h.driveBrake);
+        // Steer motors in brake (false: coast), as last applied.
+        t.put("Health/SteerBrake", h.steerBrake);
+        // Steer motor sticky faults since boot, bit mask, FL FR BL BR. Bit 0
+        // RemoteSensorDataInvalid,
+        // 1 RemoteSensorReset, 2 FusedSensorOutOfSync, 3 BootDuringEnable, 4 Undervoltage,
+        // 5 UnstableSupplyV, 6 BridgeBrownout.
+        t.put("Health/SteerSticky", h.steerSticky);
+        // CANcoder sticky faults since boot, bit mask, FL FR BL BR. Bit 0 BadMagnet,
+        // 1 BootDuringEnable, 2 Undervoltage, 3 Hardware.
+        t.put("Health/EncoderSticky", h.encoderSticky);
+        // Clearing the sticky faults at boot: Phoenix status name (OK, or why it failed).
+        t.put("Health/StickyClear", h.stickyClear);
+        // Firmware versions read at boot, "major.minor.bugfix.build", FL FR BL BR.
+        t.put("Health/DriveFirmware", h.driveFirmware);
+        t.put("Health/SteerFirmware", h.steerFirmware);
+        t.put("Health/EncoderFirmware", h.encoderFirmware);
+        // Pigeon firmware version read at boot.
+        t.put("Health/PigeonFirmware", h.pigeonFirmware);
         // Swerve thread cycles in a row with stale or failed signals.
         t.put("Thread/StaleCycles", staleCycles);
         // Motor currents (A).
@@ -278,9 +303,20 @@ public final class SwerveInputs implements LoggableInputs {
         copy(t.get("Health/SteerConfigured", h.steerConfigured), h.steerConfigured);
         copy(t.get("Health/EncoderConfigured", h.encoderConfigured), h.encoderConfigured);
         copy(t.get("Health/FusedOk", h.fusedOk), h.fusedOk);
+        copy(t.get("Health/FusedOutOfSync", h.fusedOutOfSync), h.fusedOutOfSync);
+        copy(t.get("Health/RemoteSensorInvalid", h.remoteSensorInvalid), h.remoteSensorInvalid);
         copy(t.get("Health/MagnetOk", h.magnetOk), h.magnetOk);
+        copy(t.get("Health/MagnetHealth", h.magnetHealth), h.magnetHealth);
         h.timesync = t.get("Health/Timesync", h.timesync);
         h.driveBrake = t.get("Health/DriveBrake", h.driveBrake);
+        h.steerBrake = t.get("Health/SteerBrake", h.steerBrake);
+        copy(t.get("Health/SteerSticky", h.steerSticky), h.steerSticky);
+        copy(t.get("Health/EncoderSticky", h.encoderSticky), h.encoderSticky);
+        h.stickyClear = t.get("Health/StickyClear", h.stickyClear);
+        copy(t.get("Health/DriveFirmware", h.driveFirmware), h.driveFirmware);
+        copy(t.get("Health/SteerFirmware", h.steerFirmware), h.steerFirmware);
+        copy(t.get("Health/EncoderFirmware", h.encoderFirmware), h.encoderFirmware);
+        h.pigeonFirmware = t.get("Health/PigeonFirmware", h.pigeonFirmware);
         h.deviceResets = t.get("Health/DeviceResets", h.deviceResets);
         long[] steerResets = t.get("Health/SteerResets", h.steerResets);
         System.arraycopy(steerResets, 0, h.steerResets, 0, Math.min(steerResets.length, modules));
@@ -313,6 +349,14 @@ public final class SwerveInputs implements LoggableInputs {
     }
 
     private static void copy(boolean[] from, boolean[] to) {
+        System.arraycopy(from, 0, to, 0, Math.min(from.length, to.length));
+    }
+
+    private static void copy(long[] from, long[] to) {
+        System.arraycopy(from, 0, to, 0, Math.min(from.length, to.length));
+    }
+
+    private static void copy(String[] from, String[] to) {
         System.arraycopy(from, 0, to, 0, Math.min(from.length, to.length));
     }
 }

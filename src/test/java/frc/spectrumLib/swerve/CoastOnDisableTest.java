@@ -25,4 +25,21 @@ class CoastOnDisableTest {
         // Enabling brakes at once.
         assertTrue(c.brake(true, 0.0, 0.01));
     }
+
+    @Test
+    void pushingADisabledRobotAfterItCoastedDoesNotBrakeItAgain() {
+        CoastOnDisable c = new CoastOnDisable(0.05, 0.5);
+        c.brake(true, 0, 0.01);
+        for (int k = 0; k < 60; k++) {
+            c.brake(false, 0.0, 0.01);
+        }
+        assertFalse(c.brake(false, 0.0, 0.01));
+        // Shaken or pushed while disabled: stays coasting.
+        for (int k = 0; k < 100; k++) {
+            assertFalse(c.brake(false, k % 2 == 0 ? 1.0 : 0.0, 0.01));
+        }
+        // The next enable brakes, and the next disable waits for still again.
+        assertTrue(c.brake(true, 0.0, 0.01));
+        assertTrue(c.brake(false, 1.0, 0.01));
+    }
 }

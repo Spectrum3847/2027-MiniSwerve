@@ -69,6 +69,86 @@ class SwerveSetpointGeneratorTest {
     }
 
     @Test
+    void aStickSweptInACircleNeverStopsTheWheels() {
+        // Full stick swept around at 1.6 rev/s, as drivers did on the stand: about 10 rad/s, well
+        // under the steer limit. The wheels must turn to follow it, not stop: braking for each
+        // cycle's own step once held turns to ~3.3 rad/s, and the lag that built up then looked
+        // like a reversal.
+        var g = stopped();
+        double slowest = Double.MAX_VALUE;
+        for (int k = 0; k < 2500; k++) {
+            double dir = 2 * Math.PI * 1.6 * k * DT;
+            g.generate(4 * Math.cos(dir), 4 * Math.sin(dir), 0, DT, 4.5, ACCEL, STEER, null);
+            if (k > 250) {
+                for (int i = 0; i < 4; i++) {
+                    slowest = Math.min(slowest, Math.abs(g.velocity()[i]));
+                }
+            }
+        }
+        assertTrue(slowest > 3.5, "slowest wheel " + slowest + " m/s");
+    }
+
+    @Test
+    void stoppingASweptStickSlowsTheWheelsWithinTheSteerLimit() {
+        // A fast sweep, then the stick held still: the wheels were planned to stop turning in one
+        // cycle from ~17 rad/s, and the steer motors slammed and overshot ~20 deg on the robot.
+        var g = stopped();
+        double maxRateStep = SwerveSetpointGenerator.DEFAULT_STEER_ACCELERATION * DT + 1e-6;
+        double[] lastA = new double[4];
+        double[] lastRate = new double[4];
+        double dir = 0;
+        for (int k = 0; k < 600; k++) {
+            if (k < 300) {
+                dir = 2 * Math.PI * 1.6 * k * DT; // then held where it stopped
+            }
+            g.generate(4 * Math.cos(dir), 4 * Math.sin(dir), 0, DT, 4.5, ACCEL, STEER, null);
+            for (int i = 0; i < 4; i++) {
+                double rate = SwerveMath.angleModulus(g.angle()[i] - lastA[i]) / DT;
+                if (k > 1) {
+                    assertTrue(
+                            Math.abs(rate - lastRate[i]) <= maxRateStep,
+                            "turn rate jumped "
+                                    + Math.abs(rate - lastRate[i])
+                                    + " rad/s at step "
+                                    + k);
+                }
+                lastA[i] = g.angle()[i];
+                lastRate[i] = rate;
+            }
+        }
+        for (int i = 0; i < 4; i++) {
+            double off = Math.abs(SwerveMath.angleModulus(g.angle()[i] - dir));
+            assertTrue(Math.min(off, Math.PI - off) < Math.toRadians(1), "settled on the stick");
+        }
+    }
+
+    @Test
+    void reversingAFewDegreesOffStraightFlipsTheWheelsInsteadOfTurningThem() {
+        // Field-relative driving is never exactly along the robot's x: the stick and heading put
+        // a small sideways part in both requests, so a straight line between them misses zero.
+        double off = Math.toRadians(3);
+        var g = stopped();
+        for (int k = 0; k < 250; k++) {
+            g.generate(3.0 * Math.cos(off), 3.0 * Math.sin(off), 0, DT, 4.5, ACCEL, STEER, null);
+        }
+        double start = g.angle()[0];
+        for (int k = 0; k < 250; k++) {
+            g.generate(
+                    -3.0 * Math.cos(-off), -3.0 * Math.sin(-off), 0, DT, 4.5, ACCEL, STEER, null);
+            for (int i = 0; i < 4; i++) {
+                double turned = Math.abs(SwerveMath.angleModulus(g.angle()[i] - start));
+                assertTrue(turned < Math.toRadians(10), "step " + k + " module " + i + " turned");
+            }
+        }
+        assertTrue(
+                g.velocity()[0] < -2.9,
+                "drives backward at the end: "
+                        + g.velocity()[0]
+                        + " at "
+                        + Math.toDegrees(g.angle()[0]));
+    }
+
+    @Test
     void desaturatesTheWholeChassis() {
         var g = stopped();
         for (int k = 0; k < 500; k++) {

@@ -28,10 +28,14 @@ import org.wpilib.system.RobotController;
  * with {@link #setSimPacer}.
  *
  * <p>Device configs are in {@link SwervePhoenixConfigs}; reboot detection and endless config
- * retries in {@code PhoenixDeviceSet}.
+ * retries in {@code PhoenixDeviceSet}; sticky faults in {@link SwerveStickyFaults}; firmware
+ * versions in {@link SwerveFirmware}.
+ *
+ * <p>Over 400 lines: it is the one place that holds every swerve device and signal. Further jobs go
+ * in their own class, as configs, neutral mode and sticky faults do.
  *
  * <p>Index: constructor | {@link #waitForSample} | {@link #setModules} | {@link
- * #retryFailedConfigs} | {@link #setDriveBrake} | {@link #updateHealth}
+ * #retryFailedConfigs} | {@link #setBrake} | {@link #updateHealth}
  */
 public final class SwerveIOPhoenix implements SwerveIO {
     private final PhoenixSwerveConfig cfg;
@@ -75,7 +79,14 @@ public final class SwerveIOPhoenix implements SwerveIO {
     private final Pigeon2Configuration pigeonConfig;
 
     private final boolean timesync;
-    private final DriveNeutralMode neutralMode;
+    private final MotorNeutralMode driveNeutral;
+    private final MotorNeutralMode steerNeutral;
+    private final SwerveStickyFaults sticky;
+    private String stickyClear = "not run";
+    private final String[] driveFirmware;
+    private final String[] steerFirmware;
+    private final String[] encoderFirmware;
+    private final String pigeonFirmware;
 
     private final SimFaults faults;
 
@@ -109,8 +120,9 @@ public final class SwerveIOPhoenix implements SwerveIO {
         requests.setTimesync(timesync);
         measuredSteerRps = new double[n];
         drive = new TalonFX[n];
-        neutralMode = new DriveNeutralMode(drive);
+        driveNeutral = new MotorNeutralMode(drive, "Swerve/DriveBrake");
         steer = new TalonFX[n];
+        steerNeutral = new MotorNeutralMode(steer, "Swerve/SteerBrake");
         encoder = new CANcoder[n];
         drivePosition = new StatusSignal<?>[n];
         driveVelocity = new StatusSignal<?>[n];
@@ -150,13 +162,7 @@ public final class SwerveIOPhoenix implements SwerveIO {
                                     encoder[m]
                                             .getConfigurator()
                                             .apply(SwervePhoenixConfigs.encoder(cfg, m)));
-            steerIndex[i] =
-                    devices.add(
-                            steerName[i],
-                            steer[i],
-                            () ->
-                                    steer[m].getConfigurator()
-                                            .apply(SwervePhoenixConfigs.steer(cfg, m)));
+            steerIndex[i] = devices.add(steerName[i], steer[i], () -> applySteerConfig(m));
             driveIndex[i] = devices.add(driveName[i], drive[i], () -> applyDriveConfig(m));
 
             drivePosition[i] = drive[i].getPosition();
@@ -181,7 +187,8 @@ public final class SwerveIOPhoenix implements SwerveIO {
                             steer[i].getFault_FusedSensorOutOfSync(),
                             steer[i].getFault_RemoteSensorDataInvalid(),
                             encoder[i].getFault_BadMagnet(),
-                            steer[i].getSupplyVoltage()));
+                            steer[i].getSupplyVoltage(),
+                            encoder[i].getMagnetHealth()));
         }
         // Tilt for the 3D pose: the quaternion, as Pigeon2.getRotation3d reads it, so the frame is
         // WPILib's by construction (no Euler sign conventions to get wrong).
@@ -191,6 +198,8 @@ public final class SwerveIOPhoenix implements SwerveIO {
                         pigeon.getQuatX(),
                         pigeon.getQuatY(),
                         pigeon.getQuatZ()));
+        sticky = new SwerveStickyFaults(steer, encoder);
+        slowList.addAll(sticky.signals());
         yaw = pigeon.getYaw();
         yawRate = pigeon.getAngularVelocityZWorld();
         fastList.add(yaw);
@@ -206,11 +215,30 @@ public final class SwerveIOPhoenix implements SwerveIO {
         groups[2 * n] = new int[] {4 * n, 4 * n + 1};
         paced = new PacedSignals(fast, groups);
         slow = slowList.toArray(new BaseStatusSignal[0]);
+        // Before the signal setup below turns the version frames off.
+        driveFirmware = new String[n];
+        steerFirmware = new String[n];
+        encoderFirmware = new String[n];
+        for (int i = 0; i < n; i++) {
+            driveFirmware[i] = SwerveFirmware.of(drive[i]);
+            steerFirmware[i] = SwerveFirmware.of(steer[i]);
+            encoderFirmware[i] = SwerveFirmware.of(encoder[i]);
+        }
+        pigeonFirmware = SwerveFirmware.of(pigeon);
         devices.setSignals(
                 () ->
                         SwervePhoenixConfigs.signals(
-                                cfg.signalHz(), fast, slow, drive, steer, encoder, pigeon));
+                                cfg.signalHz(),
+                                cfg.encoderSignalHz(),
+                                fast,
+                                slow,
+                                drive,
+                                steer,
+                                encoder,
+                                pigeon));
         devices.configureAtBoot();
+        // Old faults (from any earlier run) would hide what happens now.
+        stickyClear = sticky.clear().getName();
     }
 
     /** The Phoenix devices, for a desktop sim to move (never used on the robot). */
@@ -231,14 +259,20 @@ public final class SwerveIOPhoenix implements SwerveIO {
 
     /**
      * Slow signals per module: stator and supply current for both motors, 2 temps, drive voltage, 3
-     * faults, steer voltage.
+     * faults, steer voltage, CANcoder magnet health.
      */
-    private static final int SLOW_PER_MODULE = 11;
+    private static final int SLOW_PER_MODULE = 12;
 
     /** Applies a drive's whole config with the neutral mode wanted now. */
     private com.ctre.phoenix6.StatusCode applyDriveConfig(int i) {
-        boolean brake = neutralMode.wantedBrake();
-        return neutralMode.applyFull(i, SwervePhoenixConfigs.drive(cfg, i, brake), brake);
+        boolean brake = driveNeutral.wantedBrake();
+        return driveNeutral.applyFull(i, SwervePhoenixConfigs.drive(cfg, i, brake), brake);
+    }
+
+    /** Applies a steer's whole config with the neutral mode wanted now. */
+    private com.ctre.phoenix6.StatusCode applySteerConfig(int i) {
+        boolean brake = steerNeutral.wantedBrake();
+        return steerNeutral.applyFull(i, SwervePhoenixConfigs.steer(cfg, i, brake), brake);
     }
 
     @Override
@@ -330,8 +364,9 @@ public final class SwerveIOPhoenix implements SwerveIO {
     }
 
     @Override
-    public void setDriveBrake(boolean brake) {
-        neutralMode.request(brake);
+    public void setBrake(boolean brake) {
+        driveNeutral.request(brake);
+        steerNeutral.request(brake);
     }
 
     @Override
@@ -358,11 +393,16 @@ public final class SwerveIOPhoenix implements SwerveIO {
             h.driveDeviceTemp[i] = slow[b + 4].getValueAsDouble();
             h.steerDeviceTemp[i] = slow[b + 5].getValueAsDouble();
             // Fault signals are Boolean; getValueAsDouble is 1 when the fault is active.
-            h.fusedOk[i] =
-                    slow[b + 7].getValueAsDouble() == 0 && slow[b + 8].getValueAsDouble() == 0;
+            h.fusedOutOfSync[i] = slow[b + 7].getValueAsDouble() != 0;
+            h.remoteSensorInvalid[i] = slow[b + 8].getValueAsDouble() != 0;
+            h.fusedOk[i] = !h.fusedOutOfSync[i] && !h.remoteSensorInvalid[i];
             h.magnetOk[i] = slow[b + 9].getValueAsDouble() == 0;
             h.driveSupplyVoltage[i] = slow[b + 6].getValueAsDouble();
             h.steerSupplyVoltage[i] = slow[b + 10].getValueAsDouble();
+            var health =
+                    com.ctre.phoenix6.signals.MagnetHealthValue.valueOf(
+                            (int) slow[b + 11].getValueAsDouble());
+            h.magnetHealth[i] = health != null ? health.name() : "Magnet_Invalid";
         }
         // Highest reading among connected drive motors: one unplugged motor must not freeze it.
         double volts = Double.NaN;
@@ -399,7 +439,14 @@ public final class SwerveIOPhoenix implements SwerveIO {
         h.timesync = timesync;
         h.deviceResets = devices.resets();
         h.signalsSet = devices.signalsSet();
-        // Brake only if every drive motor is in brake.
-        h.driveBrake = neutralMode.allBrake();
+        // Brake only if every motor of the set is in brake.
+        h.driveBrake = driveNeutral.allBrake();
+        h.steerBrake = steerNeutral.allBrake();
+        sticky.read(h.steerSticky, h.encoderSticky);
+        h.stickyClear = stickyClear;
+        System.arraycopy(driveFirmware, 0, h.driveFirmware, 0, n);
+        System.arraycopy(steerFirmware, 0, h.steerFirmware, 0, n);
+        System.arraycopy(encoderFirmware, 0, h.encoderFirmware, 0, n);
+        h.pigeonFirmware = pigeonFirmware;
     }
 }
