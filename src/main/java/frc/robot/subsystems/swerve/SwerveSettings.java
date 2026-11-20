@@ -21,7 +21,20 @@ final class SwerveSettings {
 
     private static final SettingGroup G = RobotSettings.group("swerve");
 
-    /** CANcoder MagnetOffset per module (rotations). HARD STOP: calibrate on the robot. */
+    /**
+     * CANcoder MagnetOffset per module (rotations). HARD STOP: calibrate on the robot.
+     *
+     * <p>Direction of a trim (verified on MiniSwerve): the offset is added to the CANcoder's
+     * reading, so raising a module's offset makes the code believe the wheel is further
+     * counterclockwise, and the wheel ends up further clockwise (seen from above) for the same
+     * command. One degree is 1/360 = 0.00278 rotations.
+     *
+     * <p>Wheels toed against each other make the robot rotate while driving straight, in proportion
+     * to speed. If it turns counterclockwise driving forward, raise the front offsets and lower the
+     * back ones; if it turns counterclockwise driving left, raise the left offsets and lower the
+     * right ones. {@code tools/yaw_drift_fit.py} measures this from a carpet log and prints the
+     * changes.
+     */
     static final DoubleSetting[] MAGNET_OFFSET = {
         G.number("magnetOffsetFL", 0.0, "rot", -1, 1),
         G.number("magnetOffsetFR", 0.0, "rot", -1, 1),
