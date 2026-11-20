@@ -35,6 +35,8 @@ package frc.spectrumLib.swerve;
  * @param steerSupplyCurrentLimit steer supply (battery-side) current limit (A); 0 for none
  * @param encoderSignalHz update rate of the CANcoder position and velocity frames the steer motors
  *     fuse (Hz); can be above {@code signalHz}, as CTRE's CANivore template runs them
+ * @param steerRemoteCANcoder steer motors read the CANcoder as RemoteCANcoder (no rotor fusion)
+ *     instead of FusedCANcoder
  */
 public record PhoenixSwerveConfig(
         String canBus,
@@ -63,9 +65,10 @@ public record PhoenixSwerveConfig(
         boolean steerVoltage,
         double driveSupplyCurrentLimit,
         double steerSupplyCurrentLimit,
-        double encoderSignalHz) {
+        double encoderSignalHz,
+        boolean steerRemoteCANcoder) {
 
-    /** The same, with the CANcoder frames at {@code signalHz}. */
+    /** The same, with the CANcoder frames at {@code signalHz} and fused into the steer motors. */
     public PhoenixSwerveConfig(
             String canBus,
             int pigeonId,
@@ -120,7 +123,8 @@ public record PhoenixSwerveConfig(
                 steerVoltage,
                 driveSupplyCurrentLimit,
                 steerSupplyCurrentLimit,
-                signalHz);
+                signalHz,
+                false);
     }
 
     /** Phoenix Slot0 gains: kP, kI, kD, kS, kV, kA. */

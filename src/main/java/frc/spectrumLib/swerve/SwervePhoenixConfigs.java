@@ -31,7 +31,10 @@ public final class SwervePhoenixConfigs {
                         : InvertedValue.CounterClockwise_Positive;
         c.MotorOutput.NeutralMode = brake ? NeutralModeValue.Brake : NeutralModeValue.Coast;
         c.Feedback.FeedbackRemoteSensorID = cfg.encoderIds()[i];
-        c.Feedback.FeedbackSensorSource = FeedbackSensorSourceValue.FusedCANcoder;
+        c.Feedback.FeedbackSensorSource =
+                cfg.steerRemoteCANcoder()
+                        ? FeedbackSensorSourceValue.RemoteCANcoder
+                        : FeedbackSensorSourceValue.FusedCANcoder;
         c.Feedback.RotorToSensorRatio = cfg.steerRatio();
         c.Feedback.SensorToMechanismRatio = 1.0;
         c.ClosedLoopGeneral.ContinuousWrap = true;

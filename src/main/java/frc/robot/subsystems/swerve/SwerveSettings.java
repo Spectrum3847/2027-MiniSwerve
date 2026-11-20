@@ -43,6 +43,18 @@ final class SwerveSettings {
      */
     static final DoubleSetting ENCODER_SIGNAL_HZ = G.number("encoderSignalHz", 250, "Hz", 50, 250);
 
+    /**
+     * How each steer motor reads its CANcoder, CTRE's FeedbackSensorSource names, read at boot:
+     * "FusedCANcoder" (Pro: the CANcoder's absolute angle blended with the rotor between frames) or
+     * "RemoteCANcoder" (the CANcoder alone, updated once per frame). RemoteCANcoder tests whether
+     * the fusion itself flags the CANcoder data invalid while steering.
+     */
+    static final StringSetting STEER_FEEDBACK = G.string("steerFeedback", "FusedCANcoder");
+
+    static boolean steerRemoteCANcoder() {
+        return "RemoteCANcoder".equals(STEER_FEEDBACK.get());
+    }
+
     static final DoubleSetting WHEEL_RADIUS =
             G.number("wheelRadius", Hardware.MK4iL2.NOMINAL_WHEEL_RADIUS_METERS, "m", 0.04, 0.06);
 
