@@ -151,6 +151,31 @@ class RobotAccelerationLimiterTest {
     }
 
     @Test
+    void aTurningWheelComesToRestWhenTheRequestGoesAway() {
+        // On the robot a module kept turning at 400 deg/s with the sticks centered: a still wheel
+        // was told to hold where it pointed, which followed its own motion.
+        var g = stopped();
+        int k = 0;
+        // Wheels forward, asked straight left: they start turning before the robot moves.
+        while (Math.abs(g.steerVelocity()[0]) < 8 && k++ < 50) {
+            step(g, 0, 3, 0, 0);
+        }
+        assertTrue(Math.abs(g.steerVelocity()[0]) >= 8, "the wheel never got turning");
+        double[] last = new double[4];
+        for (k = 0; k < 150; k++) {
+            step(g, 0, 0, 0, 0);
+            if (k == 100) {
+                System.arraycopy(g.angle(), 0, last, 0, 4);
+            }
+        }
+        for (int i = 0; i < 4; i++) {
+            assertEquals(0.0, g.steerVelocity()[i], 1e-9, "still turning");
+            assertEquals(last[i], g.angle()[i], 1e-9, "angle still moving");
+            assertEquals(0.0, g.velocity()[i], 1e-6);
+        }
+    }
+
+    @Test
     void stopsCleanly() {
         var g = stopped();
         for (int k = 0; k < 60; k++) {

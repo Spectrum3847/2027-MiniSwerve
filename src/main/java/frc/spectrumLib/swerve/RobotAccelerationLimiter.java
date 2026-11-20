@@ -32,6 +32,12 @@ public final class RobotAccelerationLimiter {
     /** A request over 150 deg from the robot's motion is a reversal: brake to zero first. */
     private static final double REVERSAL_COS = Math.cos(Math.toRadians(150));
 
+    /**
+     * Wheel speed above which a module's turn rate follows its target's rate (m/s). Slower than
+     * this the direction of the module's velocity swings with every small change in the request.
+     */
+    private static final double FOLLOW_SPEED = 0.1;
+
     /** A target direction that moves more than this in one cycle is a jump, not a rate (rad). */
     private static final double TARGET_JUMP = 0.5;
 
@@ -258,12 +264,15 @@ public final class RobotAccelerationLimiter {
         SwerveMath.toSwerveModuleVelocities(chassis[0], chassis[1], chassis[2], mx, my, speed, dir);
         for (int i = 0; i < n; i++) {
             // A wheel that would be still aims where the full step needs it, so a stopped robot
-            // turns its wheels before it moves.
+            // turns its wheels before it moves. With nowhere to aim it holds the last direction it
+            // was given: holding where it points now would chase its own motion and never stop.
             double target =
                     speed[i] > STOPPED
                             ? dir[i]
-                            : stepSpeed[i] > STOPPED ? stepDir[i] : lastAngle[i];
-            steer(i, target, dt, maxSteerVelocity, maxSteerAcceleration);
+                            : stepSpeed[i] > STOPPED ? stepDir[i] : lastTarget[i];
+            // Only a wheel that is really rolling has a direction whose rate means anything.
+            boolean follow = speed[i] > FOLLOW_SPEED;
+            steer(i, target, follow, dt, maxSteerVelocity, maxSteerAcceleration);
             velocity[i] = along(chassis[0], chassis[1], chassis[2], i, angle[i]);
             wheelAcceleration[i] = (velocity[i] - lastVelocity[i]) / dt;
             lastAngle[i] = angle[i];
@@ -275,13 +284,22 @@ public final class RobotAccelerationLimiter {
      * Turns module {@code i} toward {@code target} (the short way: within 90 degrees, driving
      * backward if that is closer). The turn rate is the target's own rate plus what closes the
      * error while still able to stop on it, changed by at most the steer acceleration each cycle.
+     *
+     * @param follow add the target's own rate (false for a wheel that is still or barely rolling:
+     *     only the error is closed, so the wheel comes to rest on the target)
      */
-    private void steer(int i, double target, double dt, double maxRate, double maxAcceleration) {
+    private void steer(
+            int i,
+            double target,
+            boolean follow,
+            double dt,
+            double maxRate,
+            double maxAcceleration) {
         double err = shortWay(target - lastAngle[i]);
         double aim = lastAngle[i] + err;
         // How fast the target itself is moving; a flip or a new request is a jump, not a rate.
         double moved = shortWay(aim - lastTarget[i]);
-        double targetRate = Math.abs(moved) < TARGET_JUMP ? moved / dt : 0.0;
+        double targetRate = follow && Math.abs(moved) < TARGET_JUMP ? moved / dt : 0.0;
         lastTarget[i] = aim;
         double close = Math.copySign(Math.sqrt(2 * maxAcceleration * Math.abs(err)), err);
         double rate = Math.max(-maxRate, Math.min(maxRate, targetRate + close));
