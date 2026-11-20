@@ -15,7 +15,11 @@ import org.littletonrobotics.junction.Logger;
  * the other three.
  *
  * <p>Odometry is stricter: it uses a module only when it is {@link ModuleMode#NORMAL}, its CANcoder
- * is fused and readable, and that sample's signals were fresh.
+ * is connected and readable, its rotor and CANcoder agree (no FusedSensorOutOfSync), and that
+ * sample's signals were fresh. A steer motor that only reports its CANcoder frames invalid
+ * (RemoteSensorDataInvalid) stays in odometry: it is steering from its rotor meanwhile, so the
+ * angle we read is still good. MiniSwerve's steer motors raise that fault 20-35% of the time while
+ * turning, and dropping them for it left odometry with no modules for a fifth of a drive.
  *
  * <p>Logged under {@code <prefix>/}: {@code Mode}, {@code Trusted}, {@code AbsoluteAngleKnown}.
  */
@@ -77,7 +81,7 @@ public final class ModuleTrust {
                 absoluteKnown[i] = true;
             }
             boolean steerUsable = h.steerConnected[i] && h.steerConfigured[i] && absoluteKnown[i];
-            // A fused-sensor fault (rotor and CANcoder disagree) does not stop the module: Phoenix
+            // An out-of-sync fault (rotor and CANcoder disagree) does not stop the module: Phoenix
             // re-syncs to the CANcoder, which is on the module shaft and right after a gear or
             // belt skip. Only odometry stops trusting the module until it clears. A bad CANcoder
             // (magnet) with a good rotor is the planned rotor-only fallback.
@@ -99,7 +103,7 @@ public final class ModuleTrust {
             changed |= set(cmdSteerSlow, i, !h.steerConnected[i]);
             changed |= set(cmdDriveSlow, i, !h.driveConnected[i]);
             modeNames[i] = m.name();
-            trusted[i] = m == ModuleMode.NORMAL && encoder && h.fusedOk[i];
+            trusted[i] = m == ModuleMode.NORMAL && encoder && !h.fusedOutOfSync[i];
         }
         if (changed) {
             version++;

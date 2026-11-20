@@ -80,17 +80,34 @@ class ModuleTrustTest {
     }
 
     @Test
-    void aFusedSensorFaultKeepsTheModuleDrivingButOutOfOdometry() {
+    void anOutOfSyncFaultKeepsTheModuleDrivingButOutOfOdometry() {
         ModuleTrust t = new ModuleTrust("Test/Modules", 4);
         SwerveHealth h = healthy();
         t.update(h);
-        h.fusedOk[0] = false; // rotor and CANcoder disagree; we don't know which is wrong
+        h.fusedOutOfSync[0] = true; // rotor and CANcoder disagree; we don't know which is wrong
+        h.fusedOk[0] = false;
         t.update(h);
         assertEquals(ModuleMode.NORMAL, t.modes()[0]);
         assertEquals(true, t.commands().drive()[0]);
         SwerveSample s = new SwerveSample(4);
         Arrays.fill(s.moduleOk, true);
         assertEquals(0.0, t.weights(s)[0]);
+    }
+
+    @Test
+    void invalidCancoderFramesAloneKeepTheModuleInOdometry() {
+        // MiniSwerve's steer motors flag their CANcoder frames invalid whenever a module turns;
+        // the motor steers from its rotor meanwhile, so the angle is still good.
+        ModuleTrust t = new ModuleTrust("Test/Modules", 4);
+        SwerveHealth h = healthy();
+        t.update(h);
+        h.remoteSensorInvalid[0] = true;
+        h.fusedOk[0] = false;
+        t.update(h);
+        assertEquals(ModuleMode.NORMAL, t.modes()[0]);
+        SwerveSample s = new SwerveSample(4);
+        Arrays.fill(s.moduleOk, true);
+        assertEquals(1.0, t.weights(s)[0]);
     }
 
     @Test
