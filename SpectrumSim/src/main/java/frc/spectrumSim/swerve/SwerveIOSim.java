@@ -201,6 +201,9 @@ public final class SwerveIOSim implements SwerveIO {
                     (drive[i].velocity() - steer[i].velocity() * couple) * metersPerWheelRotation;
             out.angle[i] = SwerveMath.angleModulus(steerRot * 2 * Math.PI);
             out.moduleOk[i] = true;
+            out.driveCurrent[i] = drive[i].statorCurrent();
+            out.driveVoltage[i] = drive[i].motorVoltage();
+            out.steerCurrent[i] = steer[i].statorCurrent();
         }
         out.gyroOk = !unheard("Pigeon");
         if (out.gyroOk) {

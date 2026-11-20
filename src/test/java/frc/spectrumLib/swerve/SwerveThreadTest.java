@@ -71,6 +71,69 @@ class SwerveThreadTest {
     }
 
     @Test
+    void plannedAccelerationIsSentAsWheelForce() {
+        RecordingIO io = new RecordingIO();
+        SwerveThread t = thread(io);
+        t.setSetpointGenerator(true, 10, 20, 300);
+        // 40 kg, no rotor share: a 10 m/s^2 launch needs 100 N from each wheel.
+        t.setAccelerationFeedforward(new DriveAccelerationFeedforward(MX, MY, 40, 1.5, 0, 1));
+        t.computeTargets(DriveRequest.velocity(4, 0, 0, false, 0, true));
+        for (int i = 0; i < 4; i++) {
+            assertEquals(100.0, io.force[i], 3.0); // the plan's step is just under the limit
+            assertEquals(io.force[i], t.sampleForTest().wheelForce[i], 0.0);
+        }
+        // Neutral sends none, and the logged sample says so.
+        t.computeTargets(DriveRequest.NEUTRAL);
+        for (int i = 0; i < 4; i++) {
+            assertEquals(0.0, t.sampleForTest().wheelForce[i], 0.0);
+        }
+    }
+
+    @Test
+    void robotAccelerationLimiterPlansTheTargetsAndTheForce() {
+        RecordingIO io = new RecordingIO();
+        SwerveThread t = thread(io);
+        t.setSetpointGenerator(true, 10, 20, 300);
+        t.setRobotAccelerationLimiter(true, 70);
+        t.setAccelerationFeedforward(new DriveAccelerationFeedforward(MX, MY, 40, 1.5, 0, 1));
+        t.computeTargets(DriveRequest.velocity(4, 0, 0, false, 0, true));
+        for (int i = 0; i < 4; i++) {
+            // One 4 ms step at 10 m/s^2, and the force for it.
+            assertEquals(0.04, io.velocity[i], 1e-9);
+            assertEquals(0.0, io.angle[i], 1e-9);
+            assertEquals(100.0, io.force[i], 1e-6);
+        }
+    }
+
+    @Test
+    void aRequestsOwnWheelForcesReplaceThePlans() {
+        RecordingIO io = new RecordingIO();
+        SwerveThread t = thread(io);
+        t.setSetpointGenerator(true, 10, 20, 300);
+        t.setAccelerationFeedforward(new DriveAccelerationFeedforward(MX, MY, 40, 1.5, 0, 1));
+        double[] fx = {7, 7, 7, 7};
+        double[] fy = {0, 0, 0, 0};
+        t.computeTargets(
+                new DriveRequest(
+                        DriveRequest.Mode.VELOCITY,
+                        4,
+                        0,
+                        0,
+                        false,
+                        0,
+                        true,
+                        fx,
+                        fy,
+                        Double.NaN,
+                        Double.NaN,
+                        Double.NaN,
+                        Double.NaN));
+        for (int i = 0; i < 4; i++) {
+            assertEquals(7.0, io.force[i], 1e-9);
+        }
+    }
+
+    @Test
     void wheelForceFollowsAFlippedWheel() {
         RecordingIO io = new RecordingIO();
         SwerveThread t = thread(io);

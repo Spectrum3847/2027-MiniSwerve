@@ -21,7 +21,20 @@ final class SwerveSettings {
 
     private static final SettingGroup G = RobotSettings.group("swerve");
 
-    /** CANcoder MagnetOffset per module (rotations). HARD STOP: calibrate on the robot. */
+    /**
+     * CANcoder MagnetOffset per module (rotations). HARD STOP: calibrate on the robot.
+     *
+     * <p>Direction of a trim (verified on MiniSwerve): the offset is added to the CANcoder's
+     * reading, so raising a module's offset makes the code believe the wheel is further
+     * counterclockwise, and the wheel ends up further clockwise (seen from above) for the same
+     * command. One degree is 1/360 = 0.00278 rotations.
+     *
+     * <p>Wheels toed against each other make the robot rotate while driving straight, in proportion
+     * to speed. If it turns counterclockwise driving forward, raise the front offsets and lower the
+     * back ones; if it turns counterclockwise driving left, raise the left offsets and lower the
+     * right ones. {@code tools/yaw_drift_fit.py} measures this from a carpet log and prints the
+     * changes.
+     */
     static final DoubleSetting[] MAGNET_OFFSET = {
         G.number("magnetOffsetFL", 0.0, "rot", -1, 1),
         G.number("magnetOffsetFR", 0.0, "rot", -1, 1),
@@ -42,6 +55,15 @@ final class SwerveSettings {
      * took CAN0 from 50% to 60%).
      */
     static final DoubleSetting ENCODER_SIGNAL_HZ = G.number("encoderSignalHz", 250, "Hz", 50, 250);
+
+    /**
+     * Rate of the signals that are only logged (Hz), read at boot: each drive motor's torque
+     * current and voltage, each steer motor's torque current, and the gyro's accelerometer, logged
+     * with every swerve sample. 0 turns them off. They cost CAN frames: on MiniSwerve's CAN 2.0 bus
+     * watch SystemStats/Network/CAN0/Utilization and lower this if the bus gets busy.
+     */
+    static final DoubleSetting DIAGNOSTIC_SIGNAL_HZ =
+            G.number("diagnosticSignalHz", 100, "Hz", 0, 250);
 
     /**
      * How each steer motor reads its CANcoder, CTRE's FeedbackSensorSource names, read at boot
@@ -73,6 +95,19 @@ final class SwerveSettings {
     static final BooleanSetting SETPOINT_GENERATOR = G.bool("setpointGenerator", true);
 
     /**
+     * What the plan limits, read at boot: "WheelAcceleration" (the setpoint generator: each wheel's
+     * speed change) or "RobotAcceleration" (RobotAccelerationLimiter: the robot's own acceleration
+     * and turn acceleration, so driving straight while spinning, which changes every wheel's speed
+     * without accelerating the robot, is not held back). Both use the limits below.
+     */
+    static final StringSetting ACCELERATION_LIMIT =
+            G.string("accelerationLimit", "WheelAcceleration");
+
+    static boolean robotAccelerationLimit() {
+        return "RobotAcceleration".equals(ACCELERATION_LIMIT.get());
+    }
+
+    /**
      * Largest wheel speed change the setpoint generator plans (m/s^2). Default 30: above anything
      * the robot can do, so the motors always get full power. Traction is protected by the drive
      * slip current (stator and peak torque current at the point the wheels slip), not by this.
@@ -88,13 +123,34 @@ final class SwerveSettings {
      */
     static final BooleanSetting MOTOR_ACCELERATION_LIMIT = G.bool("motorAccelerationLimit", true);
 
+    /**
+     * Share of the force the planned acceleration needs that is sent to the drive motors as
+     * torque-current feedforward (mass and turning inertia times the setpoint generator's planned
+     * acceleration, plus the drive rotors). 1: all of it, so the velocity loop corrects only what
+     * is left; 0: off, and a wheel must fall behind its setpoint before kP supplies the current.
+     * With the wheels off the floor it is far too much (there is no robot to push): the wheels run
+     * ahead of their setpoints on the stand.
+     */
+    static final DoubleSetting DRIVE_ACCELERATION_FEEDFORWARD =
+            G.number("driveAccelerationFeedforward", 1.0, "", 0, 1.5);
+
+    /**
+     * The robot's turning inertia as a share of mass times module radius squared (a box robot with
+     * its weight spread evenly: about 0.6; more with the weight at the corners). Sets the drive
+     * feedforward for turn acceleration.
+     */
+    static final DoubleSetting TURNING_INERTIA_FACTOR =
+            G.number("turningInertiaFactor", 0.6, "", 0.2, 1.5);
+
     /** Fastest module turn the setpoint generator plans (rad/s); MK4i free speed is about 29. */
     static final DoubleSetting MAX_STEER_VELOCITY =
             G.number("maxSteerVelocity", 20.0, "rad/s", 2, 30);
 
     /**
      * Field-relative lookahead (s): aim with heading + yaw rate * this, so driving while spinning
-     * goes straight despite module lag. Tune on the robot by driving straight while spinning.
+     * goes straight despite module lag. Tune on the robot by driving straight while spinning. The
+     * default suits the WheelAcceleration plan, whose own lag it also covers; in sim the
+     * RobotAcceleration plan holds its line best at 0.
      */
     static final DoubleSetting ROTATION_LOOKAHEAD =
             G.number("rotationLookahead", 0.04, "s", 0.0, 0.15);
@@ -162,6 +218,17 @@ final class SwerveSettings {
      * slip point is measured; lower if the wheels spin.
      */
     static final DoubleSetting TRACTION_USE = G.number("tractionUse", 0.97, "", 0.5, 1.0);
+
+    /**
+     * How far above the computed slip current the drive current limit sits (1: at it). The slip
+     * current assumes each wheel carries a quarter of the robot; under hard acceleration the weight
+     * shifts onto fewer wheels, which can then push more than a quarter's worth while the unloaded
+     * wheel pushes almost nothing. On MiniSwerve's carpet launches three wheels sat at the limit
+     * without slipping while the fourth ran on 8 A. HARD STOP (current limit): too high and the
+     * loaded wheels spin on a hard launch, and the battery sags further.
+     */
+    static final DoubleSetting DRIVE_SLIP_CURRENT_HEADROOM =
+            G.number("driveSlipCurrentHeadroom", 1.0, "", 1.0, 1.6);
 
     /** Driver top speed and turn rate. */
     static final DoubleSetting MAX_DRIVE_VELOCITY =

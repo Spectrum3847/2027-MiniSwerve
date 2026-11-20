@@ -2,6 +2,7 @@ package frc.robot.subsystems.swerve;
 
 import frc.robot.config.Hardware;
 import frc.robot.config.ImuSettings;
+import frc.spectrumLib.swerve.DriveAccelerationFeedforward;
 import frc.spectrumLib.swerve.DriveMotorLimit;
 import frc.spectrumLib.swerve.PhoenixSwerveConfig;
 import org.littletonrobotics.junction.Logger;
@@ -69,7 +70,8 @@ final class SwerveConfigs {
                 Hardware.DRIVE_SUPPLY_LIMIT_AMPS,
                 Hardware.STEER_SUPPLY_LIMIT_AMPS,
                 SwerveSettings.ENCODER_SIGNAL_HZ.get(),
-                SwerveSettings.STEER_FEEDBACK.get());
+                SwerveSettings.STEER_FEEDBACK.get(),
+                SwerveSettings.DIAGNOSTIC_SIGNAL_HZ.get());
     }
 
     /**
@@ -97,13 +99,17 @@ final class SwerveConfigs {
     }
 
     /**
-     * The drive slip current used (A): tractionUse of the computed slip current, never above the
-     * hardware cap. HARD STOP (current limit): set robotMass and tireFriction truthfully.
+     * The drive slip current used (A): tractionUse of the computed slip current, times
+     * driveSlipCurrentHeadroom for the wheels that carry more than a quarter of the robot under
+     * acceleration, never above the hardware cap. HARD STOP (current limit): set robotMass and
+     * tireFriction truthfully.
      */
     static double driveSlipCurrent() {
         return Math.min(
                 Hardware.DRIVE_SLIP_CURRENT_AMPS,
-                SwerveSettings.TRACTION_USE.get() * slipCurrentAtLimit());
+                SwerveSettings.TRACTION_USE.get()
+                        * slipCurrentAtLimit()
+                        * SwerveSettings.DRIVE_SLIP_CURRENT_HEADROOM.get());
     }
 
     /** Acceleration the setpoint generator may plan (m/s^2): tractionUse of the traction limit. */
@@ -111,6 +117,21 @@ final class SwerveConfigs {
         return Math.min(
                 SwerveSettings.MAX_DRIVE_ACCELERATION.get(),
                 SwerveSettings.TRACTION_USE.get() * tractionLimit());
+    }
+
+    /**
+     * Turn acceleration the plan may use (rad/s^2): the planned acceleration's force from every
+     * wheel, at the modules' radius, over the turning inertia.
+     */
+    static double plannedAngularAccelerationLimit(double[] mx, double[] my) {
+        double radius = 0;
+        for (int i = 0; i < mx.length; i++) {
+            radius += Math.hypot(mx[i], my[i]) / mx.length;
+        }
+        return plannedAccelerationLimit()
+                * SwerveSettings.robotMassKg()
+                * radius
+                / turningInertia(mx, my);
     }
 
     /** Each drive motor's speed-up limit for the setpoint generator, or null when turned off. */
@@ -130,13 +151,57 @@ final class SwerveConfigs {
                 wheels);
     }
 
+    /**
+     * The drive feedforward for the setpoint generator's planned acceleration, or null when its
+     * gain is 0.
+     */
+    static DriveAccelerationFeedforward accelerationFeedforward(double[] mx, double[] my) {
+        double gain = SwerveSettings.DRIVE_ACCELERATION_FEEDFORWARD.get();
+        if (!(gain > 0)) {
+            return null;
+        }
+        return new DriveAccelerationFeedforward(
+                mx, my, SwerveSettings.robotMassKg(), turningInertia(mx, my), rotorMass(), gain);
+    }
+
+    /** Robot inertia about the vertical (kg m^2): turningInertiaFactor of mass x radius^2. */
+    static double turningInertia(double[] mx, double[] my) {
+        double radiusSquared = 0;
+        for (int i = 0; i < mx.length; i++) {
+            radiusSquared += (mx[i] * mx[i] + my[i] * my[i]) / mx.length;
+        }
+        return SwerveSettings.TURNING_INERTIA_FACTOR.get()
+                * SwerveSettings.robotMassKg()
+                * radiusSquared;
+    }
+
+    /** One drive rotor's inertia as a mass at the wheel's tread (kg). */
+    static double rotorMass() {
+        double perMeter = Hardware.MK4iL2.DRIVE_RATIO / SwerveSettings.WHEEL_RADIUS.get();
+        return FALCON_ROTOR_INERTIA * perMeter * perMeter;
+    }
+
     private static final double GRAVITY = 9.81;
 
     /** Falcon 500 rotor inertia (kg m^2). */
     private static final double FALCON_ROTOR_INERTIA = 0.0000565;
 
     /** Logs the traction numbers once at boot. */
-    static void logTraction() {
+    static void logTraction(double[] mx, double[] my) {
+        // Share of the planned acceleration's force sent as drive feedforward (0: off).
+        Logger.recordOutput(
+                "Swerve/Traction/AccelerationFeedforward",
+                SwerveSettings.DRIVE_ACCELERATION_FEEDFORWARD.get());
+        // Turning inertia the feedforward uses (kg m^2), and one drive rotor as a mass (kg).
+        Logger.recordOutput("Swerve/Traction/TurningInertia", turningInertia(mx, my));
+        Logger.recordOutput("Swerve/Traction/RotorMass", rotorMass());
+        // What the plan limits: "WheelAcceleration" or "RobotAcceleration".
+        Logger.recordOutput(
+                "Swerve/Traction/AccelerationLimit", SwerveSettings.ACCELERATION_LIMIT.get());
+        // Turn acceleration the RobotAcceleration plan may use (rad/s^2).
+        Logger.recordOutput(
+                "Swerve/Traction/PlannedAngularAcceleration",
+                plannedAngularAccelerationLimit(mx, my));
         // Robot weight used (lb).
         Logger.recordOutput(
                 "Swerve/Traction/RobotWeightLbs", SwerveSettings.ROBOT_WEIGHT_LBS.get());
@@ -146,5 +211,9 @@ final class SwerveConfigs {
         // What is used: tractionUse of each (planned acceleration m/s^2, drive slip current A).
         Logger.recordOutput("Swerve/Traction/PlannedAcceleration", plannedAccelerationLimit());
         Logger.recordOutput("Swerve/Traction/DriveSlipCurrent", driveSlipCurrent());
+        // How far the drive current limit sits above the computed slip current (1: at it).
+        Logger.recordOutput(
+                "Swerve/Traction/DriveSlipCurrentHeadroom",
+                SwerveSettings.DRIVE_SLIP_CURRENT_HEADROOM.get());
     }
 }

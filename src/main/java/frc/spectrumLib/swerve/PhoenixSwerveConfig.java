@@ -66,7 +66,8 @@ public record PhoenixSwerveConfig(
         double driveSupplyCurrentLimit,
         double steerSupplyCurrentLimit,
         double encoderSignalHz,
-        String steerFeedback) {
+        String steerFeedback,
+        double diagnosticSignalHz) {
 
     /** The same, with the CANcoder frames at {@code signalHz} and fused into the steer motors. */
     public PhoenixSwerveConfig(
@@ -124,7 +125,8 @@ public record PhoenixSwerveConfig(
                 driveSupplyCurrentLimit,
                 steerSupplyCurrentLimit,
                 signalHz,
-                "FusedCANcoder");
+                "FusedCANcoder",
+                0);
     }
 
     /** Phoenix Slot0 gains: kP, kI, kD, kS, kV, kA. */

@@ -1,10 +1,16 @@
 {
+  "accelerationLimit": "RobotAcceleration",
+  "rotationLookahead": 0.013,
+  "driveSlipCurrentHeadroom": 1.6,
+  "tireFriction": 0.65,
   "loopHz": 100,
   "encoderSignalHz": 100,
   "steerFeedback": "FusedCANcoder",
-  "magnetOffsetFL": 0.45096,
-  "magnetOffsetFR": -0.01912,
-  "magnetOffsetBL": 0.09034,
-  "magnetOffsetBR": 0.12992,
-  "track": 0.32385
+  "magnetOffsetFL": 0.45359,
+  "magnetOffsetFR": -0.01205,
+  "magnetOffsetBL": 0.08327,
+  "magnetOffsetBR": 0.1273,
+  "track": 0.32385,
+  "wheelRadius": 0.049,
+  "maxAngularVelocity": 12
 }

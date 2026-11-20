@@ -12,5 +12,6 @@
 | `battery_fit.py` | Fits battery open-circuit voltage and resistance from logged battery voltage and total current |
 | `sim_check.sh` / `sim_check.py` | Runs the fault sim scripts (guards, driver, red, faults) headless and checks each log: the robot must keep driving; CI runs it (not `check.sh`: it takes minutes) |
 | `fault_summary.py` | Fault-scenario summary: faults, module modes, motion and odometry per step; exit 0 if all recovered |
+| `yaw_drift_fit.py` | Steering misalignment from the rotation while driving straight on carpet; prints the CANcoder offset changes that cancel it, and which way a trim turns a wheel |
 | `swerve_summary.py` | Sim drive summary: odometry vs truth, thread rate, drops |
 | `fix-text.sh` / `fix_text.py` | Rewrites tracked text as UTF-8 + LF and renormalizes git |

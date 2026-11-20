@@ -97,8 +97,10 @@ public final class SwervePhoenixConfigs {
     static com.ctre.phoenix6.StatusCode signals(
             double hz,
             double encoderHz,
+            double diagnosticHz,
             com.ctre.phoenix6.BaseStatusSignal[] fast,
             com.ctre.phoenix6.BaseStatusSignal[] slow,
+            com.ctre.phoenix6.BaseStatusSignal[] diagnostic,
             com.ctre.phoenix6.hardware.TalonFX[] drive,
             com.ctre.phoenix6.hardware.TalonFX[] steer,
             com.ctre.phoenix6.hardware.CANcoder[] encoder,
@@ -115,6 +117,13 @@ public final class SwervePhoenixConfigs {
         }
         var c = com.ctre.phoenix6.BaseStatusSignal.setUpdateFrequencyForAll(10, slow);
         code = code.isOK() ? c : code;
+        if (diagnosticHz > 0) {
+            // Logged only (motor currents and voltage, the accelerometer): nothing waits on them.
+            c =
+                    com.ctre.phoenix6.BaseStatusSignal.setUpdateFrequencyForAll(
+                            diagnosticHz, diagnostic);
+            code = code.isOK() ? c : code;
+        }
         // Everything else off the bus: only what we read is sent.
         for (int i = 0; i < n; i++) {
             drive[i].optimizeBusUtilization();
