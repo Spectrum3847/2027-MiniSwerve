@@ -1,7 +1,7 @@
 {
   "loopHz": 100,
   "encoderSignalHz": 100,
-  "steerFeedback": "SyncCANcoder",
+  "steerFeedback": "FusedCANcoder",
   "magnetOffsetFL": 0.45096,
   "magnetOffsetFR": -0.01912,
   "magnetOffsetBL": 0.09034,
