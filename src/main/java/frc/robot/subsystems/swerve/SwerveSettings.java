@@ -37,8 +37,9 @@ final class SwerveSettings {
 
     /**
      * CANcoder position and velocity frame rate (Hz), read at boot: what each steer motor fuses.
-     * 250 as on CTRE's CANivore template; on a CAN 2.0 bus each 100 Hz here costs about 400-800
-     * frames/s, so watch SystemStats/Network/CAN0/Utilization if raising it.
+     * 250 as on CTRE's CANivore template. Position and velocity share one frame, so on a CAN 2.0
+     * bus each 100 Hz here costs 400 frames/s for four CANcoders (MiniSwerve, measured: 100 to 250
+     * took CAN0 from 50% to 60%).
      */
     static final DoubleSetting ENCODER_SIGNAL_HZ = G.number("encoderSignalHz", 250, "Hz", 50, 250);
 
