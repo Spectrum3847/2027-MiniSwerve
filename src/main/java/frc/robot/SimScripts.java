@@ -262,6 +262,34 @@ final class SimScripts {
         new SimScript.Step(1.0, "stop", 0, 0, 0),
     };
 
+    /**
+     * Full stick swept in a circle, slowly (a lap in 3 s, which the robot can follow) and then fast
+     * (a lap in 0.8 s, far more sideways force than the tires have): what the robot really does
+     * when asked for more than it can do.
+     */
+    static final SimScript.Step[] CIRCLE = circle();
+
+    private static SimScript.Step[] circle() {
+        java.util.List<SimScript.Step> steps = new java.util.ArrayList<>();
+        steps.add(new SimScript.Step(1.0, "disabled", 0, 0, 0));
+        steps.add(new SimScript.Step(1.0, "forward", 0, -1.0, 0));
+        addLaps(steps, "slow circle", 3.0, 2);
+        steps.add(new SimScript.Step(1.0, "forward", 0, -1.0, 0));
+        addLaps(steps, "fast circle", 0.8, 4);
+        steps.add(new SimScript.Step(1.0, "stop", 0, 0, 0));
+        return steps.toArray(new SimScript.Step[0]);
+    }
+
+    /** Adds laps of the left stick at full travel, starting from forward, 24 steps a lap. */
+    private static void addLaps(
+            java.util.List<SimScript.Step> steps, String name, double lapSeconds, int laps) {
+        int perLap = 24;
+        for (int k = 1; k <= laps * perLap; k++) {
+            double a = 2 * Math.PI * k / perLap;
+            steps.add(new SimScript.Step(lapSeconds / perLap, name, -Math.sin(a), -Math.cos(a), 0));
+        }
+    }
+
     /** The script with this name, or null. */
     static SimScript.Step[] byName(String name) {
         return switch (name) {
@@ -277,6 +305,7 @@ final class SimScripts {
             case "red" -> RED;
             case "reverse" -> REVERSE;
             case "spin" -> SPIN;
+            case "circle" -> CIRCLE;
             default -> null;
         };
     }
