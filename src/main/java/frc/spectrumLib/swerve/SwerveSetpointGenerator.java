@@ -21,6 +21,9 @@ package frc.spectrumLib.swerve;
  * <p>Because setpoints move smoothly, the steer rate sent as feedforward is real (not a spike), and
  * the modules stay where the odometry thinks they are, which is most of the gain.
  *
+ * <p>Over 400 lines: one algorithm whose steps share state each cycle; splitting it would spread
+ * one plan across files.
+ *
  * <p>Index: {@link #reset} | {@link #generate} | reversal | outputs
  */
 public final class SwerveSetpointGenerator {

@@ -28,7 +28,10 @@ import org.wpilib.system.RobotController;
  * with {@link #setSimPacer}.
  *
  * <p>Device configs are in {@link SwervePhoenixConfigs}; reboot detection and endless config
- * retries in {@code PhoenixDeviceSet}.
+ * retries in {@code PhoenixDeviceSet}; sticky faults in {@link SwerveStickyFaults}.
+ *
+ * <p>Over 400 lines: it is the one place that holds every swerve device and signal. Further jobs go
+ * in their own class, as configs, neutral mode and sticky faults do.
  *
  * <p>Index: constructor | {@link #waitForSample} | {@link #setModules} | {@link
  * #retryFailedConfigs} | {@link #setBrake} | {@link #updateHealth}
@@ -77,6 +80,8 @@ public final class SwerveIOPhoenix implements SwerveIO {
     private final boolean timesync;
     private final MotorNeutralMode driveNeutral;
     private final MotorNeutralMode steerNeutral;
+    private final SwerveStickyFaults sticky;
+    private String stickyClear = "not run";
 
     private final SimFaults faults;
 
@@ -188,6 +193,8 @@ public final class SwerveIOPhoenix implements SwerveIO {
                         pigeon.getQuatX(),
                         pigeon.getQuatY(),
                         pigeon.getQuatZ()));
+        sticky = new SwerveStickyFaults(steer, encoder);
+        slowList.addAll(sticky.signals());
         yaw = pigeon.getYaw();
         yawRate = pigeon.getAngularVelocityZWorld();
         fastList.add(yaw);
@@ -208,6 +215,8 @@ public final class SwerveIOPhoenix implements SwerveIO {
                         SwervePhoenixConfigs.signals(
                                 cfg.signalHz(), fast, slow, drive, steer, encoder, pigeon));
         devices.configureAtBoot();
+        // Old faults (from any earlier run) would hide what happens now.
+        stickyClear = sticky.clear().getName();
     }
 
     /** The Phoenix devices, for a desktop sim to move (never used on the robot). */
@@ -411,5 +420,7 @@ public final class SwerveIOPhoenix implements SwerveIO {
         // Brake only if every motor of the set is in brake.
         h.driveBrake = driveNeutral.allBrake();
         h.steerBrake = steerNeutral.allBrake();
+        sticky.read(h.steerSticky, h.encoderSticky);
+        h.stickyClear = stickyClear;
     }
 }

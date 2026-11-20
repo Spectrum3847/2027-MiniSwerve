@@ -78,6 +78,15 @@ public final class SwerveHealth {
     /** The steer motors are in brake (false: coast), as last applied. */
     public boolean steerBrake = true;
 
+    /** Each steer motor's sticky faults since boot, bits as SwerveStickyFaults.STEER_BITS. */
+    public final long[] steerSticky;
+
+    /** Each CANcoder's sticky faults since boot, bits as SwerveStickyFaults.ENCODER_BITS. */
+    public final long[] encoderSticky;
+
+    /** Result of clearing the sticky faults at boot (Phoenix StatusCode name; "not run" in sim). */
+    public String stickyClear = "not run";
+
     /** Amps. */
     public final double[] driveStatorCurrent;
 
@@ -110,6 +119,8 @@ public final class SwerveHealth {
         remoteSensorInvalid = new boolean[modules];
         magnetOk = new boolean[modules];
         magnetHealth = new String[modules];
+        steerSticky = new long[modules];
+        encoderSticky = new long[modules];
         java.util.Arrays.fill(magnetHealth, "Magnet_Invalid");
         driveStatorCurrent = new double[modules];
         steerStatorCurrent = new double[modules];

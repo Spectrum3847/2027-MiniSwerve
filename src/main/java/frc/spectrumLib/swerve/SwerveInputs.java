@@ -204,6 +204,16 @@ public final class SwerveInputs implements LoggableInputs {
         t.put("Health/DriveBrake", h.driveBrake);
         // Steer motors in brake (false: coast), as last applied.
         t.put("Health/SteerBrake", h.steerBrake);
+        // Steer motor sticky faults since boot, bit mask, FL FR BL BR. Bit 0
+        // RemoteSensorDataInvalid,
+        // 1 RemoteSensorReset, 2 FusedSensorOutOfSync, 3 BootDuringEnable, 4 Undervoltage,
+        // 5 UnstableSupplyV, 6 BridgeBrownout.
+        t.put("Health/SteerSticky", h.steerSticky);
+        // CANcoder sticky faults since boot, bit mask, FL FR BL BR. Bit 0 BadMagnet,
+        // 1 BootDuringEnable, 2 Undervoltage, 3 Hardware.
+        t.put("Health/EncoderSticky", h.encoderSticky);
+        // Clearing the sticky faults at boot: Phoenix status name (OK, or why it failed).
+        t.put("Health/StickyClear", h.stickyClear);
         // Swerve thread cycles in a row with stale or failed signals.
         t.put("Thread/StaleCycles", staleCycles);
         // Motor currents (A).
@@ -294,6 +304,9 @@ public final class SwerveInputs implements LoggableInputs {
         h.timesync = t.get("Health/Timesync", h.timesync);
         h.driveBrake = t.get("Health/DriveBrake", h.driveBrake);
         h.steerBrake = t.get("Health/SteerBrake", h.steerBrake);
+        copy(t.get("Health/SteerSticky", h.steerSticky), h.steerSticky);
+        copy(t.get("Health/EncoderSticky", h.encoderSticky), h.encoderSticky);
+        h.stickyClear = t.get("Health/StickyClear", h.stickyClear);
         h.deviceResets = t.get("Health/DeviceResets", h.deviceResets);
         long[] steerResets = t.get("Health/SteerResets", h.steerResets);
         System.arraycopy(steerResets, 0, h.steerResets, 0, Math.min(steerResets.length, modules));
@@ -326,6 +339,10 @@ public final class SwerveInputs implements LoggableInputs {
     }
 
     private static void copy(boolean[] from, boolean[] to) {
+        System.arraycopy(from, 0, to, 0, Math.min(from.length, to.length));
+    }
+
+    private static void copy(long[] from, long[] to) {
         System.arraycopy(from, 0, to, 0, Math.min(from.length, to.length));
     }
 
