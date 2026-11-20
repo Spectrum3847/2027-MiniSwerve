@@ -98,13 +98,17 @@ final class SwerveConfigs {
     }
 
     /**
-     * The drive slip current used (A): tractionUse of the computed slip current, never above the
-     * hardware cap. HARD STOP (current limit): set robotMass and tireFriction truthfully.
+     * The drive slip current used (A): tractionUse of the computed slip current, times
+     * driveSlipCurrentHeadroom for the wheels that carry more than a quarter of the robot under
+     * acceleration, never above the hardware cap. HARD STOP (current limit): set robotMass and
+     * tireFriction truthfully.
      */
     static double driveSlipCurrent() {
         return Math.min(
                 Hardware.DRIVE_SLIP_CURRENT_AMPS,
-                SwerveSettings.TRACTION_USE.get() * slipCurrentAtLimit());
+                SwerveSettings.TRACTION_USE.get()
+                        * slipCurrentAtLimit()
+                        * SwerveSettings.DRIVE_SLIP_CURRENT_HEADROOM.get());
     }
 
     /** Acceleration the setpoint generator may plan (m/s^2): tractionUse of the traction limit. */
@@ -206,5 +210,9 @@ final class SwerveConfigs {
         // What is used: tractionUse of each (planned acceleration m/s^2, drive slip current A).
         Logger.recordOutput("Swerve/Traction/PlannedAcceleration", plannedAccelerationLimit());
         Logger.recordOutput("Swerve/Traction/DriveSlipCurrent", driveSlipCurrent());
+        // How far the drive current limit sits above the computed slip current (1: at it).
+        Logger.recordOutput(
+                "Swerve/Traction/DriveSlipCurrentHeadroom",
+                SwerveSettings.DRIVE_SLIP_CURRENT_HEADROOM.get());
     }
 }

@@ -1,7 +1,7 @@
 {
   "accelerationLimit": "RobotAcceleration",
   "rotationLookahead": 0.013,
-  "driveAccelerationFeedforward": 0,
+  "driveSlipCurrentHeadroom": 1.3,
   "loopHz": 100,
   "encoderSignalHz": 100,
   "steerFeedback": "FusedCANcoder",

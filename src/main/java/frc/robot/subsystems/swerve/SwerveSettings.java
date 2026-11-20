@@ -197,6 +197,17 @@ final class SwerveSettings {
      */
     static final DoubleSetting TRACTION_USE = G.number("tractionUse", 0.97, "", 0.5, 1.0);
 
+    /**
+     * How far above the computed slip current the drive current limit sits (1: at it). The slip
+     * current assumes each wheel carries a quarter of the robot; under hard acceleration the weight
+     * shifts onto fewer wheels, which can then push more than a quarter's worth while the unloaded
+     * wheel pushes almost nothing. On MiniSwerve's carpet launches three wheels sat at the limit
+     * without slipping while the fourth ran on 8 A. HARD STOP (current limit): too high and the
+     * loaded wheels spin on a hard launch, and the battery sags further.
+     */
+    static final DoubleSetting DRIVE_SLIP_CURRENT_HEADROOM =
+            G.number("driveSlipCurrentHeadroom", 1.0, "", 1.0, 1.6);
+
     /** Driver top speed and turn rate. */
     static final DoubleSetting MAX_DRIVE_VELOCITY =
             G.number("maxDriveVelocity", 4.0, "m/s", 0.5, 5.0);
