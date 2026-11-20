@@ -190,6 +190,8 @@ public final class SwerveInputs implements LoggableInputs {
         t.put("Health/RemoteSensorInvalid", h.remoteSensorInvalid);
         // CANcoder magnets readable.
         t.put("Health/MagnetOk", h.magnetOk);
+        // CANcoder magnet health: Magnet_Green, Magnet_Orange, Magnet_Red or Magnet_Invalid.
+        t.put("Health/MagnetHealth", h.magnetHealth);
         // CANivore timesync in use.
         t.put("Health/Timesync", h.timesync);
         // Drivetrain device reboots detected since boot.
@@ -288,6 +290,7 @@ public final class SwerveInputs implements LoggableInputs {
         copy(t.get("Health/FusedOutOfSync", h.fusedOutOfSync), h.fusedOutOfSync);
         copy(t.get("Health/RemoteSensorInvalid", h.remoteSensorInvalid), h.remoteSensorInvalid);
         copy(t.get("Health/MagnetOk", h.magnetOk), h.magnetOk);
+        copy(t.get("Health/MagnetHealth", h.magnetHealth), h.magnetHealth);
         h.timesync = t.get("Health/Timesync", h.timesync);
         h.driveBrake = t.get("Health/DriveBrake", h.driveBrake);
         h.steerBrake = t.get("Health/SteerBrake", h.steerBrake);
@@ -323,6 +326,10 @@ public final class SwerveInputs implements LoggableInputs {
     }
 
     private static void copy(boolean[] from, boolean[] to) {
+        System.arraycopy(from, 0, to, 0, Math.min(from.length, to.length));
+    }
+
+    private static void copy(String[] from, String[] to) {
         System.arraycopy(from, 0, to, 0, Math.min(from.length, to.length));
     }
 }

@@ -50,6 +50,13 @@ public final class SwerveHealth {
     /** Each CANcoder's magnet is readable (no BadMagnet fault). */
     public final boolean[] magnetOk;
 
+    /**
+     * Each CANcoder's magnet health, Phoenix's MagnetHealthValue names: "Magnet_Green" (good),
+     * "Magnet_Orange" (weak or wobbling: still used), "Magnet_Red" (bad), "Magnet_Invalid"
+     * (unknown).
+     */
+    public final String[] magnetHealth;
+
     /** The bus is a CANivore (CAN FD) and controls and signals use Phoenix timesync. */
     public boolean timesync;
 
@@ -102,6 +109,8 @@ public final class SwerveHealth {
         fusedOutOfSync = new boolean[modules];
         remoteSensorInvalid = new boolean[modules];
         magnetOk = new boolean[modules];
+        magnetHealth = new String[modules];
+        java.util.Arrays.fill(magnetHealth, "Magnet_Invalid");
         driveStatorCurrent = new double[modules];
         steerStatorCurrent = new double[modules];
         driveSupplyCurrent = new double[modules];

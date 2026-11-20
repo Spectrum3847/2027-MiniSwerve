@@ -177,7 +177,8 @@ public final class SwerveIOPhoenix implements SwerveIO {
                             steer[i].getFault_FusedSensorOutOfSync(),
                             steer[i].getFault_RemoteSensorDataInvalid(),
                             encoder[i].getFault_BadMagnet(),
-                            steer[i].getSupplyVoltage()));
+                            steer[i].getSupplyVoltage(),
+                            encoder[i].getMagnetHealth()));
         }
         // Tilt for the 3D pose: the quaternion, as Pigeon2.getRotation3d reads it, so the frame is
         // WPILib's by construction (no Euler sign conventions to get wrong).
@@ -227,9 +228,9 @@ public final class SwerveIOPhoenix implements SwerveIO {
 
     /**
      * Slow signals per module: stator and supply current for both motors, 2 temps, drive voltage, 3
-     * faults, steer voltage.
+     * faults, steer voltage, CANcoder magnet health.
      */
-    private static final int SLOW_PER_MODULE = 11;
+    private static final int SLOW_PER_MODULE = 12;
 
     /** Applies a drive's whole config with the neutral mode wanted now. */
     private com.ctre.phoenix6.StatusCode applyDriveConfig(int i) {
@@ -367,6 +368,10 @@ public final class SwerveIOPhoenix implements SwerveIO {
             h.magnetOk[i] = slow[b + 9].getValueAsDouble() == 0;
             h.driveSupplyVoltage[i] = slow[b + 6].getValueAsDouble();
             h.steerSupplyVoltage[i] = slow[b + 10].getValueAsDouble();
+            var health =
+                    com.ctre.phoenix6.signals.MagnetHealthValue.valueOf(
+                            (int) slow[b + 11].getValueAsDouble());
+            h.magnetHealth[i] = health != null ? health.name() : "Magnet_Invalid";
         }
         // Highest reading among connected drive motors: one unplugged motor must not freeze it.
         double volts = Double.NaN;
