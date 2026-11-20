@@ -8,6 +8,9 @@ import org.littletonrobotics.junction.inputs.LoggableInputs;
  * main loop (flattened, sample-major: {@code [s * modules + m]}) and the slow health readings.
  * Replay restores both, so odometry and every decision rerun on exactly what the robot saw.
  *
+ * <p>Just over 400 lines: one logged table, written and read back key by key in the same order, so
+ * the two halves are kept side by side.
+ *
  * <p>Index: {@link #samples} | {@link #toLog} | {@link #fromLog}
  */
 public final class SwerveInputs implements LoggableInputs {
