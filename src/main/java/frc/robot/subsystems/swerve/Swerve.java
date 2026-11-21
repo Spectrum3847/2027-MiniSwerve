@@ -23,6 +23,7 @@ import frc.spectrumLib.telemetry.Alert;
 import java.util.function.DoubleSupplier;
 import org.littletonrobotics.junction.Logger;
 import org.wpilib.command2.Command;
+import org.wpilib.command2.Commands;
 import org.wpilib.command2.Subsystem;
 import org.wpilib.driverstation.RobotState;
 import org.wpilib.math.geometry.Pose2d;
@@ -36,8 +37,9 @@ import org.wpilib.util.Alert.Level;
  * The drivetrain: wanted states on the main loop, our 250 Hz swerve thread underneath.
  *
  * <p>Main loop: {@link #updateInputs()} (drain samples, log, odometry) runs before the command
- * scheduler; commands {@link #request} states; {@link #applyWantedState()} after the scheduler
- * turns the wanted state into a {@link DriveRequest} for the thread.
+ * scheduler; commands and OpModes {@link #request} states every loop they want them; {@link
+ * #applyWantedState()} after the scheduler picks the newest ask ({@link WantedState#resolve}) and
+ * turns it into a {@link DriveRequest} for the thread.
  *
  * <p>Over 400 lines: the wanted states, the request each becomes and the logging of both are kept
  * together so the path from "what was asked" to "what the thread was sent" reads in one file. The
@@ -307,7 +309,8 @@ public final class Swerve implements Subsystem {
 
     /** Main loop, after the scheduler: turn the wanted state into a request for the thread. */
     public void applyWantedState() {
-        State wanted = state.wanted();
+        // After the OpMode and the scheduler, so every ask this loop counts.
+        State wanted = state.resolve();
         DriveRequest request =
                 switch (wanted) {
                     case IDLE -> DriveRequest.NEUTRAL;
@@ -539,7 +542,8 @@ public final class Swerve implements Subsystem {
      */
     public Command characterizeWheelRadius() {
         String name = "wheelRadius";
-        return startEnd(
+        // No requirement: the wanted state, not the scheduler, settles who drives.
+        return Commands.runEnd(
                         () -> state.request(State.WHEEL_RADIUS_CHARACTERIZATION, name),
                         () -> {
                             state.release(name);
@@ -569,7 +573,10 @@ public final class Swerve implements Subsystem {
         state.request(State.ROBOT_VELOCITY, requester);
     }
 
-    /** Releases {@link #driveRobotRelative}; the swerve goes back to its default state. */
+    /**
+     * Releases {@link #driveRobotRelative} at once; the swerve goes back to whoever else is asking,
+     * or its default state. Not calling {@link #driveRobotRelative} for a loop releases it too.
+     */
     public void stopRobotRelative(String requester) {
         robotVx = 0;
         robotVy = 0;
@@ -577,14 +584,18 @@ public final class Swerve implements Subsystem {
         state.release(requester);
     }
 
-    /** Ask for a state; see {@link WantedState#request}. */
+    /** Ask for a state for this loop; call every loop it is wanted. See {@link WantedState}. */
     public void request(State s, String requester) {
         state.request(s, requester);
     }
 
-    /** A command that holds a state while scheduled and releases it after. */
+    /**
+     * A command that asks for a state every loop while scheduled and releases it after. It does not
+     * require the swerve: holders overlap, the newest wins, and when it ends the swerve goes back
+     * to the one before it (X-lock let go mid-auto returns to the auto).
+     */
     public Command hold(State s, String name) {
-        return startEnd(() -> state.request(s, name), () -> state.release(name))
+        return Commands.runEnd(() -> state.request(s, name), () -> state.release(name))
                 .withName("Swerve." + name);
     }
 
