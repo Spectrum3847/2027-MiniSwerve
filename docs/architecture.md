@@ -72,6 +72,24 @@ throws and one thread restart.
 5. Wanted-state machines and commands
 6. Alerts, telemetry
 
+## Wanted states
+
+Commands, OpModes and bindings ask a subsystem for a state; they never command devices
+(`frc.spectrumLib.statemachine.WantedState`). An ask lasts one loop, so whoever wants a state asks
+every loop it still wants it (a held button's command, a running OpMode step). Several can ask at
+once: the newest asker wins, and when it stops the state falls back to the one before it that is
+still asking, then to the default. X-lock held while an auto drives, then let go, returns to the
+auto. A command that dies without cleaning up (a throw in the scheduler stage) stops asking and
+lets go on its own the next loop, rather than holding its state for the rest of the match.
+Commands that only ask do not require the subsystem: the wanted state settles who wins, not the
+scheduler, which would cancel the older holder outright. The subsystem picks the winner once a
+loop, after the OpMode and the scheduler (`WantedState.resolve`). Logged under
+`<subsystem>/State/`: `Wanted`, `Requester`, `Current`, `SecondsInWanted`, `Requests` (everyone
+asking, newest last) and `Events`.
+
+What the state machine still needs (current-state sequences, reaching the goal, timeouts with
+fallbacks, the superstructure): [state-machine-plan.md](state-machine-plan.md).
+
 ## Packages
 
 ```
