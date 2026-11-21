@@ -87,6 +87,9 @@ loop, after the OpMode and the scheduler (`WantedState.resolve`). Logged under
 `<subsystem>/State/`: `Wanted`, `Requester`, `Current`, `SecondsInWanted`, `Requests` (everyone
 asking, newest last) and `Events`.
 
+What the state machine still needs (current-state sequences, reaching the goal, timeouts with
+fallbacks, the superstructure): [state-machine-plan.md](state-machine-plan.md).
+
 ## Packages
 
 ```
