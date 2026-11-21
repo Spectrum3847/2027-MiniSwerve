@@ -97,6 +97,7 @@ frc.robot                 this robot only
   Robot, Main, RunMode, LoggingSetup
   config/                 Hardware (CAN IDs, ratios: hard stops)
   subsystems/swerve/      drivetrain wanted states              (built)
+  subsystems/leds/        LED strip: mode and alerts            (built, not on the robot yet)
   pilot/                  driver controller bindings            (built)
 frc.spectrumLib           reusable; moves to its own repo later
   framework/              SpectrumRobot, RobotLoop
@@ -450,6 +451,31 @@ How it fits:
   disabled, so normal sag under load never trips it. Below `battery/lowVolts` (12.3 V) it raises a
   MEDIUM alert that stays up through the match. `Battery/RestingVoltage` with `Battery/Name` gives
   each battery's resting voltage history.
+
+## LEDs (SpectrumShine)
+
+One strip of 16 LEDs across the middle of the robot, facing up, on a SpectrumShine board
+(Spectrum's own LED controller, CAN id `Hardware.LED_ID`, repo SpectrumShine). The board runs the
+animations; the robot only says what each slot shows, so the LEDs cost the main loop a few CAN
+frames when something changes and one repeat a second. **Not yet run on the robot** (first boards
+arrive 2026-11-20): still to prove are WPILib's `CAN` reaching the board on SystemCore's bus 0 and
+the patterns by eye. The board is classic CAN only and must never share a bus with CAN FD traffic
+(SpectrumShine SPEC_V3): bus 0 is classic today; if it ever runs FD, move the board
+(`Hardware.LED_BUS`).
+
+- `frc.spectrumLib.leds` is the board (`ShineIOCan`, protocol, patterns, logged inputs under
+  `Leds/`: connected, faults, the board's own battery and LED current readings, firmware, boots).
+- `frc.robot.subsystems.leds.Leds` picks what to show from logged inputs, after the alerts are
+  counted: the mode in the middle (`Leds/Strip`), trouble on three LEDs at each end (`Leds/Ends`).
+  Its README has the table of patterns. Purple and white mean fine; yellow is a MEDIUM alert,
+  orange the battery, red a HIGH alert or e-stop.
+- Low battery uses `BatteryVoltageCheck` (resting voltage under `battery/lowVolts`): the whole strip
+  flashes orange while disabled, the ends while enabled.
+- Finish the match: a missing board is a LOW alert, a board fault a MEDIUM one, and nothing else
+  changes. A board that reboots or is plugged in late gets its LED counts and slots again within a
+  second. A silent board is sent a repeat only every 5 s, so an unplugged board adds no bus load.
+- Sim has a stand-in board that is always healthy; replay reads the log. Checked 2026-11-19 on the
+  `auto` script: DISABLED, AUTO, DISABLED, TELEOP at the mode changes, and replay gives the same.
 
 ## Planned (from other teams' code)
 

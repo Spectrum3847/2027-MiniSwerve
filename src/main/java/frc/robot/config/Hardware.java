@@ -10,8 +10,8 @@ import static org.wpilib.units.Units.Meters;
  * <p>ID scheme: module N has drive N, steer 10+N and CANcoder N. Phoenix IDs are unique per device
  * type, so drive 1, CANcoder 1 and the Pigeon 1 do not collide.
  *
- * <p>Index: {@link #CAN_BUS} · {@link #PIGEON_ID} · {@link #PDP_ID} · {@link Module} · {@link
- * MK4iL2}
+ * <p>Index: {@link #CAN_BUS} · {@link #PIGEON_ID} · {@link #PDP_ID} · {@link #LED_ID} · {@link
+ * Module} · {@link MK4iL2}
  */
 public final class Hardware {
     private Hardware() {}
@@ -31,6 +31,17 @@ public final class Hardware {
             org.wpilib.hardware.bus.CANPort.CAN_S0;
 
     public static final int PDP_ID = 0;
+
+    /**
+     * The LED controller: a SpectrumShine board on bus 0 (read and written through WPILib, not
+     * Phoenix). A new board is id 0, so that is what the robot's one board stays at; its frames
+     * carry the team-use manufacturer and miscellaneous device type, so id 0 does not collide with
+     * the PDP's or any Phoenix device's. HARD STOP.
+     */
+    public static final org.wpilib.hardware.bus.CANPort LED_BUS =
+            org.wpilib.hardware.bus.CANPort.CAN_S0;
+
+    public static final int LED_ID = 0;
 
     /** Modules in the order every array in the swerve code uses: FL, FR, BL, BR. */
     public enum Module {
